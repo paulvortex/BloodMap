@@ -1,0 +1,6 @@
+#define Q3MAP_VERSION	         "1.1.4"
+#define Q3MAP_MOTD		         "Q3Map2 with blood transfusion\n"
+#define Q3MAP_MARKER             "Compiled with BloodMap %s on %s"
+#define RADIANT_VERSION          "1.5.0"
+#define RADIANT_MINOR_VERSION    "0"
+#define RADIANT_MAJOR_VERSION    "5"
