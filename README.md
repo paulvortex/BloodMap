@@ -1,5 +1,11 @@
 Blood Map is a fork of Q3Map2 compiler used for RazorWind Games projects
 
+Screenshots
+------
+![terrain alpha](/images/terrainalpha.jpg)
+![Ambient occlusion](/BloodMap/images/ambientocclusion.jpg)
+![misc_model grouping](/images/misc_model_grouping.jpg)
+
 Known bugs
 ------
 - MAX_LIGHTMAPS is 2 (was 4)
@@ -26,7 +32,7 @@ Known bugs
 1.1.2 (Blood Omnicide internal release)
 ------
 - New -optimize stage, which does various optimizations on BSP (see below)
-- New: q3map_engineShader <shadername> used by tidyshaders stage
+- New: q3map_engineShader 'shadername' used by tidyshaders stage
 - TidyShaders: replaces shaders with their engineShader
   this will automatically merge surfaces which got same engineShader
 - TidyEntities: remove compiler-related entity keys such as _cs,
@@ -83,7 +89,7 @@ Known bugs
   BSP stage. Automations include: force entity keys based on classname or 
   _decore key, importing .rtlights, assign target/targetname keys on misc_models
   so they will produce a "bulk-bmodel" (useful with trees and grass)
-  Options for function is stored inside <basedir>/scripts/decorations.txt.
+  Options for function is stored inside 'basedir'/scripts/decorations.txt.
   
 Example of decorations.txt:
 
@@ -149,14 +155,14 @@ class func_wall
 - Removed: entity _smooth key (only _smoothnormals and _np are valid keys)
 - _smoothnormals now works on func_group and (perharps) misc_model
 - New: _nonsolid 1 entity key breaks generation of BSP brushes
-- New: _vp <dist> key forces a vertical texture projection on
+- New: _vp 'dist' key forces a vertical texture projection on
   misc_model (effect is same as for q3map_tcMod ivector)
-- New: _uvs <scale> scales UV on misc_model
-- q3map_alphamod random <min> <max> <power> - set random vertex alpha of
+- New: _uvs 'scale' scales UV on misc_model
+- q3map_alphamod random 'min' 'max' 'power' - set random vertex alpha of
   vertices inside brush. Randomizing using precalculated random grid.
-- q3map_alphamod randomjitter <min> <max> <power> - adds random value
-- q3map_alphamod randomscale <min> <max> <power> - scale by random value
-- q3map_textureImage <image> mimics qer_editorImage but not seen by Radiant
+- q3map_alphamod randomjitter 'min' 'max' 'power' - adds random value
+- q3map_alphamod randomscale 'min' 'max' 'power' - scale by random value
+- q3map_textureImage 'image' mimics qer_editorImage but not seen by Radiant
   Allows use of different sized texture when qer_editorimage is set
 
 
@@ -235,9 +241,9 @@ class func_wall
   games.
 - Global floodlight code reverted back to have no effect on deluxemap
   (it don't add anything and deluxemaps looks blurry). q3map_floodlight shader
-  keyword is changed to have "<light_direction_power>" parameter in the end
-  unless "low_quality", so now it is 
-  q3map_floodlight <r> <g> <b> <dist> <intentity> <light_direction_power>. 
+  keyword is changed to have 'light_direction_power' parameter in the end
+  unless "low_quality", so now it is
+  q3map_floodlight 'r' 'g' 'b' 'dist' 'intentity' 'light_direction_power'. 
   Use 0 in to have no effect on deluxemap, 1 to have standart effect like
   all lights do and 200 and more to make floodlight override deluxemap on
   this surface (it would be useful for floodlighted water since if some
@@ -266,7 +272,7 @@ class func_wall
   
 1.0.1 (DeluxeQuake internal release)
 ------
-- added shader deprecation keyword "q3map_deprecateShader <shader>", a global
+- added shader deprecation keyword q3map_deprecateShader 'shader', a global
   variant of q3map_baseShader/q3map_remapShader. Replacing is done in early
   load stage, so all q3map2 keyworlds are supported (instead of
   q3map_remapShader which only remaps rendering part of shader so
@@ -290,7 +296,7 @@ class func_wall
   "darkplaces" games uses them. Additionaly added "-nodeluxe",
   "-nopatchshadows", "-styles" to negate positive defaults.
 - Floodligting code is changed to handle custom surfaces.
-  And "q3map_floodlight <r> <g> <b> <diste> <bright> <low_quality>" shader
+  And "q3map_floodlight 'r' 'g' 'b' 'diste' 'bright' 'low_quality' shader
   keyword was added. Per-surfaces floodlight code does not intersect with
   global floodlight done by -floodlight of _floodlight worldspawn key,
   their effects get summarized. This is good way to light up surfacelight
@@ -302,7 +308,7 @@ class func_wall
 - added "-samplesize" switch to light phase, this scales samplesizes for all
   lightmaps, useful to compile map with different lightmap quality
 - added "_ls" key which duplicates "_lightmapscale" but have short name
-  (order of checking is lightmapscale->_lightmapscale->_ls)
+  (order of checking is lightmapscale-'_lightmapscale-'_ls)
 
   
 1.0.0 (DeluxeQuake internal release)
