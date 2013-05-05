@@ -3,7 +3,7 @@ Blood Map is a fork of Q3Map2 compiler used for RazorWind Games projects
 Screenshots
 ------
 ![terrain alpha](/images/terrainalpha.jpg)
-![Ambient occlusion](/BloodMap/images/ambientocclusion.jpg)
+![Ambient occlusion](/images/ambientocclusion.jpg)
 ![misc_model grouping](/images/misc_model_grouping.jpg)
 
 Known bugs
