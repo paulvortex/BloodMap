@@ -10,10 +10,12 @@
 void SetCloneModelNumbers(void);
 
 /* globals */
-entity_t *mapEntities;
-int       numMapEntities;
-entity_t *bspEntities;
-int       numBspEntities;
+entity_t *patch_mapEntities;
+int       patch_numMapEntities;
+entity_t *patch_bspEntities;
+int       patch_numBspEntities;
+char      uniqueEntityKey[1024];
+qboolean  patchTriggers;
 
 /*
 AllocateEntity()
@@ -42,41 +44,117 @@ patch entities in BSP using following rules:
 Important: this function changes entity spawn order!
 */
 
+entity_t *FindMapEntityByUniqueKey(const char *val)
+{
+	entity_t *e;
+	int i;
+
+	if (!val[0] || !uniqueEntityKey[0])
+		return NULL;
+	for (i = 1; i < patch_numMapEntities; i++)
+	{
+		e = &patch_mapEntities[i];
+		if (!strcmp(ValueForKey(e, uniqueEntityKey), val))
+			return e;
+	}
+	return NULL;
+}
+
 void PatchEntities(void)
 {
-	int i, numents;
-	entity_t *e;
-
+	entity_t *e, *bspent, *mapent;
+	int i, numents, numentsext, numskipents;
+	vec3_t mins, maxs;
+	const char *val, *model;
+	char str[512];
+	brush_t *b;
+	
 	numEntities = 1; /* keep worldspawn */
 
 	/* copy out submodels */
 	Sys_Printf("--- PatchEntities ---\n");
 	numents = 0;
-	for (i = 1; i < numBspEntities; i++)
+	numentsext = 0;
+	for (i = 1; i < patch_numBspEntities; i++)
 	{
-		e = &bspEntities[i];
-		if (strncmp(ValueForKey(e, "model"), "*", 1))
+		e = &patch_bspEntities[i];
+		model = ValueForKey(e, "model");
+		if (strncmp(model, "*", 1))
 			continue;
+
+		/* patching triggers from map? */
+		if (patchTriggers)
+			if (!strncmp(ValueForKey(e, "classname"), "trigger_", 8))
+				continue;
+
+		/* patch bsp entities by saveid */
+		if (uniqueEntityKey[0])
+		{
+			val = ValueForKey(e, uniqueEntityKey);
+			if (val && val[0])
+			{
+				/* find matching map entity */
+				mapent = FindMapEntityByUniqueKey(val);
+				if (mapent)
+				{
+					bspent = AllocateEntity(mapent);
+					SetKeyValue(bspent, "model", model); // keep model number
+					numentsext++;
+					continue;
+				}
+			}
+		}
 
 		/* add a submodel entity */
 		AllocateEntity(e);
 		numents++;
 	}
-	Sys_Printf("%9d submodel entities copied from BSP\n", numents);
+	Sys_Printf("%9d .bsp submodel entities copied\n", numents);
+	if (numentsext)
+		Sys_Printf("%9d .bsp submodel entities patched\n", numentsext);
+	Sys_Printf("%9d .bsp point entities skipped\n", patch_numBspEntities-numents);
 
 	/* replace point entities, skip worldspawn */
 	numents = 0;
-	for (i = 1; i < numMapEntities; i++)
+	numentsext = 0;
+	numskipents = 0;
+	for (i = 1; i < patch_numMapEntities; i++)
 	{
-		e = &mapEntities[i];
-		if (!strncmp(ValueForKey(e, "model"), "*", 1))
+		e = &patch_mapEntities[i];
+		model = ValueForKey(e, "model");
+		if (!strncmp(model, "*", 1))
+		{
+			/* add a trigger */
+			if (patchTriggers && !strncmp(ValueForKey(e, "classname"), "trigger_", 8))
+			{
+				mapent = AllocateEntity(e);
+				/* find bounds */
+				ClearBounds( mins, maxs );
+				for( b = mapent->brushes; b; b = b->next )
+				{
+					AddPointToBounds(b->mins, mins, maxs);
+					AddPointToBounds(b->maxs, mins, maxs);
+				}
+				sprintf(str, "%f %f %f", mins[0], mins[1], mins[2]);
+				SetKeyValue(mapent, "mins", str);
+				sprintf(str, "%f %f %f", maxs[0], maxs[1], maxs[2]);
+				SetKeyValue(mapent, "maxs", str);
+				numentsext++;
+			}
+			else
+				numskipents++;
 			continue;
+		}
 
 		/* add a point entity */
 		AllocateEntity(e);
 		numents++;
 	}
-	Sys_Printf("%9d point entities copied from MAP\n", numents);
+	Sys_Printf("%9d .map point entities copied\n", numents);
+	if (numentsext)
+		Sys_Printf("%9d .map triggers copied\n", numentsext);
+	if (numskipents)
+		Sys_Printf("%9d .map submodel entities skipped\n", numskipents);
 	Sys_Printf("%9d entities\n", numEntities);
 }
 
@@ -88,7 +166,7 @@ entities compile
 
 int PatchBSPMain( int argc, char **argv )
 {
-	char path[1024], out[1024], ekey[1024];
+	char path[1024], out[1024];
 	qboolean patchentities;
 	int	i;
 
@@ -119,7 +197,8 @@ int PatchBSPMain( int argc, char **argv )
 	/* process arguments */
 	patchentities = qtrue;
 	verbose = qfalse;
-	strcpy(ekey, "");
+	strcpy(uniqueEntityKey, "");
+	patchTriggers = qfalse;
 	for( i = 1; i < (argc - 1); i++ )
 	{
 		if( !strcmp( argv[ i ],  "-custinfoparms") )
@@ -139,13 +218,16 @@ int PatchBSPMain( int argc, char **argv )
 		}
 		else if( !strcmp( argv[ i ],  "-entityid" ) )
  		{
-			strcpy(ekey, argv[i + 1]);
+			strcpy(uniqueEntityKey, argv[i + 1]);
  			i++;
-			if (strcmp(ekey, ""))
-				Sys_Printf( "Using entity key \"%s\" as unique entity identifier\n", ekey );
+			if (strcmp(uniqueEntityKey, ""))
+				Sys_Printf( "Using entity key \"%s\" as unique entity identifier\n", uniqueEntityKey );
  		}
-		else if( !strcmp( argv[ i ],  "-noents" ) )
-			Sys_Printf( "Not patching BSP entities\n" );
+		else if( !strcmp( argv[ i ],  "-triggers") )
+		{
+			Sys_Printf( "Enable patching BSP by map trigger entities\n" );
+			patchTriggers = qtrue;
+		}
 		else
 			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
 	}
@@ -171,19 +253,19 @@ int PatchBSPMain( int argc, char **argv )
 	numBSPEntities = numEntities;
 	UnparseEntities(qfalse);
 	ParseEntities();
-	numMapEntities = numEntities;
-	mapEntities = (entity_t *)safe_malloc(sizeof(entity_t) * numMapEntities);
-	memcpy(mapEntities, &entities, sizeof(entity_t) * numMapEntities);
-	Sys_Printf( "%9d entities\n", numMapEntities );
+	patch_numMapEntities = numEntities;
+	patch_mapEntities = (entity_t *)safe_malloc(sizeof(entity_t) * patch_numMapEntities);
+	memcpy(patch_mapEntities, &entities, sizeof(entity_t) * patch_numMapEntities);
+	Sys_Printf( "%9d entities\n", patch_numMapEntities );
 
 	/* load BSP file */
 	Sys_Printf( "--- LoadBSP ---\n" );
 	Sys_Printf( "Loading %s\n", out );
 	LoadBSPFile( out );
 	ParseEntities();
-	numBspEntities = numEntities;
-	bspEntities = (entity_t *)safe_malloc(sizeof(entity_t) * numBspEntities);
-	memcpy(bspEntities, &entities, sizeof(entity_t) * numBspEntities);
+	patch_numBspEntities = numEntities;
+	patch_bspEntities = (entity_t *)safe_malloc(sizeof(entity_t) * patch_numBspEntities);
+	memcpy(patch_bspEntities, &entities, sizeof(entity_t) * patch_numBspEntities);
 	Sys_Printf( "%9d entities\n", numEntities );
 	Sys_Printf( "%9d entDataSize\n", bspEntDataSize );
 

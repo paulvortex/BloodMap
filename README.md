@@ -18,7 +18,11 @@ Known bugs
 1.1.4
 ------
 - Get rid of MHASH dependency
-
+- New key -entityid 'keyname' for -patch stage. Enables patching of submodel
+  entity fields by making map/bsp entity pairs with same unique key index.
+- New key -triggers for -patch stage. Enables replacing "trigger_" entities
+  from .MAP. This requires gamecode support - trigger entities should be able
+  to initialize themself with no submodel, but only mins/maxs keys.
 
 1.1.3 (Blood Omnicide internal release)
 ------
