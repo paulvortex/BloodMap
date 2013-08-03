@@ -12,7 +12,7 @@ Known bugs
 - floodlight code is turned off
 
 --------------------------------------------------------------------------------
- Version History + Changelog (Reverse Chronological Order)
+ Version History + Changelog
 --------------------------------------------------------------------------------
 
 1.1.4
