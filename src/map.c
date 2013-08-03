@@ -1567,7 +1567,8 @@ static qboolean ParseMapEntity( qboolean onlyLights )
 		celShader = NULL;
 
 	/* vortex: _nonsolid forces detail non-solid brush */
-	forceNonSolid = (IntForKey(mapEnt, "_nonsolid") > 0) ? qtrue : qfalse;
+	forceNonSolid = ((IntForKey(mapEnt, "_nonsolid") > 0) || (IntForKey(mapEnt, "_ns") > 0)) ? qtrue : qfalse;
+
 
 	/* attach stuff to everything in the entity */
 	for( brush = mapEnt->brushes; brush != NULL; brush = brush->next )
