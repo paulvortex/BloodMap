@@ -351,7 +351,7 @@ void TriangulatePatchSurface( entity_t *e , mapDrawSurface_t *ds )
 	if (patchSubdivision)
 		iterations = IterationsForCurve( ds->longestCurve, patchSubdivision );
 	else
-		iterations = IterationsForCurve( ds->longestCurve, patchSubdivisions / patchQuality );
+		iterations = IterationsForCurve( ds->longestCurve, max(1, patchSubdivisions / patchQuality) );
 
 	subdivided = SubdivideMesh2( src, iterations );	//%	ds->maxIterations
 	
