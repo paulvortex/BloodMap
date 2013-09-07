@@ -24,6 +24,7 @@ Known bugs
   from .MAP. This requires gamecode support - trigger entities should be able
   to initialize themself with no submodel, but only mins/maxs keys.
 
+ 
 1.1.3 (Blood Omnicide internal release)
 ------
 - New -patch stage which will patch .BSP with .MAP contents.
