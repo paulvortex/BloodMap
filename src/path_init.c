@@ -325,8 +325,9 @@ will remove any arguments it uses
 
 void InitPaths( int *argc, char **argv )
 {
-	int		i, j, k, len, len2;
+	int		i, j, k;
 	char	temp[ MAX_OS_PATH ];
+	size_t  len, len2;
 	
 	
 	/* note it */

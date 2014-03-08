@@ -481,7 +481,7 @@ void NMSG_WriteString(netmessage_t *msg, char *string)
 		return;
 	} //end if
 	strcpy(&msg->data[msg->size], string);
-	msg->size += strlen(string) + 1;
+	msg->size += (int)strlen(string) + 1;
 } //end of the function NMSG_WriteString
 //===========================================================================
 //

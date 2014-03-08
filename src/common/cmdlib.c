@@ -34,7 +34,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 #include <direct.h>
 #include <windows.h>
 #endif
@@ -167,7 +167,7 @@ Mimic unix command line expansion
 #define	MAX_EX_ARGC	1024
 int		ex_argc;
 char	*ex_argv[MAX_EX_ARGC];
-#ifdef _WIN32
+#if defined(WIN32) || defined(WIN64)
 #include "io.h"
 void ExpandWildcards( int *argc, char ***argv )
 {
@@ -232,8 +232,8 @@ void SetQdirFromPath( const char *path )
 {
 	char	temp[1024];
 	const char	*c;
-  const char *sep;
-	int		len, count;
+	const char *sep;
+	size_t len, count;
 
 	if (!(path[0] == '/' || path[0] == '\\' || path[1] == ':'))
 	{	// path is partial
@@ -405,7 +405,7 @@ void Q_getwd (char *out)
 {
 	int i = 0;
 
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
    _getcwd (out, 256);
    strcat (out, "\\");
 #else
@@ -424,7 +424,7 @@ void Q_getwd (char *out)
 
 void Q_mkdir (const char *path)
 {
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 	if (_mkdir (path) != -1)
 		return;
 #else
@@ -534,7 +534,7 @@ skipwhite:
 	return data;
 }
 
-int Q_strncasecmp (const char *s1, const char *s2, int n)
+int Q_strncasecmp (const char *s1, const char *s2, size_t n)
 {
 	int		c1, c2;
 	
@@ -832,9 +832,9 @@ void DefaultPath (char *path, const char *basepath)
 }
 
 
-void    StripFilename (char *path)
+void StripFilename (char *path)
 {
-	int             length;
+	size_t length;
 
 	length = strlen(path)-1;
 	while (length > 0 && path[length] != '/' && path[ length ] != '\\' )
@@ -844,7 +844,7 @@ void    StripFilename (char *path)
 
 void    StripExtension (char *path)
 {
-	int             length;
+	size_t length;
 
 	length = strlen(path)-1;
 	while (length > 0 && path[length] != '.')
@@ -1163,7 +1163,7 @@ void	CreatePath (const char *path)
 	char		c;
 	char		dir[1024];
 
-#ifdef _WIN32
+#if defined(WIN32) || defined(WIN64)
 	int		olddrive = -1;
 
 	if ( path[1] == ':' )
@@ -1187,7 +1187,7 @@ void	CreatePath (const char *path)
 		}
 	}
 
-#ifdef _WIN32
+#if defined(WIN32) || defined(WIN64)
 	if ( olddrive != -1 )
 	{
 		_chdrive( olddrive );
@@ -1216,7 +1216,7 @@ void QCopyFile (const char *from, const char *to)
 
 void Sys_Sleep(int n)
 {
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
   Sleep (n);
 #endif
 #if defined (__linux__) || defined (__APPLE__)

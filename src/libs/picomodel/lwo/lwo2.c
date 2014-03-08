@@ -82,7 +82,7 @@ lwObject *lwGetObject( char *filename, picoMemStream_t *fp, unsigned int *failID
    lwLayer *layer;
    lwNode *node;
    unsigned int id, formsize, type, cksize;
-   int i, rlen;
+   size_t i, rlen;
 
    /* open the file */
 
@@ -264,7 +264,7 @@ lwObject *lwGetObject( char *filename, picoMemStream_t *fp, unsigned int *failID
 Fail:
   if ( failID ) *failID = id;
    if ( fp ) {
-      if ( failpos ) *failpos = _pico_memstream_tell( fp );
+      if ( failpos ) *failpos = (int)_pico_memstream_tell( fp );
    }
    lwFreeObject( object );
    return NULL;

@@ -27,11 +27,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 /*
 ===================================================================
 
-WIN32
+WIN32 / WIN64
 
 ===================================================================
 */
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 
 #define	USED
 

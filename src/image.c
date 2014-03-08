@@ -111,7 +111,7 @@ void PNGReadData( png_struct *png, png_byte *buffer, png_size_t size )
 	if( (pb->offset + size) > pb->size )
 		size = (pb->size - pb->offset);
 	memcpy( buffer, &pb->buffer[ pb->offset ], size );
-	pb->offset += size;
+	pb->offset += (int)size;
 	//%	Sys_Printf( "Copying %d bytes from 0x%08X to 0x%08X (offset: %d of %d)\n", size, &pb->buffer[ pb->offset ], buffer, pb->offset, pb->size );
 }
 

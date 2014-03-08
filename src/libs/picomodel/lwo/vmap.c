@@ -46,7 +46,8 @@ lwVMap *lwGetVMap( picoMemStream_t *fp, int cksize, int ptoffset, int poloffset,
    unsigned char *buf, *bp;
    lwVMap *vmap;
    float *f;
-   int i, j, npts, rlen;
+   int i, j, npts;
+   size_t rlen;
 
 
    /* read the whole chunk */

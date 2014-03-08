@@ -453,7 +453,8 @@ added to the lwTagList array.
 int lwGetTags( picoMemStream_t *fp, int cksize, lwTagList *tlist )
 {
    char *buf, *bp;
-   int i, len, ntags;
+   size_t i, len;
+   int ntags;
 
    if ( cksize == 0 ) return 1;
 
@@ -508,7 +509,8 @@ int lwGetPolygonTags( picoMemStream_t *fp, int cksize, lwTagList *tlist,
    lwPolygonList *plist )
 {
    unsigned int type;
-   int rlen = 0, i, j;
+   size_t rlen = 0;
+   int i, j;
 
    set_flen( 0 );
    type = getU4( fp );

@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "bytebool.h"
 
-#ifdef _WIN32
+#if defined(WIN32) || defined(WIN64)
 #pragma warning(disable : 4244)     // MIPS
 #pragma warning(disable : 4136)     // X86
 #pragma warning(disable : 4051)     // ALPHA
@@ -46,7 +46,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <time.h>
 #include <stdarg.h>
 
-#ifdef _WIN32
+#if defined(WIN32) || defined(WIN64)
 
 #pragma intrinsic( memset, memcpy )
 
@@ -78,7 +78,7 @@ extern int myargc;
 extern char **myargv;
 
 char *strlower (char *in);
-int Q_strncasecmp( const char *s1, const char *s2, int n );
+int Q_strncasecmp( const char *s1, const char *s2, size_t n );
 int Q_stricmp( const char *s1, const char *s2 );
 void Q_getwd( char *out );
 

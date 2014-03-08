@@ -619,9 +619,9 @@ void normalize( float v[] );
 
 /* lwio.c */
 
-void  set_flen( int i );
-int   get_flen( void );
-void *getbytes( picoMemStream_t *fp, int size );
+void  set_flen( size_t i );
+size_t get_flen( void );
+void *getbytes( picoMemStream_t *fp, size_t size );
 void  skipbytes( picoMemStream_t *fp, int n );
 int   getI1( picoMemStream_t *fp );
 short getI2( picoMemStream_t *fp );

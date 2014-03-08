@@ -25,11 +25,11 @@ read requests until flen is reset.
 #define INT_MIN     (-2147483647 - 1) /* minimum (signed) int value */
 #define FLEN_ERROR INT_MIN
 
-static int flen;
+static size_t flen;
 
-void set_flen( int i ) { flen = i; }
+void set_flen( size_t i ) { flen = i; }
 
-int get_flen( void ) { return flen; }
+size_t get_flen( void ) { return flen; }
 
 
 #ifndef __BIG_ENDIAN__
@@ -85,7 +85,7 @@ void revbytes( void *bp, int elsize, int elcount )
 #endif
 
 
-void *getbytes( picoMemStream_t *fp, int size )
+void *getbytes( picoMemStream_t *fp, size_t size )
 {
    void *data;
 
@@ -260,7 +260,8 @@ float getF4( picoMemStream_t *fp )
 char *getS0( picoMemStream_t *fp )
 {
    char *s;
-   int i, c, len, pos;
+   size_t i, len, pos;
+   int c;
 
    if ( flen == FLEN_ERROR ) return NULL;
 
@@ -418,7 +419,7 @@ char *sgetS0( unsigned char **bp )
 {
    char *s;
    unsigned char *buf = *bp;
-   int len;
+   size_t len;
 
    if ( flen == FLEN_ERROR ) return NULL;
 

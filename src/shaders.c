@@ -441,7 +441,7 @@ erases and starts a new map shader script
 void BeginMapShaderFile( const char *mapFile )
 {
 	char	base[ 1024 ];
-	int		len;
+	size_t	len;
 	
 
 	/* dummy check */
@@ -680,7 +680,7 @@ shaderInfo_t *CustomShader( shaderInfo_t *si, char *find, char *replace )
 	
 	/* make md4 hash of the shader text */
 	MD4Init(&md4);
-	MD4Update(&md4, shaderText, strlen( shaderText ));
+	MD4Update(&md4, shaderText, (unsigned int)strlen( shaderText ));
 	MD4Final(digest, &md4);
 
 	/* mangle hash into a shader name */
@@ -731,7 +731,7 @@ void EmitVertexRemapShader( char *from, char *to )
 	
 	/* make md4 hash */
 	MD4Init(&md4);
-	MD4Update(&md4, value, strlen(value));
+	MD4Update(&md4, value, (unsigned int)strlen(value));
 	MD4Final(digest, &md4);
 
 	/* make key (this is annoying, as vertexremapshader is precisely 17 characters,

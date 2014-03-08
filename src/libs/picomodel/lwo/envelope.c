@@ -49,7 +49,8 @@ lwEnvelope *lwGetEnvelope( picoMemStream_t *fp, int cksize )
    unsigned int id;
    unsigned short sz;
    float f[ 4 ];
-   int i, nparams, pos, rlen;
+   int i, nparams;
+   size_t pos, rlen;
 
 
    /* allocate the Envelope structure */

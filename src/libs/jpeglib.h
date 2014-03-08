@@ -20,7 +20,7 @@ extern "C"
 #endif
 
 // LZ: linux stuff
-#if !defined (WIN32)
+#if !defined(WIN32) && !defined(WIN64)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +48,7 @@ typedef int boolean;
 // 11.29.99
 
 //#include "cmdlib.h"
-#ifdef _WIN32
+#if defined(WIN32) || defined(WIN64)
 #include "windows.h"
 #include "stdio.h"
 #endif

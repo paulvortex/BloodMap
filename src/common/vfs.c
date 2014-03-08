@@ -87,7 +87,7 @@ static gboolean g_bUsePak = TRUE;
 
 static void vfsAddSlash (char *str)
 {
-  int n = strlen (str);
+  size_t n = strlen (str);
   if (n > 0)
   {
     if (str[n-1] != '\\' && str[n-1] != '/')

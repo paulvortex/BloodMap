@@ -19,13 +19,6 @@ along with GtkRadiant; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#ifndef WIN32
-// The below define is necessary to use
-// pthreads extensions like pthread_mutexattr_settype
-#define _GNU_SOURCE
-#include <pthread.h>
-#endif
-
 #include "cmdlib.h"
 #include "mathlib.h"
 #include "inout.h"
@@ -106,11 +99,11 @@ void RunThreadsOnIndividual (int workcnt, qboolean showpacifier, void(*func)(int
 /*
 ===================================================================
 
-WIN32
+WIN32 / WIN64
 
 ===================================================================
 */
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 
 #define	USED
 

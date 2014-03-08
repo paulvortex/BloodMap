@@ -1218,7 +1218,7 @@ int _pico_parse_vec4_def( picoParser_t *p, picoVec4_t out, picoVec4_t def )
 /* _pico_new_memstream:
  *  allocates a new memorystream object.
  */
-picoMemStream_t *_pico_new_memstream( picoByte_t *buffer, int bufSize )
+picoMemStream_t *_pico_new_memstream( picoByte_t *buffer, size_t bufSize )
 {
 	picoMemStream_t *s;
 	
@@ -1256,7 +1256,7 @@ void _pico_free_memstream( picoMemStream_t *s )
 /* _pico_memstream_read:
  *  reads data from a pico memorystream into a buffer.
  */
-int _pico_memstream_read( picoMemStream_t *s, void *buffer, int len )
+size_t _pico_memstream_read( picoMemStream_t *s, void *buffer, size_t len )
 {
 	int ret = 1;
 
@@ -1298,9 +1298,9 @@ int _pico_memstream_getc( picoMemStream_t *s )
 /* _pico_memstream_seek:
  *  sets the current read position to a different location
  */
-int _pico_memstream_seek( picoMemStream_t *s, long offset, int origin )
+size_t _pico_memstream_seek( picoMemStream_t *s, size_t offset, size_t origin )
 {
-	int overflow;
+	size_t overflow;
 
 	/* sanity check */
 	if (s == NULL)
@@ -1346,7 +1346,7 @@ int _pico_memstream_seek( picoMemStream_t *s, long offset, int origin )
 /* _pico_memstream_tell:
  *  returns the current read position in the pico memorystream
  */
-long _pico_memstream_tell( picoMemStream_t *s )
+size_t _pico_memstream_tell( picoMemStream_t *s )
 {
 	/* sanity check */
 	if (s == NULL)

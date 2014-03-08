@@ -103,7 +103,7 @@ int lwGetTHeader( picoMemStream_t *fp, int hsz, lwTexture *tex )
 {
    unsigned int id;
    unsigned short sz;
-   int pos, rlen;
+   size_t pos, rlen;
 
 
    /* remember where we started */
@@ -194,7 +194,7 @@ int lwGetTMap( picoMemStream_t *fp, int tmapsz, lwTMap *tmap )
 {
    unsigned int id;
    unsigned short sz;
-   int rlen, pos, i;
+   size_t rlen, pos, i;
 
    pos = _pico_memstream_tell( fp );
    id = getU4( fp );
@@ -282,7 +282,7 @@ int lwGetImageMap( picoMemStream_t *fp, int rsz, lwTexture *tex )
 {
    unsigned int id;
    unsigned short sz;
-   int rlen, pos;
+   size_t rlen, pos;
 
    pos = _pico_memstream_tell( fp );
    id = getU4( fp );
@@ -391,7 +391,7 @@ int lwGetProcedural( picoMemStream_t *fp, int rsz, lwTexture *tex )
 {
    unsigned int id;
    unsigned short sz;
-   int rlen, pos;
+   size_t rlen, pos;
 
    pos = _pico_memstream_tell( fp );
    id = getU4( fp );
@@ -420,7 +420,7 @@ int lwGetProcedural( picoMemStream_t *fp, int rsz, lwTexture *tex )
          case ID_FUNC:
             tex->param.proc.name = getS0( fp );
             rlen = get_flen();
-            tex->param.proc.data = getbytes( fp, sz - rlen );
+            tex->param.proc.data = getbytes( fp,(int)(sz - rlen) );
             break;
 
          default:
@@ -466,7 +466,7 @@ int lwGetGradient( picoMemStream_t *fp, int rsz, lwTexture *tex )
 {
    unsigned int id;
    unsigned short sz;
-   int rlen, pos, i, j, nkeys;
+   size_t rlen, pos, i, j, nkeys;
 
    pos = _pico_memstream_tell( fp );
    id = getU4( fp );
@@ -613,7 +613,7 @@ lwPlugin *lwGetShader( picoMemStream_t *fp, int bloksz )
    lwPlugin *shdr;
    unsigned int id;
    unsigned short sz;
-   int hsz, rlen, pos;
+   size_t hsz, rlen, pos;
 
    shdr = _pico_calloc( 1, sizeof( lwPlugin ));
    if ( !shdr ) return NULL;
@@ -652,7 +652,7 @@ lwPlugin *lwGetShader( picoMemStream_t *fp, int bloksz )
          case ID_FUNC:
             shdr->name = getS0( fp );
             rlen = get_flen();
-            shdr->data = getbytes( fp, sz - rlen );
+            shdr->data = getbytes( fp, (int)(sz - rlen) );
             break;
 
          default:
@@ -784,7 +784,7 @@ lwSurface *lwGetSurface( picoMemStream_t *fp, int cksize )
    lwPlugin *shdr;
    unsigned int id, type;
    unsigned short sz;
-   int pos, rlen;
+   size_t pos, rlen;
 
 
    /* allocate the Surface structure */

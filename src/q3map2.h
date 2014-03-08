@@ -49,7 +49,7 @@ dependencies
 	#include <limits.h>
 #endif
 
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 	#include <windows.h>
 #endif
 
@@ -90,14 +90,12 @@ port-related hacks
 	#define MAC_STATIC			
 #endif
 
-#if 1
-	#ifdef WIN32
-		#define Q_stricmp			stricmp
-		#define Q_strncasecmp		strnicmp
-	#else
-		#define Q_stricmp			strcasecmp
-		#define Q_strncasecmp		strncasecmp
-	#endif
+#if defined(WIN32) || defined(WIN64)
+	#define Q_stricmp			stricmp
+	#define Q_strncasecmp		strnicmp
+#else
+	#define Q_stricmp			strcasecmp
+	#define Q_strncasecmp		strncasecmp
 #endif
 
 /* macro version */

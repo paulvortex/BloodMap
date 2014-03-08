@@ -33,7 +33,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 #include <direct.h>
 #include <windows.h>
 #endif
@@ -46,7 +46,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <glib/gconvert.h>
 #include <glib/gmem.h>
 
-#ifdef WIN32
+#if defined(WIN32) || defined(WIN64)
 HWND hwndOut = NULL;
 qboolean lookedForServer = qfalse;
 UINT wm_BroadcastCommand = -1;

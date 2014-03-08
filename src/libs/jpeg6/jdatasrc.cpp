@@ -90,7 +90,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
     nbytes = src->src_size;
   memcpy (src->buffer, src->infile, nbytes);
   src->infile += nbytes;
-  src->src_size -= nbytes;
+  src->src_size -= (int)(nbytes);
   src->pub.next_input_byte = src->buffer;
   src->pub.bytes_in_buffer = nbytes;
   src->start_of_file = FALSE;

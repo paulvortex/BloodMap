@@ -92,7 +92,7 @@ picoParser_t;
 typedef struct picoMemStream_s
 {
 	picoByte_t	*buffer;
-	int			bufSize;
+	size_t		 bufSize;
 	picoByte_t	*curPos;
 	int			flag;
 }
@@ -189,12 +189,12 @@ int 			_pico_parse_vec4( picoParser_t *p, picoVec4_t out);
 int 			_pico_parse_vec4_def( picoParser_t *p, picoVec4_t out, picoVec4_t def);
 
 /* pico memory stream */
-picoMemStream_t	*_pico_new_memstream( picoByte_t *buffer, int bufSize );
+picoMemStream_t	*_pico_new_memstream( picoByte_t *buffer, size_t bufSize );
 void 			_pico_free_memstream( picoMemStream_t *s );
-int				_pico_memstream_read( picoMemStream_t *s, void *buffer, int len );
+size_t			_pico_memstream_read( picoMemStream_t *s, void *buffer, size_t len );
 int				_pico_memstream_getc( picoMemStream_t *s );
-int				_pico_memstream_seek( picoMemStream_t *s, long offset, int origin );
-long			_pico_memstream_tell( picoMemStream_t *s );
+size_t			_pico_memstream_seek( picoMemStream_t *s, size_t offset, size_t origin );
+size_t			_pico_memstream_tell( picoMemStream_t *s );
 #define			_pico_memstream_eof( _pico_memstream )		((_pico_memstream)->flag & PICO_IOEOF)
 #define			_pico_memstream_error( _pico_memstream )	((_pico_memstream)->flag & PICO_IOERR)
 

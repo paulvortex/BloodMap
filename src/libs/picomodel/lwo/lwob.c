@@ -194,7 +194,7 @@ lwSurface *lwGetSurface5( picoMemStream_t *fp, int cksize, lwObject *obj )
    float v[ 3 ];
    unsigned int id, flags;
    unsigned short sz;
-   int pos, rlen, i;
+   size_t pos, rlen, i;
 
 
    /* allocate the Surface structure */
@@ -357,11 +357,11 @@ lwSurface *lwGetSurface5( picoMemStream_t *fp, int cksize, lwObject *obj )
             if ( flags & 1 ) i = 0;
             if ( flags & 2 ) i = 1;
             if ( flags & 4 ) i = 2;
-            tex->axis = i;
+            tex->axis = (short)i;
             if ( tex->type == ID_IMAP )
-               tex->param.imap.axis = i;
+               tex->param.imap.axis = (int)i;
             else
-               tex->param.proc.axis = i;
+               tex->param.proc.axis = (int)i;
 
             if ( flags &  8 ) tex->tmap.coord_sys = 1;
             if ( flags & 16 ) tex->negative = 1;
@@ -588,7 +588,8 @@ lwObject *lwGetObject5( char *filename, picoMemStream_t *fp, unsigned int *failI
    lwObject *object;
    lwLayer *layer;
    lwNode *node;
-   unsigned int id, formsize, type, cksize;
+   unsigned int id, type, cksize;
+   size_t formsize;
 
 
    /* open the file */
@@ -687,7 +688,7 @@ lwObject *lwGetObject5( char *filename, picoMemStream_t *fp, unsigned int *failI
 Fail:
    if ( failID ) *failID = id;
    if ( fp ) {
-      if ( failpos ) *failpos = _pico_memstream_tell( fp );
+      if ( failpos ) *failpos = (int)_pico_memstream_tell( fp );
    }
    lwFreeObject( object );
    return NULL;

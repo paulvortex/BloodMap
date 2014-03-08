@@ -70,7 +70,7 @@ lwClip *lwGetClip( picoMemStream_t *fp, int cksize )
    lwPlugin *filt;
    unsigned int id;
    unsigned short sz;
-   int pos, rlen;
+   size_t pos, rlen;
 
 
    /* allocate the Clip structure */
