@@ -83,8 +83,7 @@ void PatchEntities(void)
 			continue;
 
 		/* patching triggers from map? */
-		if (patchTriggers)
-			if (!strncmp(ValueForKey(e, "classname"), "trigger_", 8))
+		if (patchTriggers && !strncmp(ValueForKey(e, "classname"), "trigger_", 8))
 				continue;
 
 		/* patch bsp entities by saveid */
@@ -121,28 +120,32 @@ void PatchEntities(void)
 	for (i = 1; i < patch_numMapEntities; i++)
 	{
 		e = &patch_mapEntities[i];
+
+		/* add a trigger */
+		if (patchTriggers && !strncmp(ValueForKey(e, "classname"), "trigger_", 8))
+		{
+			mapent = AllocateEntity(e);
+			/* find bounds */
+			ClearBounds( mins, maxs );
+			for( b = mapent->brushes; b; b = b->next )
+			{
+				AddPointToBounds(b->mins, mins, maxs);
+				AddPointToBounds(b->maxs, mins, maxs);
+			}
+			SetKeyValue(mapent, "model", ""); // clear model
+			sprintf(str, "%f %f %f", mins[0], mins[1], mins[2]);
+			SetKeyValue(mapent, "mins", str);
+			sprintf(str, "%f %f %f", maxs[0], maxs[1], maxs[2]);
+			SetKeyValue(mapent, "maxs", str);
+			numentsext++;
+			continue;
+		}
+
+		// skip bmodels
 		model = ValueForKey(e, "model");
 		if (!strncmp(model, "*", 1))
 		{
-			/* add a trigger */
-			if (patchTriggers && !strncmp(ValueForKey(e, "classname"), "trigger_", 8))
-			{
-				mapent = AllocateEntity(e);
-				/* find bounds */
-				ClearBounds( mins, maxs );
-				for( b = mapent->brushes; b; b = b->next )
-				{
-					AddPointToBounds(b->mins, mins, maxs);
-					AddPointToBounds(b->maxs, mins, maxs);
-				}
-				sprintf(str, "%f %f %f", mins[0], mins[1], mins[2]);
-				SetKeyValue(mapent, "mins", str);
-				sprintf(str, "%f %f %f", maxs[0], maxs[1], maxs[2]);
-				SetKeyValue(mapent, "maxs", str);
-				numentsext++;
-			}
-			else
-				numskipents++;
+			numskipents++;
 			continue;
 		}
 
