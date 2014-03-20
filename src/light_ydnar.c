@@ -2925,7 +2925,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 						
 						/* handle negative light */
 						if( trace.light->flags & LIGHT_NEGATIVE )
-							VectorScale( averageColor, -1.0f, averageColor );
+							VectorNegate( averageColor, averageColor );
 
 						/* add color */
 						luxel[ 3 ] = 1.0f;
@@ -3907,7 +3907,7 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 		return;
 	
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- SetupEnvelopes%s ---\n", fastFlag ? " (fast)" : "" );
+	Sys_FPrintf( SYS_VRB, "--- SetupEnvelopes%s%s ---\n", forGrid ? " (for lightgrid)" : " (for lightmaps)", fastFlag ? " (fast)" : "" );
 	
 	/* count lights */
 	numLights = 0;
@@ -3921,9 +3921,9 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 		/* handle negative lights */
 		if( light->photons < 0.0f || light->add < 0.0f )
 		{
-			light->photons *= -1.0f;
-			light->add *= -1.0f;
-			light->flags |= LIGHT_NEGATIVE;
+			light->photons = fabs(light->photons);
+			light->add = fabs(light->add);
+			light->flags = light->flags | LIGHT_NEGATIVE;
 		}
 		
 		/* sunlight? */

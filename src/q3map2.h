@@ -214,6 +214,7 @@ constants
 #define EMIT_SPOT				2
 #define EMIT_SUN				3
 
+#if 0
 #define LIGHT_ATTEN_LINEAR		1
 #define LIGHT_ATTEN_ANGLE		2
 #define LIGHT_ATTEN_DISTANCE	4
@@ -226,6 +227,20 @@ constants
 #define LIGHT_FAST_ACTUAL		(LIGHT_FAST | LIGHT_FAST_TEMP)
 #define LIGHT_NEGATIVE			1024
 #define LIGHT_UNNORMALIZED		2048	/* vortex: do not normalize _color */
+#else
+#define LIGHT_ATTEN_LINEAR		2048
+#define LIGHT_ATTEN_ANGLE		4096
+#define LIGHT_ATTEN_DISTANCE	8192
+#define LIGHT_TWOSIDED			16384
+#define LIGHT_GRID				32768
+#define LIGHT_SURFACES			65536
+#define LIGHT_DARK				131072 /* probably never use this */
+#define LIGHT_FAST				262144
+#define LIGHT_FAST_TEMP			524288
+#define LIGHT_FAST_ACTUAL		(LIGHT_FAST + LIGHT_FAST_TEMP)
+#define LIGHT_NEGATIVE			1048576
+#define LIGHT_UNNORMALIZED		2097152	/* vortex: do not normalize _color */
+#endif
 
 #define LIGHT_SUN_DEFAULT		(LIGHT_ATTEN_ANGLE | LIGHT_GRID | LIGHT_SURFACES)
 #define LIGHT_AREA_DEFAULT		(LIGHT_ATTEN_ANGLE | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES)	/* q3a and wolf are the same */
@@ -281,7 +296,7 @@ abstracted bsp file
 
 #define EXTERNAL_LIGHTMAP		"lm_%04d.tga"
 
-#define MAX_LIGHTMAPS			2			/* RBSP */ /* VorteX: only 2 */
+#define MAX_LIGHTMAPS			1			/* RBSP */ /* VorteX: disable lightstyles */
 #define MAX_LIGHT_STYLES		64
 #define	MAX_SWITCHED_LIGHTS		32
 #define LS_NORMAL				0x00

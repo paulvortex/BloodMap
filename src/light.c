@@ -1310,7 +1310,7 @@ void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], v
 		
 		/* handle negative light */
 		if( trace->light->flags & LIGHT_NEGATIVE )
-			VectorScale( trace->color, -1.0f, trace->color );
+			VectorNegate( trace->color, trace->color );
 		
 		/* set style */
 		styles[ lightmapNum ] = trace->light->style;
@@ -1651,7 +1651,7 @@ void TraceGrid(int num)
 		
 		/* handle negative light */
 		if( trace.light->flags & LIGHT_NEGATIVE )
-			VectorScale( trace.color, -1.0f, trace.color );
+			VectorNegate( trace.color, trace.color );
 		
 		/* add a contribution */
 		VectorCopy( trace.color, contributions[ numCon ].color );
@@ -1991,7 +1991,7 @@ void LightWorld( void )
 	/* calculate lightgrid */
 	if( !noGridLighting )
 	{
-		/* ydnar: set up light envelopes */
+		/* set up light envelopes */
 		SetupEnvelopes( qtrue, fastgrid );
 		
 		Sys_Printf( "--- TraceGrid ---\n" );
