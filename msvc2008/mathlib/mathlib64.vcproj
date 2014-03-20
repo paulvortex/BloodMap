@@ -3,7 +3,7 @@
 	ProjectType="Visual C++"
 	Version="9,00"
 	Name="mathlib"
-	ProjectGUID="{BF0FF048-887F-4D43-A455-F8C04FB98F10}"
+	ProjectGUID="{A470C656-DF1A-4190-BCC3-71F96F9259E6}"
 	TargetFrameworkVersion="131072"
 	>
 	<Platforms>
@@ -16,13 +16,14 @@
 	<Configurations>
 		<Configuration
 			Name="Debug|x64"
-			OutputDirectory=".\Debug"
-			IntermediateDirectory=".\Debug"
+			OutputDirectory="..\build\debug\x64\mathlib\"
+			IntermediateDirectory="..\build\debug\x64\mathlib\"
 			ConfigurationType="4"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			UseOfMFC="0"
 			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
+			BuildLogFile="..\build\debug\x64\mathlib\BuildLog.htm"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -50,9 +51,9 @@
 				BufferSecurityCheck="true"
 				FloatingPointModel="0"
 				PrecompiledHeaderFile=".\Debug/mathlib.pch"
-				AssemblerListingLocation=".\Debug/"
-				ObjectFile=".\Debug/"
-				ProgramDataBaseFileName=".\Debug/"
+				AssemblerListingLocation="..\build\debug\x64\mathlib\"
+				ObjectFile="..\build\debug\x64\mathlib\"
+				ProgramDataBaseFileName="..\build\debug\x64\mathlib\"
 				BrowseInformation="0"
 				WarningLevel="3"
 				SuppressStartupBanner="true"
@@ -72,7 +73,7 @@
 			/>
 			<Tool
 				Name="VCLibrarianTool"
-				OutputFile=".\Debug\mathlib.lib"
+				OutputFile="$(OutDir)/mathlib.lib"
 				SuppressStartupBanner="true"
 			/>
 			<Tool
@@ -93,13 +94,14 @@
 		</Configuration>
 		<Configuration
 			Name="Release|x64"
-			OutputDirectory=".\Release"
-			IntermediateDirectory=".\Release"
+			OutputDirectory="..\build\release\x64\mathlib\"
+			IntermediateDirectory="..\build\release\x64\mathlib\"
 			ConfigurationType="4"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			UseOfMFC="0"
 			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
+			BuildLogFile="..\build\release\x64\mathlib\BuildLog.htm"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -135,9 +137,9 @@
 				EnableEnhancedInstructionSet="0"
 				FloatingPointModel="2"
 				PrecompiledHeaderFile=".\Release/mathlib.pch"
-				AssemblerListingLocation=".\Release/"
-				ObjectFile=".\Release/"
-				ProgramDataBaseFileName=".\Release/"
+				AssemblerListingLocation="..\build\release\x64\mathlib\"
+				ObjectFile="..\build\release\x64\mathlib\"
+				ProgramDataBaseFileName="..\build\release\x64\mathlib\"
 				WarningLevel="3"
 				SuppressStartupBanner="true"
 				Detect64BitPortabilityProblems="false"
@@ -157,7 +159,7 @@
 			/>
 			<Tool
 				Name="VCLibrarianTool"
-				OutputFile=".\Release\mathlib.lib"
+				OutputFile="$(OutDir)/mathlib.lib"
 				SuppressStartupBanner="true"
 			/>
 			<Tool
