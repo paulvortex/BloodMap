@@ -3912,6 +3912,12 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 	/* count lights */
 	numLights = 0;
 	numCulledLights = 0;
+	numNegativeLights = 0;
+	numPointLights = 0;
+	numAreaLights = 0;
+	numSpotLights  = 0;
+	numSunLights = 0;
+	numPointLights = 0;
 	owner = &lights;
 	while( *owner != NULL )
 	{
@@ -3925,7 +3931,7 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 			light->add = fabs(light->add);
 			light->flags = light->flags | LIGHT_NEGATIVE;
 		}
-		
+
 		/* sunlight? */
 		if( light->type == EMIT_SUN )
 		{
@@ -4119,30 +4125,24 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 				}
 				
 				/* add grid/surface only check */
-				if( forGrid )
-				{
-					if( !(light->flags & LIGHT_GRID) )
-						light->envelope = 0.0f;
-				}
-				else
-				{
-					if( !(light->flags & LIGHT_SURFACES) )
-						light->envelope = 0.0f;
-				}
+				if (!(light->flags & (forGrid ? LIGHT_GRID : LIGHT_SURFACES)))
+					light->envelope = 0.0f;
 			}
 			
-			/* culled? */
+			/* remove culled light? */
 			if( light->cluster < 0 || light->envelope <= 0.0f )
 			{
+				owner = &((**owner).next);
+				numCulledLights++;
+			#if 0
 				/* debug code */
 				//%	Sys_Printf( "Culling light: Cluster: %d Envelope: %f\n", light->cluster, light->envelope );
-				
 				/* delete the light */
-				numCulledLights++;
 				*owner = light->next;
 				if( light->w != NULL )
 					free( light->w );
 				free( light );
+			#endif
 				continue;
 			}
 		}
@@ -4151,6 +4151,16 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 		light->envelope2 = (light->envelope * light->envelope);
 		
 		/* increment light count */
+		if (light->flags & LIGHT_NEGATIVE)
+			numNegativeLights++;
+		if (light->type == EMIT_POINT)
+			numPointLights++;
+		else if (light->type == EMIT_AREA)
+			numAreaLights++;
+		else if (light->type == EMIT_SPOT)
+			numSpotLights++;
+		else if (light->type == EMIT_SUN)
+			numSunLights++;
 		numLights++;
 		
 		/* set next light */
@@ -4188,11 +4198,14 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag )
 	}
 	
 	/* emit some statistics */
+	Sys_Printf( "%9d point lights\n", numPointLights );
+	Sys_Printf( "%9d area lights\n", numAreaLights );
+	Sys_Printf( "%9d spot lights\n", numSpotLights );
+	Sys_Printf( "%9d sun lights\n", numSunLights );
+	Sys_Printf( "%9d negative lights\n", numNegativeLights );
 	Sys_Printf( "%9d total lights\n", numLights );
 	Sys_Printf( "%9d culled lights\n", numCulledLights );
 }
-
-
 
 /*
 CreateTraceLightsForBounds()
