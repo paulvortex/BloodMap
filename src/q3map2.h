@@ -91,8 +91,8 @@ port-related hacks
 #endif
 
 #if defined(WIN32) || defined(WIN64)
-	#define Q_stricmp			stricmp
-	#define Q_strncasecmp		strnicmp
+	#define Q_stricmp			_stricmp
+	#define Q_strncasecmp		_strnicmp
 #else
 	#define Q_stricmp			strcasecmp
 	#define Q_strncasecmp		strncasecmp
