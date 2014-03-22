@@ -295,7 +295,7 @@ void Foliage( mapDrawSurface_t *src )
 			ds->fogNum = src->fogNum;
 			
 			/* add a drawvert for every instance */
-			verts = safe_malloc( (ds->numVerts + ds->numFoliageInstances) * sizeof( *verts ) );
+			verts = (bspDrawVert_t *)safe_malloc( (ds->numVerts + ds->numFoliageInstances) * sizeof( *verts ) );
 			memset( verts, 0, (ds->numVerts + ds->numFoliageInstances) * sizeof( *verts ) );
 			memcpy( verts, ds->verts, ds->numVerts * sizeof( *verts ) );
 			free( ds->verts );

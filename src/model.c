@@ -349,11 +349,11 @@ void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_
 		
 		/* set particulars */
 		ds->numVerts = PicoGetSurfaceNumVertexes( surface );
-		ds->verts = safe_malloc( ds->numVerts * sizeof( ds->verts[ 0 ] ) );
+		ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( ds->verts[ 0 ] ) );
 		memset( ds->verts, 0, ds->numVerts * sizeof( ds->verts[ 0 ] ) );
 		
 		ds->numIndexes = PicoGetSurfaceNumIndexes( surface );
-		ds->indexes = safe_malloc( ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
+		ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
 		memset( ds->indexes, 0, ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
 		
 		/* copy vertexes */
@@ -790,7 +790,7 @@ void AddTriangleModels( entity_t *e )
 			{
 				/* create new remapping */
 				remap2 = remap;
-				remap = safe_malloc( sizeof( *remap ) );
+				remap = (remap_t *)safe_malloc( sizeof( *remap ) );
 				remap->next = remap2;
 				strcpy( remap->from, ep->value );
 				

@@ -75,7 +75,13 @@ dependencies
 
 #include <stdlib.h>
 
-
+#ifdef MAIN_C
+	#define Q_EXTERN
+	#define Q_ASSIGN( a )	= a
+#else
+	#define Q_EXTERN extern
+	#define Q_ASSIGN( a )	
+#endif
 
 /* -------------------------------------------------------------------------------
 
@@ -967,7 +973,7 @@ typedef enum
 }
 surfaceType_t;
 
-char			*surfaceTypes[ NUM_SURFACE_TYPES ]
+Q_EXTERN char	*surfaceTypes[]
 #ifndef MAIN_C
 				;
 #else
@@ -1564,16 +1570,12 @@ mesh_t						*RemoveLinearMeshColumnsRows( mesh_t *in );
 void						MakeMeshNormals( mesh_t in );
 void						PutMeshOnCurve( mesh_t in );
 
-void						MakeNormalVectors( vec3_t forward, vec3_t right, vec3_t up );
-
-
 /* map.c */
 void 						LoadMapFile( char *filename, qboolean onlyLights );
 int							FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points );
 int							PlaneTypeForNormal( vec3_t normal );
 void						AddBrushBevels( void );
 brush_t						*FinishBrush( void );
-
 
 /* portals.c */
 void						MakeHeadnodePortals( tree_t *tree );
@@ -1904,14 +1906,6 @@ bsp/general global variables
 
 ------------------------------------------------------------------------------- */
 
-#ifdef MAIN_C
-	#define Q_EXTERN
-	#define Q_ASSIGN( a )	= a
-#else
-	#define Q_EXTERN extern
-	#define Q_ASSIGN( a )	
-#endif
-
 /* game support */
 Q_EXTERN game_t				games[]
 #ifndef MAIN_C
@@ -2032,7 +2026,6 @@ Q_EXTERN char				name[ 1024 ];
 Q_EXTERN char				source[ 1024 ];
 Q_EXTERN char				outbase[ 32 ];
 
-Q_EXTERN int				sampleSize;						/* lightmap sample size in units */
 Q_EXTERN float				sampleScale;					/* vortex: lightmap sample scale (ie quality)*/
 
 Q_EXTERN int				mapEntityNum Q_ASSIGN( 0 );
@@ -2213,8 +2206,18 @@ Q_EXTERN float				dirtDepth Q_ASSIGN( 128.0f );
 Q_EXTERN float				dirtDepthExponent Q_ASSIGN( 2.0f );
 Q_EXTERN float				dirtScale Q_ASSIGN( 1.0f );
 Q_EXTERN float				dirtGain Q_ASSIGN( 1.0f );
-Q_EXTERN vec3_t             dirtGainMask;
-Q_EXTERN vec3_t             dirtScaleMask;
+Q_EXTERN vec3_t             dirtGainMask
+#ifndef MAIN_C
+							;
+#else
+							= {1, 1, 1};
+#endif
+Q_EXTERN vec3_t             dirtScaleMask
+#ifndef MAIN_C
+							;
+#else
+							= {1, 1, 1};
+#endif
 typedef struct
 {
 	qboolean       enabled;
@@ -2285,6 +2288,9 @@ Q_EXTERN int				numPointLights;
 Q_EXTERN int				numSpotLights;
 Q_EXTERN int				numSunLights;
 Q_EXTERN int				numAreaLights;
+Q_EXTERN int				numLights;
+Q_EXTERN int				numCulledLights;
+Q_EXTERN int				numNegativeLights;
 
 /* ydnar: for luxel placement */
 Q_EXTERN int				numSurfaceClusters, maxSurfaceClusters;
@@ -2331,14 +2337,6 @@ Q_EXTERN float				subdivideThreshold Q_ASSIGN( DEFAULT_SUBDIVIDE_THRESHOLD );
 
 Q_EXTERN int				numOpaqueBrushes, maxOpaqueBrush;
 Q_EXTERN byte				*opaqueBrushes;
-
-Q_EXTERN int				numLights;
-Q_EXTERN int				numCulledLights;
-Q_EXTERN int				numNegativeLights;
-Q_EXTERN int				numPointLights;
-Q_EXTERN int				numAreaLights;
-Q_EXTERN int				numSpotLights;
-Q_EXTERN int				numSunLights;
 
 Q_EXTERN int				gridBoundsCulled;
 Q_EXTERN int				gridEnvelopeCulled;

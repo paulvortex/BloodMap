@@ -195,7 +195,7 @@ static int AllocTraceNode( void )
 	{
 		/* reallocate more room */
 		maxTraceNodes += GROW_TRACE_NODES;
-		temp = safe_malloc( maxTraceNodes * sizeof( traceNode_t ) );
+		temp = (traceNode_t *)safe_malloc( maxTraceNodes * sizeof( traceNode_t ) );
 		if( traceNodes != NULL )
 		{
 			memcpy( temp, traceNodes, numTraceNodes * sizeof( traceNode_t ) );
@@ -791,11 +791,11 @@ static void SubdivideTraceNode_r( int nodeNum, int depth )
 	
 	/* setup front node */
 	frontNode->maxItems = (node->maxItems >> 1);
-	frontNode->items = safe_malloc( frontNode->maxItems * sizeof( *frontNode->items ) );
+	frontNode->items = (int *)safe_malloc( frontNode->maxItems * sizeof( *frontNode->items ) );
 	
 	/* setup back node */
 	backNode->maxItems = (node->maxItems >> 1);
-	backNode->items = safe_malloc( backNode->maxItems * sizeof( *backNode->items ) );
+	backNode->items = (int *)safe_malloc( backNode->maxItems * sizeof( *backNode->items ) );
 	
 	/* filter windings into child nodes */
 	for( i = 0; i < node->numItems; i++ )
@@ -900,7 +900,7 @@ static int TriangulateTraceNode_r( int nodeNum )
 	/* clear it */
 	node->numItems = 0;
 	node->maxItems = numWindings * 2;
-	node->items = safe_malloc( node->maxItems * sizeof( tt ) );
+	node->items = (int *)safe_malloc( node->maxItems * sizeof( tt ) );
 	
 	/* walk winding list */
 	for( i = 0; i < numWindings; i++ )

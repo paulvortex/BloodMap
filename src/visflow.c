@@ -72,11 +72,7 @@ int CountBits (byte *bits, int numbits)
 }
 
 int		c_fullskip;
-int		c_portalskip, c_leafskip;
-int		c_vistest, c_mighttest;
-
 int		c_chop, c_nochop;
-
 int		active;
 
 void CheckStack (leaf_t *leaf, threaddata_t *thread)
@@ -1555,13 +1551,13 @@ void BasePortalVis( int portalnum )
 	if (p->removed)
 		return;
 
-	p->portalfront = safe_malloc (portalbytes);
+	p->portalfront = (byte *)safe_malloc (portalbytes);
 	memset (p->portalfront, 0, portalbytes);
 
-	p->portalflood = safe_malloc (portalbytes);
+	p->portalflood = (byte *)safe_malloc (portalbytes);
 	memset (p->portalflood, 0, portalbytes);
 	
-	p->portalvis = safe_malloc (portalbytes);
+	p->portalvis = (byte *)safe_malloc (portalbytes);
 	memset (p->portalvis, 0, portalbytes);
 	
 	for (j=0, tp = portals ; j<numportals*2 ; j++, tp++)

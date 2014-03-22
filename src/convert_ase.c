@@ -531,8 +531,8 @@ int ConvertBSPToASE( char *bspName, int collapseByTexture )
 	{
 		Sys_Printf( "Enabling collapsing meshes by texture name\n" );
 		/* allocate mark tables */
-		collapseDrawVerts = safe_malloc( numBSPDrawVerts * sizeof( bspDrawVert_t ) );
-		markDrawSurfaces = safe_malloc( numBSPDrawSurfaces * sizeof( int ) );
+		collapseDrawVerts = (bspDrawVert_t *)safe_malloc( numBSPDrawVerts * sizeof( bspDrawVert_t ) );
+		markDrawSurfaces = (int *)safe_malloc( numBSPDrawSurfaces * sizeof( int ) );
 	}
 
 	/* create the ase filename from the bsp name */

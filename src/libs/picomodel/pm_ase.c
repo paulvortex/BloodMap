@@ -276,8 +276,8 @@ struct aseFace_s
 	picoIndex_t smoothingGroup;
 	picoIndex_t materialId;
 	picoIndex_t subMaterialId;
-   picoVec3_t  facenormal;
-   picoVec3_t  vertexnormal[3];
+	picoVec3_t  facenormal;
+	picoVec3_t  vertexnormal[3];
 };
 typedef aseFace_t* aseFacesIter_t;
 

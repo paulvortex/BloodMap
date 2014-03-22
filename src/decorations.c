@@ -11,6 +11,7 @@
 
 typedef enum
 {
+	DECOREACTION_NULL,
 	DECOREACTION_KEY_DEFAULT,	
 	DECOREACTION_KEY_SET,		
 	DECOREACTION_KEY_SETFLAG,	
@@ -105,19 +106,19 @@ void PrintNode_f(dnode_t *node)
 	if (node->child != NULL)
 	{
 		Sys_Printf("{");
-		PrintNode_f(node->child);
+		PrintNode_f((dnode_t *)node->child);
 		Sys_Printf("}");
 	}
 	// next nodes
 	if (node->next != NULL)
 	{
-		for (c = node->next; c != NULL; c = c->next)
+		for (c = (dnode_t *)node->next; c != NULL; c = (dnode_t *)c->next)
 		{
 			Sys_Printf(".next");
 			if (c->child != NULL)
 			{
 				Sys_Printf("{");
-				PrintNode_f(c->child);
+				PrintNode_f((dnode_t *)c->child);
 				Sys_Printf("}");
 			}
 		}
@@ -140,7 +141,7 @@ dnode_t *NewNodesArray(int size)
 	dnode_t *nodes, *node;
 	int i;
 
-	nodes = safe_malloc( sizeof(dnode_t) * size );
+	nodes = (dnode_t *)safe_malloc( sizeof(dnode_t) * size );
 	for (i = 0; i < size; i++)
 	{
 		node = &nodes [ i ];
@@ -161,15 +162,15 @@ void FreeNode(dnode_t *node)
 	
 	// free child node
 	if (node->child != NULL)
-		FreeNode(node->child);
+		FreeNode((dnode_t *)node->child);
 	// free all next items
 	if (node->next != NULL)
 	{
-		for (c = node->next; c != NULL; c = next)
+		for (c = (dnode_t *)node->next; c != NULL; c = next)
 		{
 			if (c->child != NULL)
-				FreeNode(c->child);
-			next = c->next;
+				FreeNode((dnode_t *)c->child);
+			next = (dnode_t *)c->next;
 			free(c);
 		}
 	}
@@ -186,9 +187,9 @@ void FreeNodesArray(dnode_t *nodes, int size)
 	{
 		node = &nodes [ i ];
 		if ( node->next != NULL )
-			FreeNode( node->next );
+			FreeNode( (dnode_t *)node->next );
 		if ( node->child != NULL )
-			FreeNode( node->child );
+			FreeNode( (dnode_t *)node->child );
 	}
 }
 
@@ -196,7 +197,7 @@ dnode_t *NewNode(char *name, void *ptr)
 {	
 	dnode_t *node;
 
-	node = safe_malloc(sizeof(dnode_t));
+	node = (dnode_t *)safe_malloc(sizeof(dnode_t));
 	memset(node, 0, sizeof(dnode_t));
 	node->name = name;
 	node->ptr = ptr;
@@ -216,7 +217,7 @@ void AddNextNode(dnode_t *node, char *name, void *ptr)
 	{
 		if (node->next == NULL)
 			break;
-		node = node->next;
+		node = (dnode_t *)node->next;
 	}
 	node->next = n;
 }
@@ -229,12 +230,12 @@ void AddChildNode(dnode_t *node, char *name, void *ptr)
 	n = NewNode(name, ptr);
 	if (node->child != NULL) // add a next after last child
 	{
-		node = node->child;
+		node = (dnode_t *)node->child;
 		while(1)
 		{
 			if (node->next == NULL)
 				break;
-			node = node->next;
+			node = (dnode_t *)node->next;
 		}
 		node->next = n;
 		return;
@@ -251,13 +252,13 @@ void AddNextNodeRandom(dnode_t *node, char *name, void *ptr)
 	n = NewNode(name, ptr);
 
 	/* get all nodes */
-	for(last = node; last->next != NULL; last = last->next)
+	for(last = node; last->next != NULL; last = (dnode_t *)last->next)
 		numnodes++;
 
 	/* select random node */
 	num = (int)(((double)(rand() + 0.5) / ((double)RAND_MAX + 1)) * (numnodes + 0.5));
 	for (last = node; num > 0; num--)
-		last = last->next;
+		last = (dnode_t *)last->next;
 
 	/* add new node right after selected node */
 	n->next = last->next;
@@ -399,7 +400,7 @@ void DecoreParseActions ( dactions_t *actions )
 
 		/* nullify previous action */
 		memset(&actiondata, 0, sizeof(daction_t));
-		actiondata.code = -1;
+		actiondata.code = DECOREACTION_NULL;
 
 		/* parse new action */
 		if( !Q_stricmp( token, "default" ) )
@@ -590,7 +591,7 @@ void LoadDecorationScript( void )
 	Sys_FPrintf( SYS_VRB, "--- LoadDecorationScript ---\n" );
 
 	/* create the array */
-	decoreGroups = safe_malloc(sizeof(dgroup_t) * MAX_DECORE_GROUPS);
+	decoreGroups = (dgroup_t *)safe_malloc(sizeof(dgroup_t) * MAX_DECORE_GROUPS);
 	memset(decoreGroups, 0, sizeof(dgroup_t) * MAX_DECORE_GROUPS );
 	numDecoreGroups = 0;
 
@@ -659,7 +660,7 @@ void LoadDecorationScript( void )
 		{
 			if ( group->actions != NULL )
 				Error ( "LoadDecorationScript: double 'entity' definition at line %i", scriptline );
-			group->actions = safe_malloc( sizeof(dactions_t) );
+			group->actions = (dactions_t *)safe_malloc( sizeof(dactions_t) );
 			memset( group->actions, 0, sizeof(dactions_t) );
 			DecoreParseActions( group->actions );
 		}
@@ -777,11 +778,11 @@ void DebugMergeModels(dgroup_t *group, dnode_t *dstnodes, int numSrcNodes)
 		entsmin = MAX_MAP_ENTITIES;
 		entsmax = 0;
 		/* cycle groups */
-		for (mergenode = dstnodes[i].next; mergenode != NULL; mergenode = mergenode->next)
+		for (mergenode = (dnode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
 		{
 			numgroups++;
 			numgents = 1;
-			for (testnode = mergenode->child; testnode != NULL; testnode = testnode->next)
+			for (testnode = (dnode_t *)mergenode->child; testnode != NULL; testnode = (dnode_t *)testnode->next)
 				numgents++;
 			if (numgents < entsmin)
 				entsmin = numgents;
@@ -815,7 +816,7 @@ int MergeModelsForGroup(dgroup_t *group, dnode_t *srcnodes, int numSrcNodes)
 		src = &srcnodes[ i ];
 		dst = &dstnodes[ i ];
 		/* walk all entities for node */
-		for ( testnode = src->next; testnode != NULL; testnode = testnode->next )
+		for ( testnode = (dnode_t *)src->next; testnode != NULL; testnode = (dnode_t *)testnode->next )
 		{
 			if (testnode->name[ 0 ] != '-')
 				continue; // already grouped
@@ -823,7 +824,7 @@ int MergeModelsForGroup(dgroup_t *group, dnode_t *srcnodes, int numSrcNodes)
 			e = (entity_t *)testnode->ptr;
 
 			/* test entity against merging groups */
-			for (mergenode = dst->next; mergenode != NULL; mergenode = mergenode->next)
+			for (mergenode = (dnode_t *)dst->next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
 			{
 				e2 = (entity_t *)mergenode->ptr;
 				VectorSubtract (e->origin, e2->origin, delta);
@@ -845,20 +846,20 @@ int MergeModelsForGroup(dgroup_t *group, dnode_t *srcnodes, int numSrcNodes)
 	}
 
 	/* calc badly-balanced groups which has less than (avg / 0.75) or greater than avg 1.25 entities count for each pass */
-	stats = safe_malloc( sizeof(int) * numSrcNodes * 2);
+	stats = (int *)safe_malloc( sizeof(int) * numSrcNodes * 2);
 	memset( stats, 0, sizeof(int) * numSrcNodes * 2 );
 	for ( i = 0; i < numSrcNodes; i++ )
 	{
-		for (mergenode = dstnodes[i].next; mergenode != NULL; mergenode = mergenode->next)
+		for (mergenode = (dnode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
 			stats[i*2]++;
 		avgmin = ( group->numEntities / stats[i*2] ) * 0.75;
 		avgmax = ( group->numEntities / stats[i*2] ) * 1.25;
 
 		/* cals unbalanced groups */
-		for (mergenode = dstnodes[i].next; mergenode != NULL; mergenode = mergenode->next)
+		for (mergenode = (dnode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
 		{
 			num = 1;
-			for (testnode = mergenode->child; testnode != NULL; testnode = testnode->next)
+			for (testnode = (dnode_t *)mergenode->child; testnode != NULL; testnode = (dnode_t *)testnode->next)
 				num++;
 			if (num < avgmin || num > avgmax)
 				stats[i*2 + 1]++;
@@ -881,7 +882,7 @@ int MergeModelsForGroup(dgroup_t *group, dnode_t *srcnodes, int numSrcNodes)
 	
 	/* make actual merging (create new target chains) */
 	num = 0;
-	for (mergenode = dstnodes[ best ].next; mergenode != NULL; mergenode = mergenode->next)
+	for (mergenode = (dnode_t *)dstnodes[ best ].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
 	{
 		num++;
 
@@ -898,7 +899,7 @@ int MergeModelsForGroup(dgroup_t *group, dnode_t *srcnodes, int numSrcNodes)
 		VectorSet( delta, e2->origin[ 0 ], e2->origin[ 1 ], e2->origin[ 2 ] );
 
 		/* target all other ents */
-		for ( testnode = mergenode->child; testnode != NULL; testnode = testnode->next )
+		for ( testnode = (dnode_t *)mergenode->child; testnode != NULL; testnode = (dnode_t *)testnode->next )
 		{
 			e2 = (entity_t *)testnode->ptr;
 			SetKeyValue( e2, "target", str );
@@ -1136,7 +1137,7 @@ void ProcessDecorations( void )
 			testnodes = NewNodesArray(numTestNodes);
 
 		/* walk entities */
-		for( node = group->entities; node != NULL; node = node->next )
+		for( node = group->entities; node != NULL; node = (dnode_t *)node->next )
 		{
 			walkEnts++;
 
@@ -1152,10 +1153,10 @@ void ProcessDecorations( void )
 			}
 
 			/* add to test nodes */
-			if ( group->mergeModels && !Q_stricmp( ValueForKey( node->ptr, "classname" ), "misc_model" ) )
+			if ( group->mergeModels && !Q_stricmp( ValueForKey( (entity_t *)node->ptr, "classname" ), "misc_model" ) )
 			{
 				// vortex: only if not targeted
-				if (!strcmp( ValueForKey(node->ptr, "target" ), "" ) )
+				if (!strcmp( ValueForKey((entity_t *)node->ptr, "target" ), "" ) )
 				{
 					for ( f = 0; f < numTestNodes; f++ )
 					{
@@ -1163,7 +1164,7 @@ void ProcessDecorations( void )
 						if (tnode->next == NULL)
 							tnode->next = NewNode( "-", node->ptr );
 						else
-							AddNextNodeRandom( tnode->next, "-", node->ptr);
+							AddNextNodeRandom( (dnode_t *)tnode->next, "-", node->ptr);
 					}
 				}
 			}

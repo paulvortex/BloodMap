@@ -236,7 +236,7 @@ void ParsePatch( qboolean onlyLights )
 	Parse1DMatrix( 5, info );
 	m.width = info[0];
 	m.height = info[1];
-	m.verts = verts = safe_malloc( m.width * m.height * sizeof( m.verts[0] ) );
+	m.verts = verts = (bspDrawVert_t *)safe_malloc( m.width * m.height * sizeof( m.verts[0] ) );
 	
 	if( m.width < 0 || m.width > MAX_PATCH_SIZE || m.height < 0 || m.height > MAX_PATCH_SIZE )
 		Error( "ParsePatch: bad size" );
@@ -340,7 +340,7 @@ void ParsePatch( qboolean onlyLights )
 	}
 	
 	/* allocate patch mesh */
-	pm = safe_malloc( sizeof( *pm ) );
+	pm = (parseMesh_t *)safe_malloc( sizeof( *pm ) );
 	memset( pm, 0, sizeof( *pm ) );
 	
 	/* ydnar: add entity/brush numbering */
@@ -436,7 +436,7 @@ void PatchMapDrawSurfs( entity_t *e )
 	if ( !patchCount ) {
 		return;
 	}
-	bordering = safe_malloc( patchCount * patchCount );
+	bordering = (byte *)safe_malloc( patchCount * patchCount );
 	memset( bordering, 0, patchCount * patchCount );
 
 	// build the bordering matrix

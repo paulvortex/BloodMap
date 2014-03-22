@@ -97,12 +97,12 @@ static void CopyLightGridLumps( rbspHeader_t *header )
 	numBSPGridPoints = GetLumpElements( (bspHeader_t*) header, LUMP_LIGHTARRAY, sizeof( *inArray ) );
 	
 	/* allocate buffer */
-	bspGridPoints = safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
+	bspGridPoints = (bspGridPoint_t *)safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
 	memset( bspGridPoints, 0, numBSPGridPoints * sizeof( *bspGridPoints ) );
 	
 	/* copy */
-	inArray = GetLump( (bspHeader_t*) header, LUMP_LIGHTARRAY );
-	in = GetLump( (bspHeader_t*) header, LUMP_LIGHTGRID );
+	inArray = (unsigned short *)GetLump( (bspHeader_t*) header, LUMP_LIGHTARRAY );
+	in = (bspGridPoint_t *)GetLump( (bspHeader_t*) header, LUMP_LIGHTGRID );
 	out = bspGridPoints;
 	for( i = 0; i < numBSPGridPoints; i++ )
 	{
@@ -125,8 +125,8 @@ static void AddLightGridLumps( FILE *file, rbspHeader_t *header )
 	
 	/* allocate temporary buffers */
 	maxGridPoints = (numBSPGridPoints < MAX_MAP_GRID) ? numBSPGridPoints : MAX_MAP_GRID;
-	gridPoints = safe_malloc( maxGridPoints * sizeof( *gridPoints ) );
-	gridArray = safe_malloc( numBSPGridPoints * sizeof( *gridArray ) );
+	gridPoints = (bspGridPoint_t *)safe_malloc( maxGridPoints * sizeof( *gridPoints ) );
+	gridArray = (unsigned short *)safe_malloc( numBSPGridPoints * sizeof( *gridArray ) );
 	
 	/* zero out */
 	numGridPoints = 0;
@@ -262,7 +262,7 @@ void LoadRBSPFile( const char *filename )
 	numBSPVisBytes = CopyLump( (bspHeader_t*) header, LUMP_VISIBILITY, bspVisBytes, 1 );
 	
 	numBSPLightBytes = GetLumpElements( (bspHeader_t*) header, LUMP_LIGHTMAPS, 1 );
-		bspLightBytes = safe_malloc( numBSPLightBytes );
+		bspLightBytes = (byte *)safe_malloc( numBSPLightBytes );
 		CopyLump( (bspHeader_t*) header, LUMP_LIGHTMAPS, bspLightBytes, 1 );
 	
 	bspEntDataSize = CopyLump( (bspHeader_t*) header, LUMP_ENTITIES, bspEntData, 1);

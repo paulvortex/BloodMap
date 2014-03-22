@@ -519,7 +519,7 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 	}
 	
 	/* create a light */
-	light = safe_malloc( sizeof( *light ) );
+	light = (light_t *)safe_malloc( sizeof( *light ) );
 	memset( light, 0, sizeof( *light ) );
 	
 	/* attach it */
@@ -564,7 +564,7 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 		if( original && si->backsplashFraction > 0 )
 		{
 			/* allocate a new point light */
-			splash = safe_malloc( sizeof( *splash ) );
+			splash = (light_t *)safe_malloc( sizeof( *splash ) );
 			memset( splash, 0, sizeof( *splash ) );
 			splash->next = lights;
 			lights = splash;
@@ -691,7 +691,7 @@ void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t
 	info = &surfaceInfos[ num ];
 	
 	/* construct a bogus vert list with color index stuffed into color[ 0 ] */
-	bogus = safe_malloc( ds->numVerts * sizeof( bspDrawVert_t ) );
+	bogus = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( bspDrawVert_t ) );
 	memcpy( bogus, &yDrawVerts[ ds->firstVert ], ds->numVerts * sizeof( bspDrawVert_t ) );
 	for( i = 0; i < ds->numVerts; i++ )
 		bogus[ i ].color[ 0 ][ 0 ] = i;

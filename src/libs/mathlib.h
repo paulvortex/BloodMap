@@ -81,6 +81,8 @@ extern const vec3_t g_vec3_axis_z;
 
 qboolean VectorCompare (const vec3_t v1, const vec3_t v2);
 
+void MakeNormalVectors( vec3_t forward, vec3_t right, vec3_t up );
+
 vec_t VectorLength(const vec3_t v);
 
 void VectorMA( const vec3_t va, vec_t scale, const vec3_t vb, vec3_t vc );

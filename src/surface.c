@@ -138,14 +138,14 @@ mapDrawSurface_t *CloneSurface( mapDrawSurface_t *src, shaderInfo_t *si )
 	/* copy verts */
 	if( ds->numVerts > 0 )
 	{
-		ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
+		ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
 		memcpy( ds->verts, src->verts, ds->numVerts * sizeof( *ds->verts ) );
 	}
 	
 	/* copy indexes */
 	if( ds->numIndexes <= 0 )
 		return ds;
-	ds->indexes = safe_malloc( ds->numIndexes * sizeof( *ds->indexes ) );
+	ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( *ds->indexes ) );
 	memcpy( ds->indexes, src->indexes, ds->numIndexes * sizeof( *ds->indexes ) );
 	
 	/* return the surface */
@@ -916,7 +916,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : b->smoothNormals; /* vortex */
 	ds->vertTexProj = b->vertTexProj; /* vortex */
 	ds->numVerts = w->numpoints;
-	ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
+	ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
 	memset( ds->verts, 0, ds->numVerts * sizeof( *ds->verts ) );
 	
 	/* compute s/t coordinates from brush primitive texture matrix (compute axis base) */
@@ -1122,7 +1122,7 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	ds->patchWidth = mesh->width;
 	ds->patchHeight = mesh->height;
 	ds->numVerts = ds->patchWidth * ds->patchHeight;
-	ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
+	ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
 	memcpy( ds->verts, mesh->verts, ds->numVerts * sizeof( *ds->verts ) );
 	
 	ds->fogNum = -1;
@@ -1861,7 +1861,7 @@ void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 			
 			/* duplicate the up-facing side */
 			w = ReverseWinding( w );
-			newSide = safe_malloc( sizeof( *side ) );
+			newSide = (side_t *)safe_malloc( sizeof( *side ) );
 			*newSide = *side;
 			newSide->visibleHull = w;
 			newSide->planenum ^= 1;
@@ -1903,7 +1903,7 @@ int AddReferenceToLeaf( mapDrawSurface_t *ds, node_t *node )
 	}
 	
 	/* add a new reference */
-	dsr = safe_malloc( sizeof( *dsr ) );
+	dsr = (drawSurfRef_t *)safe_malloc( sizeof( *dsr ) );
 	dsr->outputNum = numBSPDrawSurfaces;
 	dsr->nextRef = node->drawSurfReferences;
 	node->drawSurfReferences = dsr;
@@ -2616,7 +2616,7 @@ static void OptimizeTriangleSurface( mapDrawSurface_t *ds )
 		return;
 	
 	/* create index scratch pad */
-	indexes = safe_malloc( ds->numIndexes * sizeof( *indexes ) );
+	indexes = (int *)safe_malloc( ds->numIndexes * sizeof( *indexes ) );
 	memcpy( indexes, ds->indexes, ds->numIndexes * sizeof( *indexes ) );
 	
 	/* setup */
@@ -2910,7 +2910,7 @@ static void MakeDebugPortalSurfs_r( node_t *node, shaderInfo_t *si )
 			VectorCopy( p->plane.normal, ds->lightmapVecs[ 2 ] );
 			ds->fogNum = -1;
 			ds->numVerts = w->numpoints;
-			ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
+			ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
 			memset( ds->verts, 0, ds->numVerts * sizeof( *ds->verts ) );
 			
 			/* walk the winding */
@@ -3003,10 +3003,10 @@ void MakeFogHullSurfs( entity_t *e, tree_t *tree, char *shader )
 	ds->shaderInfo = si;
 	ds->fogNum = -1;
 	ds->numVerts = 8;
-	ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
+	ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
 	memset( ds->verts, 0, ds->numVerts * sizeof( *ds->verts ) );
 	ds->numIndexes = 36;
-	ds->indexes = safe_malloc( ds->numIndexes * sizeof( *ds->indexes ) );
+	ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( *ds->indexes ) );
 	memset( ds->indexes, 0, ds->numIndexes * sizeof( *ds->indexes ) );
 	
 	/* set verts */

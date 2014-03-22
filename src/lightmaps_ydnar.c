@@ -67,7 +67,7 @@ void WriteTGA24( char *filename, byte *data, int width, int height, qboolean fli
 	
 	
 	/* allocate a buffer and set it up */
-	buffer = safe_malloc( width * height * 3 + 18 );
+	buffer = (byte *)safe_malloc( width * height * 3 + 18 );
 	memset( buffer, 0, 18 );
 	buffer[ 2 ] = 2;
 	buffer[ 12 ] = width & 255;
@@ -229,7 +229,7 @@ int ImportLightmapsMain( int argc, char **argv )
 		sprintf( filename, "%s/lightmap_%04d.tga", dirname, i );
 		Sys_Printf( "Loading %s\n", filename );
 		buffer = NULL;
-		len = vfsLoadFile( filename, (void*) &buffer, -1 );
+		len = vfsLoadFile( filename, (void **)&buffer, -1 );
 		if( len < 0 )
 		{
 			Sys_Printf( "WARNING: Unable to load image %s\n", filename );
@@ -423,7 +423,7 @@ void FinishRawLightmap( int num )
 	}
 	
 	/* allocate buffer for clusters and copy */
-	lm->lightClusters = safe_malloc( lm->numLightClusters * sizeof( *lm->lightClusters ) );
+	lm->lightClusters = (int *)safe_malloc( lm->numLightClusters * sizeof( *lm->lightClusters ) );
 	c = 0;
 	for( i = 0; i < lm->numLightSurfaces; i++ )
 	{
@@ -468,7 +468,7 @@ void FinishRawLightmap( int num )
 	/* allocate bsp lightmap storage */
 	size = lm->w * lm->h * BSP_LUXEL_SIZE * sizeof( float );
 	if( lm->bspLuxels[ 0 ] == NULL )
-		lm->bspLuxels[ 0 ] = safe_malloc( size );
+		lm->bspLuxels[ 0 ] = (float *)safe_malloc( size );
 	memset( lm->bspLuxels[ 0 ], 0, size );
 	
 	/* allocate radiosity lightmap storage */
@@ -476,38 +476,38 @@ void FinishRawLightmap( int num )
 	{
 		size = lm->w * lm->h * RAD_LUXEL_SIZE * sizeof( float );
 		if( lm->radLuxels[ 0 ] == NULL )
-			lm->radLuxels[ 0 ] = safe_malloc( size );
+			lm->radLuxels[ 0 ] = (float *)safe_malloc( size );
 		memset( lm->radLuxels[ 0 ], 0, size );
 	}
 
 	/* allocate sampling lightmap storage */
 	size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
 	if( lm->superLuxels[ 0 ] == NULL )
-		lm->superLuxels[ 0 ] = safe_malloc( size );
+		lm->superLuxels[ 0 ] = (float *)safe_malloc( size );
 	memset( lm->superLuxels[ 0 ], 0, size );
 		
 	/* allocate origin map storage */
 	size = lm->sw * lm->sh * SUPER_ORIGIN_SIZE * sizeof( float );
 	if( lm->superOrigins == NULL )
-		lm->superOrigins = safe_malloc( size );
+		lm->superOrigins = (float *)safe_malloc( size );
 	memset( lm->superOrigins, 0, size );
 		
 	/* allocate normal map storage */
 	size = lm->sw * lm->sh * SUPER_NORMAL_SIZE * sizeof( float );
 	if( lm->superNormals == NULL )
-		lm->superNormals = safe_malloc( size );
+		lm->superNormals = (float *)safe_malloc( size );
 	memset( lm->superNormals, 0, size );
 		
 		/* allocate floodlight map storage */
 	size = lm->sw * lm->sh * SUPER_FLOODLIGHT_SIZE * sizeof( float );
 	if( lm->superFloodLight == NULL )
-		lm->superFloodLight = safe_malloc( size );
+		lm->superFloodLight = (float *)safe_malloc( size );
 	memset( lm->superFloodLight, 0, size );
 		
 	/* allocate cluster map storage */
 	size = lm->sw * lm->sh * sizeof( int );
 	if( lm->superClusters == NULL )
-		lm->superClusters = safe_malloc( size );
+		lm->superClusters = (int *)safe_malloc( size );
 	size = lm->sw * lm->sh;
 	sc = lm->superClusters;
 	for( i = 0; i < size; i++ )
@@ -519,13 +519,13 @@ void FinishRawLightmap( int num )
 		/* allocate sampling deluxel storage */
 		size = lm->sw * lm->sh * SUPER_DELUXEL_SIZE * sizeof( float );
 		if( lm->superDeluxels == NULL )
-			lm->superDeluxels = safe_malloc( size );
+			lm->superDeluxels = (float *)safe_malloc( size );
 		memset( lm->superDeluxels, 0, size );
 			
 		/* allocate bsp deluxel storage */
 		size = lm->w * lm->h * BSP_DELUXEL_SIZE * sizeof( float );
 		if( lm->bspDeluxels == NULL )
-			lm->bspDeluxels = safe_malloc( size );
+			lm->bspDeluxels = (float *)safe_malloc( size );
 		memset( lm->bspDeluxels, 0, size );
 	}
 
@@ -884,7 +884,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 	if( VectorLength( ds->lightmapVecs[ 2 ] ) || 1 )	/* ydnar: can't remember what exactly i was thinking here... */
 	{
 		/* allocate space for the vectors */
-		lm->vecs = safe_malloc( 3 * sizeof( vec3_t ) );
+		lm->vecs = (vec3_t *)safe_malloc( 3 * sizeof( vec3_t ) );
 		memset( lm->vecs, 0, 3 * sizeof( vec3_t ) );
 		VectorCopy( ds->lightmapVecs[ 2 ], lm->vecs[ 2 ] );
 		
@@ -1034,17 +1034,17 @@ void SetupSurfaceLightmaps( void )
 	/* allocate a list of surface clusters */
 	numSurfaceClusters = 0;
 	maxSurfaceClusters = numBSPLeafSurfaces;
-	surfaceClusters = safe_malloc( maxSurfaceClusters * sizeof( *surfaceClusters ) );
+	surfaceClusters = (int *)safe_malloc( maxSurfaceClusters * sizeof( *surfaceClusters ) );
 	memset( surfaceClusters, 0, maxSurfaceClusters * sizeof( *surfaceClusters ) );
 	
 	/* allocate a list for per-surface info */
-	surfaceInfos = safe_malloc( numBSPDrawSurfaces * sizeof( *surfaceInfos ) );
+	surfaceInfos = (surfaceInfo_t *)safe_malloc( numBSPDrawSurfaces * sizeof( *surfaceInfos ) );
 	memset( surfaceInfos, 0, numBSPDrawSurfaces * sizeof( *surfaceInfos ) );
 	for( i = 0; i < numBSPDrawSurfaces; i++ )
 		surfaceInfos[ i ].childSurfaceNum = -1;
 	
 	/* allocate a list of surface indexes to be sorted */
-	sortSurfaces = safe_malloc( numBSPDrawSurfaces * sizeof( int ) );
+	sortSurfaces = (int *)safe_malloc( numBSPDrawSurfaces * sizeof( int ) );
 	memset( sortSurfaces, 0, numBSPDrawSurfaces * sizeof( int ) );
 	
 	/* walk each model in the bsp */
@@ -1134,7 +1134,7 @@ void SetupSurfaceLightmaps( void )
 			if( VectorLength( ds->lightmapVecs[ 2 ] ) > 0.0f )
 			{
 				/* make a plane */
-				info->plane = safe_malloc( 4 * sizeof( float ) );
+				info->plane = (float *)safe_malloc( 4 * sizeof( float ) );
 				VectorCopy( ds->lightmapVecs[ 2 ], info->plane );
 				info->plane[ 3 ] = DotProduct( yDrawVerts[ ds->firstVert ].xyz, info->plane );
 			}
@@ -1163,13 +1163,13 @@ void SetupSurfaceLightmaps( void )
 	
 	/* allocate a list of surfaces that would go into raw lightmaps */
 	numLightSurfaces = 0;
-	lightSurfaces = safe_malloc( numSurfsLightmapped * sizeof( int ) );
+	lightSurfaces = (int *)safe_malloc( numSurfsLightmapped * sizeof( int ) );
 	memset( lightSurfaces, 0, numSurfsLightmapped * sizeof( int ) );
 	
 	/* allocate a list of raw lightmaps */
 	numRawSuperLuxels = 0;
 	numRawLightmaps = 0;
-	rawLightmaps = safe_malloc( numSurfsLightmapped * sizeof( *rawLightmaps ) );
+	rawLightmaps = (rawLightmap_t *)safe_malloc( numSurfsLightmapped * sizeof( *rawLightmaps ) );
 	memset( rawLightmaps, 0, numSurfsLightmapped * sizeof( *rawLightmaps ) );
 
 	/* allocate diskcache for raw lightmaps */
@@ -1204,7 +1204,7 @@ void SetupSurfaceLightmaps( void )
 		numRawLightmaps++;
 	
 		/* set it up */
-		lm->splotchFix = info->si->splotchFix;
+		lm->splotchFix = info->si->splotchFix ? qtrue : qfalse;
 		lm->firstLightSurface = numLightSurfaces;
 		lm->numLightSurfaces = 0;
 		if (sampleScale)
@@ -1324,9 +1324,9 @@ void AllocateSurfaceLightmaps(void)
 	/* allocate vertex luxel storage */
 	for( i = 0; i < MAX_LIGHTMAPS; i++ )
 	{
-		vertexLuxels[ i ] = safe_malloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) ); 
+		vertexLuxels[ i ] = (float *)safe_malloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) ); 
 		memset( vertexLuxels[ i ], 0, numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
-		radVertexLuxels[ i ] = safe_malloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
+		radVertexLuxels[ i ] = (float *)safe_malloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
 		memset( radVertexLuxels[ i ], 0, numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
 	}
 
@@ -2043,13 +2043,13 @@ static void SetupOutLightmap( rawLightmap_t *lm, outLightmap_t *olm )
 	olm->numShaders = 0;
 	
 	/* allocate buffers */
-	olm->lightBits = safe_malloc( (olm->customWidth * olm->customHeight / 8) + 8 );
+	olm->lightBits = (byte *)safe_malloc( (olm->customWidth * olm->customHeight / 8) + 8 );
 	memset( olm->lightBits, 0, (olm->customWidth * olm->customHeight / 8) + 8 );
-	olm->bspLightBytes = safe_malloc( olm->customWidth * olm->customHeight * 3 );
+	olm->bspLightBytes = (byte *)safe_malloc( olm->customWidth * olm->customHeight * 3 );
 	memset( olm->bspLightBytes, 0, olm->customWidth * olm->customHeight * 3 );
 	if( deluxemap )
 	{
-		olm->bspDirBytes = safe_malloc( olm->customWidth * olm->customHeight * 3 );
+		olm->bspDirBytes = (byte *)safe_malloc( olm->customWidth * olm->customHeight * 3 );
 		memset( olm->bspDirBytes, 0, olm->customWidth * olm->customHeight * 3 );
 	}
 }
@@ -2537,7 +2537,7 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 		{
 			/* allocate LIGHTMAP_RESERVE_COUNT new output lightmaps */
 			numOutLightmaps += LIGHTMAP_RESERVE_COUNT;
-			olm = safe_malloc( numOutLightmaps * sizeof( outLightmap_t ) );
+			olm = (outLightmap_t *)safe_malloc( numOutLightmaps * sizeof( outLightmap_t ) );
 			if ( outLightmaps != NULL && numOutLightmaps > LIGHTMAP_RESERVE_COUNT ) {
 				memcpy( olm, outLightmaps, ( numOutLightmaps - LIGHTMAP_RESERVE_COUNT ) * sizeof( outLightmap_t ) );
 				free( outLightmaps );
@@ -2792,7 +2792,7 @@ void StoreSurfaceLightmaps( void )
 			if( lm->bspLuxels[ lightmapNum ] == NULL )
 			{
 				size = lm->w * lm->h * BSP_LUXEL_SIZE * sizeof( float );
-				lm->bspLuxels[ lightmapNum ] = safe_malloc( size );
+				lm->bspLuxels[ lightmapNum ] = (float *)safe_malloc( size );
 				memset( lm->bspLuxels[ lightmapNum ], 0, size );
 			}
 
@@ -2801,7 +2801,7 @@ void StoreSurfaceLightmaps( void )
 			{
 				size = lm->w * lm->h * RAD_LUXEL_SIZE * sizeof( float );
 				if( lm->radLuxels[ lightmapNum ] == NULL )
-					lm->radLuxels[ lightmapNum ] = safe_malloc( size );
+					lm->radLuxels[ lightmapNum ] = (float *)safe_malloc( size );
 				memset( lm->radLuxels[ lightmapNum ], 0, size );
 			}
 			
@@ -3315,7 +3315,7 @@ void StoreSurfaceLightmaps( void )
 	
 	/* allocate a new sorted list */
 	if( sortLightmaps == NULL )
-		sortLightmaps = safe_malloc( numRawLightmaps * sizeof( int ) );
+		sortLightmaps = (int *)safe_malloc( numRawLightmaps * sizeof( int ) );
 	
 	/* fill it out and sort it */
 	for( i = 0; i < numRawLightmaps; i++ )
@@ -3417,7 +3417,7 @@ void StoreSurfaceLightmaps( void )
 	else
 	{
 		numBSPLightBytes = (numBSPLightmaps * game->lightmapSize * game->lightmapSize * 3);
-		bspLightBytes = safe_malloc( numBSPLightBytes );
+		bspLightBytes = (byte *)safe_malloc( numBSPLightBytes );
 		memset( bspLightBytes, 0, numBSPLightBytes );
 	}
 	

@@ -67,7 +67,7 @@ fixedWinding_t *NewFixedWinding( int points )
 		Error ("NewWinding: %i points", points);
 	
 	size = (int)((fixedWinding_t *)0)->points[points];
-	w = safe_malloc (size);
+	w = (fixedWinding_t *)safe_malloc (size);
 	memset (w, 0, size);
 	
 	return w;
@@ -716,7 +716,8 @@ void MergeLeafPortals(void)
 						p1->winding = w;
 						if (p1->hint && p2->hint)
 							hintsmerged++;
-						p1->hint |= p2->hint;
+						if (p2->hint)
+							p1->hint = qtrue; // p1->hint |= p2->hint;
 						SetPortalSphere(p1);
 						p2->removed = qtrue;
 						nummerges++;
@@ -880,10 +881,10 @@ void LoadPortals (char *name)
 	portallongs = portalbytes/sizeof(long);
 
 	// each file portal is split into two memory portals
-	portals = safe_malloc(2*numportals*sizeof(vportal_t));
+	portals = (vportal_t *)safe_malloc(2*numportals*sizeof(vportal_t));
 	memset (portals, 0, 2*numportals*sizeof(vportal_t));
 	
-	leafs = safe_malloc(portalclusters*sizeof(leaf_t));
+	leafs = (leaf_t *)safe_malloc(portalclusters*sizeof(leaf_t));
 	memset (leafs, 0, portalclusters*sizeof(leaf_t));
 
 	for (i = 0; i < portalclusters; i++)
@@ -938,7 +939,7 @@ void LoadPortals (char *name)
 		l->numportals++;
 		
 		p->num = i+1;
-		p->hint = hint;
+		p->hint = hint ? qtrue : qfalse;
 		p->winding = w;
 		VectorSubtract (vec3_origin, plane.normal, p->plane.normal);
 		p->plane.dist = -plane.dist;
@@ -954,7 +955,7 @@ void LoadPortals (char *name)
 		l->numportals++;
 		
 		p->num = i+1;
-		p->hint = hint;
+		p->hint = hint ? qtrue : qfalse;
 		p->winding = NewFixedWinding(w->numpoints);
 		p->winding->numpoints = w->numpoints;
 		for (j=0 ; j<w->numpoints ; j++)
@@ -969,10 +970,10 @@ void LoadPortals (char *name)
 
 	}
 
-	faces = safe_malloc(2*numfaces*sizeof(vportal_t));
+	faces = (vportal_t *)safe_malloc(2*numfaces*sizeof(vportal_t));
 	memset (faces, 0, 2*numfaces*sizeof(vportal_t));
 
-	faceleafs = safe_malloc(portalclusters*sizeof(leaf_t));
+	faceleafs = (leaf_t *)safe_malloc(portalclusters*sizeof(leaf_t));
 	memset(faceleafs, 0, portalclusters*sizeof(leaf_t));
 
 	for (i = 0, p = faces; i < numfaces; i++)

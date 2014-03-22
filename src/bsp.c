@@ -270,12 +270,12 @@ void ProcessWorldModel( void )
 		Sys_FPrintf( SYS_NOXML, "******* leaked *******\n" );
 		Sys_FPrintf( SYS_NOXML, "**********************\n" );
 		polyline = LeakFile( tree );
-		leaknode = xmlNewNode( NULL, "message" );
-		xmlNodeSetContent( leaknode, "MAP LEAKED\n" );
+		leaknode = xmlNewNode( NULL, (xmlChar *)"message" );
+		xmlNodeSetContent( leaknode, (xmlChar *)"MAP LEAKED\n" );
 		xmlAddChild( leaknode, polyline );
 		level[0] = (int) '0' + SYS_ERR;
 		level[1] = 0;
-		xmlSetProp( leaknode, "level", (char*) &level );
+		xmlSetProp( leaknode, (xmlChar *)"level", (xmlChar *)&level );
 		xml_SendNode( leaknode );
 		if( leaktest )
 		{
@@ -576,7 +576,7 @@ int BSPMain( int argc, char **argv )
 	Sys_Printf( "--- BSP ---\n" );
 	
 	SetDrawSurfacesBuffer();
-	mapDrawSurfs = safe_malloc( sizeof( mapDrawSurface_t ) * MAX_MAP_DRAW_SURFS );
+	mapDrawSurfs = (mapDrawSurface_t *)safe_malloc( sizeof( mapDrawSurface_t ) * MAX_MAP_DRAW_SURFS );
 	memset( mapDrawSurfs, 0, sizeof( mapDrawSurface_t ) * MAX_MAP_DRAW_SURFS );
 	numMapDrawSurfs = 0;
 

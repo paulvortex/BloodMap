@@ -49,7 +49,7 @@ AllocBspFace
 face_t	*AllocBspFace( void ) {
 	face_t	*f;
 
-	f = safe_malloc(sizeof(*f));
+	f = (face_t *)safe_malloc(sizeof(*f));
 	memset( f, 0, sizeof(*f) );
 
 	return f;

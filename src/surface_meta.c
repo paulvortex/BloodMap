@@ -98,7 +98,7 @@ static int FindMetaVertex( bspDrawVert_t *src )
 	{
 		/* reallocate more room */
 		maxMetaVerts += GROW_META_VERTS;
-		temp = safe_malloc( maxMetaVerts * sizeof( bspDrawVert_t ) );
+		temp = (bspDrawVert_t *)safe_malloc( maxMetaVerts * sizeof( bspDrawVert_t ) );
 		if( metaVerts != NULL )
 		{
 			memcpy( temp, metaVerts, numMetaVerts * sizeof( bspDrawVert_t ) );
@@ -132,7 +132,7 @@ static int AddMetaTriangle( void )
 	{
 		/* reallocate more room */
 		maxMetaTriangles += GROW_META_TRIANGLES;
-		temp = safe_malloc( maxMetaTriangles * sizeof( metaTriangle_t ) );
+		temp = (metaTriangle_t *)safe_malloc( maxMetaTriangles * sizeof( metaTriangle_t ) );
 		if( metaTriangles != NULL )
 		{
 			memcpy( temp, metaTriangles, numMetaTriangles * sizeof( metaTriangle_t ) );
@@ -375,7 +375,7 @@ void TriangulatePatchSurface( entity_t *e , mapDrawSurface_t *ds )
 	/* basic transmogrification */
 	ds->type = SURFACE_META;
 	ds->numIndexes = 0;
-	ds->indexes = safe_malloc( mesh->width * mesh->height * 6 * sizeof( int ) );
+	ds->indexes = (int *)safe_malloc( mesh->width * mesh->height * 6 * sizeof( int ) );
 	
 	/* copy the verts in */
 	ds->numVerts = (mesh->width * mesh->height);
@@ -438,7 +438,7 @@ void FanFaceSurface( mapDrawSurface_t *ds )
 		return;
 	
 	/* add a new vertex at the beginning of the surface */
-	verts = safe_malloc( (ds->numVerts + 1) * sizeof( bspDrawVert_t ) );
+	verts =(bspDrawVert_t *)safe_malloc( (ds->numVerts + 1) * sizeof( bspDrawVert_t ) );
 	memset( verts, 0, sizeof( bspDrawVert_t ) );
 	memcpy( &verts[ 1 ], ds->verts, ds->numVerts * sizeof( bspDrawVert_t ) );
 	free( ds->verts );
@@ -489,7 +489,7 @@ void FanFaceSurface( mapDrawSurface_t *ds )
 	
 	/* fill indexes in triangle fan order */
 	ds->numIndexes = 0;
-	ds->indexes = safe_malloc( ds->numVerts * 3 * sizeof( int ) );
+	ds->indexes = (int *)safe_malloc( ds->numVerts * 3 * sizeof( int ) );
 	for( i = 1; i < ds->numVerts; i++ )
 	{
 		a = 0;
@@ -612,7 +612,7 @@ void StripFaceSurface( mapDrawSurface_t *ds )
 	
 	/* copy strip triangle indexes */
 	ds->numIndexes = numIndexes;
-	ds->indexes = safe_malloc( ds->numIndexes * sizeof( int ) );
+	ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( int ) );
 	memcpy( ds->indexes, indexes, ds->numIndexes * sizeof( int ) );
 	
 	/* add to count */
@@ -1021,12 +1021,12 @@ void SmoothMetaTriangles( void )
 	Sys_FPrintf( SYS_VRB, "--- SmoothMetaTriangles ---\n" );
 	
 	/* allocate shade angle table */
-	shadeAngles = safe_malloc( numMetaVerts * sizeof( float ) );
+	shadeAngles = (float *)safe_malloc( numMetaVerts * sizeof( float ) );
 	memset( shadeAngles, 0, numMetaVerts * sizeof( float ) );
 
 	/* allocate smoothed table */
 	cs = (numMetaVerts / 8) + 1;
-	smoothed = safe_malloc( cs );
+	smoothed = (byte *)safe_malloc( cs );
 	memset( smoothed, 0, cs );
 	
 	/* set default shade angle */
@@ -1449,8 +1449,8 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 	
 	
 	/* allocate arrays */
-	verts = safe_malloc( sizeof( *verts ) * maxSurfaceVerts );
-	indexes = safe_malloc( sizeof( *indexes ) * maxSurfaceIndexes );
+	verts = (bspDrawVert_t *)safe_malloc( sizeof( *verts ) * maxSurfaceVerts );
+	indexes = (int *)safe_malloc( sizeof( *indexes ) * maxSurfaceIndexes );
 	
 	/* walk the list of triangles */
 	for( i = 0, seed = possibles; i < numPossibles; i++, seed++ )
@@ -1550,9 +1550,9 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 		}
 		
 		/* copy the verts and indexes to the new surface */
-		ds->verts = safe_malloc( ds->numVerts * sizeof( bspDrawVert_t ) );
+		ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( bspDrawVert_t ) );
 		memcpy( ds->verts, verts, ds->numVerts * sizeof( bspDrawVert_t ) );
-		ds->indexes = safe_malloc( ds->numIndexes * sizeof( int ) );
+		ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( int ) );
 		memcpy( ds->indexes, indexes, ds->numIndexes * sizeof( int ) );
 		
 		/* classify the surface */

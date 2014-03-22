@@ -59,7 +59,7 @@ sideRef_t *AllocSideRef( side_t *side, sideRef_t *next )
 		return next;
 	
 	/* allocate and return */
-	sideRef = safe_malloc( sizeof( *sideRef ) );
+	sideRef = (sideRef_t *)safe_malloc( sizeof( *sideRef ) );
 	sideRef->side = side;
 	sideRef->next = next;
 	return sideRef;
@@ -100,7 +100,7 @@ brush_t *AllocBrush( int numSides )
 	if( numSides <= 0 )
 		Error( "AllocBrush called with numsides = %d", numSides );
 	c = (int) &(((brush_t*) 0)->sides[ numSides ]);
-	bb = safe_malloc( c );
+	bb = (brush_t *)safe_malloc( c );
 	memset( bb, 0, c );
 	if( numthreads == 1 )
 		numActiveBrushes++;
@@ -265,7 +265,7 @@ void SnapWeldVector( vec3_t a, vec3_t b, vec3_t out )
 			out[ i ] = b[ i ];
 
 		/* use nearest */
-		else if( fabs( ai - a[ i ] ) < fabs( bi < b[ i ] ) )
+		else if( fabs( (float)(ai - a[ i ]) ) < fabs( (float)(bi < b[ i ]) ) )
 			out[ i ] = a[ i ];
 		else
 			out[ i ] = b[ i ];
@@ -673,7 +673,7 @@ tree_t *AllocTree (void)
 {
 	tree_t	*tree;
 
-	tree = safe_malloc(sizeof(*tree));
+	tree = (tree_t *)safe_malloc(sizeof(*tree));
 	memset (tree, 0, sizeof(*tree));
 	ClearBounds (tree->mins, tree->maxs);
 
@@ -689,7 +689,7 @@ node_t *AllocNode (void)
 {
 	node_t	*node;
 
-	node = safe_malloc(sizeof(*node));
+	node = (node_t *)safe_malloc(sizeof(*node));
 	memset (node, 0, sizeof(*node));
 
 	return node;

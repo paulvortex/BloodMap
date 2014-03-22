@@ -159,12 +159,12 @@ void SmoothNormals( void )
 	
 	
 	/* allocate shade angle table */
-	shadeAngles = safe_malloc( numBSPDrawVerts * sizeof( float ) );
+	shadeAngles = (float *)safe_malloc( numBSPDrawVerts * sizeof( float ) );
 	memset( shadeAngles, 0, numBSPDrawVerts * sizeof( float ) );
 	
 	/* allocate smoothed table */
 	cs = (numBSPDrawVerts / 8) + 1;
-	smoothed = safe_malloc( cs );
+	smoothed = (byte *)safe_malloc( cs );
 	memset( smoothed, 0, cs );
 	
 	/* set default shade angle */
@@ -1067,7 +1067,7 @@ void MapRawLightmap(int rawLightmapNum)
 						dv[ 0 ] = &verts[ bspDrawIndexes[ ds->firstIndex + i ] ];
 						dv[ 1 ] = &verts[ bspDrawIndexes[ ds->firstIndex + i + 1 ] ];
 						dv[ 2 ] = &verts[ bspDrawIndexes[ ds->firstIndex + i + 2 ] ];
-						MapTriangle( lm, info, dv, mapNonAxial );
+						MapTriangle( lm, info, dv, mapNonAxial ? qtrue : qfalse );
 					}
 				}
 				break;
@@ -1158,12 +1158,12 @@ void MapRawLightmap(int rawLightmapNum)
 							continue;
 						
 						/* get drawverts and map first triangle */
-						MapTriangle( lm, info, dv, mapNonAxial );
+						MapTriangle( lm, info, dv, mapNonAxial ? qtrue : qfalse );
 						
 						/* get drawverts and map second triangle */
 						dv[ 1 ] = &verts[ pw[ r + 2 ] ];
 						dv[ 2 ] = &verts[ pw[ r + 3 ] ];
-						MapTriangle( lm, info, dv, mapNonAxial );
+						MapTriangle( lm, info, dv, mapNonAxial ? qtrue : qfalse );
 					}
 				}
 				
@@ -1218,7 +1218,7 @@ void MapRawLightmap(int rawLightmapNum)
 	   ----------------------------------------------------------------- */
 
 	/* walk the luxels */
-	radius = floor( superSample / 2 );
+	radius = floor( (float)superSample / 2.0f );
 	radius = radius > 0 ? radius : 1.0f;
 	radius += 1.0f;
 	for( pass = 2.0f; pass <= radius; pass += 1.0f )
@@ -1376,8 +1376,6 @@ sets up dirtmap (ambient occlusion)
 #define DIRT_NUM_ELEVATION_STEPS	3
 #define	DIRT_NUM_VECTORS			(DIRT_NUM_ANGLE_STEPS * DIRT_NUM_ELEVATION_STEPS)
 
-vec3_t dirtScaleMask = {1, 1, 1};
-vec3_t dirtGainMask = {1, 1, 1};
 static int numDirtEntities = 0;
 
 vec3_t dirtVectors2[42] = {
@@ -2504,7 +2502,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 	lmdk = LoadRawLightmap(rawLightmapNum);
 	
 	/* setup trace */
-	trace.testOcclusion = !noTrace;
+	trace.testOcclusion = noTrace ? qfalse : qtrue;
 	trace.occlusionBias = 0;
 	trace.forceSunlight = qfalse;
 	trace.testShadowGroups = qtrue;
@@ -2609,7 +2607,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 		if( llSize <= (STACK_LL_SIZE * sizeof( float )) )
 			lightLuxels = stackLightLuxels;
 		else
-			lightLuxels = safe_malloc( llSize );
+			lightLuxels = (float *)safe_malloc( llSize );
 		
 		/* clear luxels */
 		//%	memset( lm->superLuxels[ 0 ], 0, llSize );
@@ -2834,7 +2832,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 			{
 				/* allocate sampling lightmap storage */
 				size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
-				lm->superLuxels[ lightmapNum ] = safe_malloc( size );
+				lm->superLuxels[ lightmapNum ] = (float *)safe_malloc( size );
 				memset( lm->superLuxels[ lightmapNum ], 0, size );
 			}
 			
@@ -3170,9 +3168,9 @@ void IlluminateVertexes(int num)
 	if( lm == NULL || cpmaHack )
 	{
 		/* setup trace */
-		trace.testOcclusion = (cpmaHack && lm != NULL) ? qfalse : !noTrace;
+		trace.testOcclusion = (cpmaHack && lm != NULL) ? qfalse : (noTrace ? qfalse : qtrue);
 		trace.occlusionBias = (info->si->vertexShadowBias >= 0) ? info->si->vertexShadowBias : DEFAULT_VERTEX_SHADOW_BIAS;
-		trace.forceSunlight = info->si->forceSunlight;
+		trace.forceSunlight = info->si->forceSunlight ? qtrue : qfalse;
 		trace.testShadowGroups = qtrue;
 		trace.recvShadows = info->recvShadows;
 		trace.numSurfaces = 1;
@@ -3184,7 +3182,7 @@ void IlluminateVertexes(int num)
 			trace.testOcclusion = qfalse;
 		
 		/* twosided lighting */
-		trace.twoSided = info->si->twoSided;
+		trace.twoSided = info->si->twoSided ? qtrue : qfalse;
 		
 		/* make light list for this surface */
 		CreateTraceLightsForSurface( num, &trace );
@@ -3242,7 +3240,7 @@ void IlluminateVertexes(int num)
 						dirt = DirtForSample( &trace, info->entityNum );
 
 					/* trace */
-					LightContributionAllStyles( &trace, ds->vertexStyles, colors, LIGHT_SURFACES, info->si->vertexPointSample );
+					LightContributionAllStyles( &trace, ds->vertexStyles, colors, LIGHT_SURFACES, info->si->vertexPointSample ? qtrue : qfalse );
 					
 					/* store */
 					for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
@@ -3289,7 +3287,7 @@ void IlluminateVertexes(int num)
 									continue;
 															
 								/* trace */
-								LightContributionAllStyles( &trace, ds->vertexStyles, colors, LIGHT_SURFACES, info->si->vertexPointSample );
+								LightContributionAllStyles( &trace, ds->vertexStyles, colors, LIGHT_SURFACES, info->si->vertexPointSample ? qtrue : qfalse );
 								
 								/* store */
 								for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
@@ -3521,7 +3519,7 @@ void SetupBrushes( void )
 	
 	/* allocate */
 	if( opaqueBrushes == NULL )
-		opaqueBrushes = safe_malloc( numBSPBrushes / 8 + 1 );
+		opaqueBrushes = (byte *)safe_malloc( numBSPBrushes / 8 + 1 );
 	
 	/* clear */
 	memset( opaqueBrushes, 0, numBSPBrushes / 8 + 1 );
@@ -4228,7 +4226,7 @@ void CreateTraceLightsForBounds( vec3_t mins, vec3_t maxs, vec3_t normal, int nu
 	//% Sys_Printf( "CTWLFB: (%4.1f %4.1f %4.1f) (%4.1f %4.1f %4.1f)\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ] );
 	
 	/* allocate the light list */
-	trace->lights = safe_malloc( sizeof( light_t* ) * (numLights + 1) );
+	trace->lights = (light_t **)safe_malloc( sizeof( light_t* ) * (numLights + 1) );
 	trace->numLights = 0;
 	
 	/* calculate spherical bounds */

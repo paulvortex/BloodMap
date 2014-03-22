@@ -51,6 +51,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define PATHSEPERATOR   '/'
 
 #ifdef SAFE_MALLOC
+qboolean memlog;
 void *safe_malloc_f( size_t size )
 {
   void *p;
@@ -364,7 +365,7 @@ char *ExpandPathAndArchive (const char *path)
 char *copystring(const char *s)
 {
 	char	*b;
-	b = safe_malloc(strlen(s)+1);
+	b = (char *)safe_malloc(strlen(s)+1);
 	strcpy (b, s);
 	return b;
 }

@@ -255,7 +255,7 @@ void AddBasePath( char *path )
 		return;
 	
 	/* add it to the list */
-	basePaths[ numBasePaths ] = safe_malloc( strlen( path ) + 1 );
+	basePaths[ numBasePaths ] =  (char *)safe_malloc( strlen( path ) + 1 );
 	strcpy( basePaths[ numBasePaths ], path );
 	CleanPath( basePaths[ numBasePaths ] );
 	numBasePaths++;
@@ -308,7 +308,7 @@ void AddGamePath( char *path )
 		return;
 	
 	/* add it to the list */
-	gamePaths[ numGamePaths ] = safe_malloc( strlen( path ) + 1 );
+	gamePaths[ numGamePaths ] =  (char *)safe_malloc( strlen( path ) + 1 );
 	strcpy( gamePaths[ numGamePaths ], path );
 	CleanPath( gamePaths[ numGamePaths ] );
 	numGamePaths++;

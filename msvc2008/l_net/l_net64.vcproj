@@ -95,6 +95,7 @@
 			ConfigurationType="4"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC71.vsprops"
 			CharacterSet="2"
+			WholeProgramOptimization="1"
 			BuildLogFile="..\build\release\x64\l_net\BuildLog.htm"
 			>
 			<Tool
@@ -119,7 +120,7 @@
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
 				EnableFiberSafeOptimizations="false"
-				WholeProgramOptimization="false"
+				WholeProgramOptimization="true"
 				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;WIN32;NDEBUG;_LIB"
 				StringPooling="true"
 				ExceptionHandling="0"

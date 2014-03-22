@@ -138,12 +138,12 @@ mesh_t *CopyMesh( mesh_t *mesh ) {
 	mesh_t	*out;
 	int		size;
 
-	out = safe_malloc( sizeof( *out ) );
+	out = (mesh_t *)safe_malloc( sizeof( *out ) );
 	out->width = mesh->width;
 	out->height = mesh->height;
 
 	size = out->width * out->height * sizeof( *out->verts );
-	out->verts = safe_malloc( size );
+	out->verts = (bspDrawVert_t *)safe_malloc( size );
 	memcpy( out->verts, mesh->verts, size );
 
 	return out;
@@ -159,10 +159,10 @@ mesh_t *TransposeMesh( mesh_t *in ) {
 	int			w, h;
 	mesh_t		*out;
 
-	out = safe_malloc( sizeof( *out ) );
+	out = (mesh_t *)safe_malloc( sizeof( *out ) );
 	out->width = in->height;
 	out->height = in->width;
-	out->verts = safe_malloc( out->width * out->height * sizeof( bspDrawVert_t ) );
+	out->verts = (bspDrawVert_t *)safe_malloc( out->width * out->height * sizeof( bspDrawVert_t ) );
 
 	for ( h = 0 ; h < in->height ; h++ ) {
 		for ( w = 0 ; w < in->width ; w++ ) {
@@ -528,7 +528,7 @@ int IterationsForCurve( float len, int subdivisions )
 	/* calculate the number of subdivisions */
 	for( iterations = 0; iterations < 3; iterations++ )
 	{
-		facets = subdivisions * 16 * pow( 2, iterations );
+		facets = subdivisions * 16 * pow( 2.0f, iterations );
 		if( facets >= len )
 			break;
 	}

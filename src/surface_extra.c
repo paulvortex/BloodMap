@@ -82,7 +82,7 @@ static surfaceExtra_t *AllocSurfaceExtra( void )
 	{
 		/* reallocate more room */
 		maxSurfaceExtras += GROW_SURFACE_EXTRAS;
-		se = safe_malloc( maxSurfaceExtras * sizeof( surfaceExtra_t ) );
+		se = (surfaceExtra_t *)safe_malloc( maxSurfaceExtras * sizeof( surfaceExtra_t ) );
 		if( surfaceExtras != NULL )
 		{
 			memcpy( se, surfaceExtras, numSurfaceExtras * sizeof( surfaceExtra_t ) );
@@ -357,7 +357,7 @@ void LoadSurfaceExtraFile( const char *path )
 	}
 	
 	/* parse the file */
-	ParseFromMemory( buffer, size );
+	ParseFromMemory( (char *)buffer, size );
 	
 	/* tokenize it */
 	while( 1 )

@@ -67,7 +67,7 @@ void *safe_malloc_log(size_t size, const char *file, int line);
 void safe_malloc_logend();
 void *safe_malloc_info( size_t size, char* info );
 // VorteX: memlog.txt writing
-qboolean memlog;
+extern qboolean memlog;
 #define safe_malloc(s) safe_malloc_log(s, __FILE__, __LINE__);
 #else
 #define safe_malloc(a) malloc(a)

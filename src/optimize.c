@@ -524,7 +524,7 @@ void MergeDrawSurfaces(void)
 			}
 
 			/* merge surfaces */
-			for (ms2 = ms->next; ms2; ms2 = ms2->next)
+			for (ms2 = (bspDrawSurfaceMeta_t *)ms->next; ms2; ms2 = (bspDrawSurfaceMeta_t *)ms2->next)
 			{
 				/* copy draw indexes */
 				if (ms2->ds->numIndexes)
@@ -632,14 +632,14 @@ qboolean Vec3ByteCompareExt(byte n1[3], byte n2[3], byte epsilon)
 {
 	int i;
 	for (i= 0; i < 3; i++)
-		if (fabs(n1[i] - n2[i]) > epsilon)
+		if (fabs((float)(n1[i] - n2[i])) > epsilon)
 			return qfalse;
 	return qtrue;
 }
 
 qboolean Vec1ByteCompareExt(byte n1, byte n2, byte epsilon)
 {
-	if (fabs(n1 - n2) > epsilon)
+	if (fabs((float)(n1 - n2)) > epsilon)
 		return qfalse;
 	return qtrue;
 }

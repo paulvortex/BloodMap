@@ -105,7 +105,7 @@ static void CreateSunLight( sun_t *sun )
 		
 		/* create a light */
 		numSunLights++;
-		light = safe_malloc( sizeof( *light ) );
+		light = (light_t *)safe_malloc( sizeof( *light ) );
 		memset( light, 0, sizeof( *light ) );
 		light->next = lights;
 		lights = light;
@@ -253,7 +253,7 @@ void CreateEntityLights( void )
 		
 		/* create a light */
 		numPointLights++;
-		light = safe_malloc( sizeof( *light ) );
+		light = (light_t *)safe_malloc( sizeof( *light ) );
 		memset( light, 0, sizeof( *light ) );
 		light->next = lights;
 		lights = light;
@@ -507,7 +507,7 @@ void CreateEntityLights( void )
 		for( j = 1; j < numSamples; j++ )
 		{
 			/* create a light */
-			light2 = safe_malloc( sizeof( *light ) );
+			light2 = (light_t *)safe_malloc( sizeof( *light ) );
 			memcpy( light2, light, sizeof( *light ) );
 			light2->next = lights;
 			lights = light2;
@@ -589,7 +589,7 @@ void CreateSurfaceLights( void )
 			VectorScale( origin, 0.5f, origin );
 			
 			/* create a light */
-			light = safe_malloc( sizeof( *light ) );
+			light = (light_t *)safe_malloc( sizeof( *light ) );
 			memset( light, 0, sizeof( *light ) );
 			light->next = lights;
 			lights = light;
@@ -653,7 +653,7 @@ void SetEntityOrigins( void )
 	
 	
 	/* ydnar: copy drawverts into private storage for nefarious purposes */
-	yDrawVerts = safe_malloc( numBSPDrawVerts * sizeof( bspDrawVert_t ) );
+	yDrawVerts = (bspDrawVert_t *)safe_malloc( numBSPDrawVerts * sizeof( bspDrawVert_t ) );
 	memcpy( yDrawVerts, bspDrawVerts, numBSPDrawVerts * sizeof( bspDrawVert_t ) );
 	
 	/* set the entity origins */
@@ -1624,7 +1624,7 @@ void TraceGrid(int num)
 	}
 	
 	/* setup trace */
-	trace.testOcclusion = !noTrace && !noTraceGrid;
+	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
 	trace.occlusionBias = 0;
 	trace.forceSunlight = qfalse;
 	trace.testShadowGroups = qtrue;
@@ -1880,12 +1880,12 @@ void SetupGrid( void )
 	numBSPGridPoints = numRawGridPoints;
 	
 	/* allocate lightgrid */
-	rawGridPoints = safe_malloc( numRawGridPoints * sizeof( *rawGridPoints ) );
+	rawGridPoints = (rawGridPoint_t *)safe_malloc( numRawGridPoints * sizeof( *rawGridPoints ) );
 	memset( rawGridPoints, 0, numRawGridPoints * sizeof( *rawGridPoints ) );
 	
 	if( bspGridPoints != NULL )
 		free( bspGridPoints );
-	bspGridPoints = safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
+	bspGridPoints = (bspGridPoint_t *)safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
 	memset( bspGridPoints, 0, numBSPGridPoints * sizeof( *bspGridPoints ) );
 	
 	/* clear lightgrid */

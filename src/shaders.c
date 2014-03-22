@@ -680,7 +680,7 @@ shaderInfo_t *CustomShader( shaderInfo_t *si, char *find, char *replace )
 	
 	/* make md4 hash of the shader text */
 	MD4Init(&md4);
-	MD4Update(&md4, shaderText, (unsigned int)strlen( shaderText ));
+	MD4Update(&md4, (unsigned char *)shaderText, (unsigned int)strlen( shaderText ));
 	MD4Final(digest, &md4);
 
 	/* mangle hash into a shader name */
@@ -701,7 +701,7 @@ shaderInfo_t *CustomShader( shaderInfo_t *si, char *find, char *replace )
 	csi->custom = qtrue;
 	
 	/* store new shader text */
-	csi->shaderText = safe_malloc( strlen( shaderText ) + 1 );
+	csi->shaderText = (char *)safe_malloc( strlen( shaderText ) + 1 );
 	strcpy( csi->shaderText, shaderText );	/* LEAK! */
 	
 	/* return it */
@@ -731,7 +731,7 @@ void EmitVertexRemapShader( char *from, char *to )
 	
 	/* make md4 hash */
 	MD4Init(&md4);
-	MD4Update(&md4, value, (unsigned int)strlen(value));
+	MD4Update(&md4, (unsigned char *)value, (unsigned int)strlen(value));
 	MD4Final(digest, &md4);
 
 	/* make key (this is annoying, as vertexremapshader is precisely 17 characters,
@@ -759,7 +759,7 @@ static shaderInfo_t	*AllocShaderInfo( void )
 	/* allocate? */
 	if( shaderInfo == NULL )
 	{
-		shaderInfo = safe_malloc( sizeof( shaderInfo_t ) * MAX_SHADER_INFO );
+		shaderInfo = (shaderInfo_t *)safe_malloc( sizeof( shaderInfo_t ) * MAX_SHADER_INFO );
 		numShaderInfo = 0;
 	}
 	
@@ -1115,7 +1115,7 @@ static void ParseShaderFile( const char *filename )
 		if( si != NULL && shaderText[ 0 ] != '\0' )
 		{
 			strcat( shaderText, "\n" );
-			si->shaderText = safe_malloc( strlen( shaderText ) + 1 );
+			si->shaderText = (char *)safe_malloc( strlen( shaderText ) + 1 );
 			strcpy( si->shaderText, shaderText );
 			//%	if( VectorLength( si->vecs[ 0 ] ) )
 			//%		Sys_Printf( "%s\n", shaderText );
@@ -1305,7 +1305,7 @@ static void ParseShaderFile( const char *filename )
 				GetTokenAppend( shaderText, qfalse );
 				if( token[ 0 ] != '\0' )
 				{
-					si->damageShader = safe_malloc( strlen( token ) + 1 );
+					si->damageShader = (char *)safe_malloc( strlen( token ) + 1 );
 					strcpy( si->damageShader, token );
 				}
 				GetTokenAppend( shaderText, qfalse );	/* don't do anything with health */
@@ -1421,7 +1421,7 @@ static void ParseShaderFile( const char *filename )
 					ext = qtrue;
 				
 				/* allocate sun */
-				sun = safe_malloc( sizeof( *sun ) );
+				sun = (sun_t *)safe_malloc( sizeof( *sun ) );
 				memset( sun, 0, sizeof( *sun ) );
 				
 				/* set style */
@@ -1521,7 +1521,7 @@ static void ParseShaderFile( const char *filename )
 					surfaceModel_t	*model;
 					
 					/* allocate new model and attach it */
-					model = safe_malloc( sizeof( *model ) );
+					model = (surfaceModel_t *)safe_malloc( sizeof( *model ) );
 					memset( model, 0, sizeof( *model ) );
 					model->next = si->surfaceModel;
 					si->surfaceModel = model;
@@ -1556,7 +1556,7 @@ static void ParseShaderFile( const char *filename )
 					
 					
 					/* allocate new foliage struct and attach it */
-					foliage = safe_malloc( sizeof( *foliage ) );
+					foliage = (foliage_t *)safe_malloc( sizeof( *foliage ) );
 					memset( foliage, 0, sizeof( *foliage ) );
 					foliage->next = si->foliage;
 					si->foliage = foliage;
@@ -1572,7 +1572,7 @@ static void ParseShaderFile( const char *filename )
 					GetTokenAppend( shaderText, qfalse );
 					foliage->odds = atof( token );
 					GetTokenAppend( shaderText, qfalse );
-					foliage->inverseAlpha = atoi( token );
+					foliage->inverseAlpha = atoi( token ) ? qtrue : qfalse;
 				}
 				
 				/* ydnar: q3map_bounce <value> (fraction of light to re-emit during radiosity passes) */
@@ -1770,7 +1770,7 @@ static void ParseShaderFile( const char *filename )
 					GetTokenAppend( shaderText, qfalse );
 					if( token[ 0 ] != '\0' )
 					{
-						si->flareShader = safe_malloc( strlen( token ) + 1 );
+						si->flareShader = (char *)safe_malloc( strlen( token ) + 1 );
 						strcpy( si->flareShader, token );
 					}
 				}
@@ -1781,7 +1781,7 @@ static void ParseShaderFile( const char *filename )
 					GetTokenAppend( shaderText, qfalse );
 					if( token[ 0 ] != '\0' )
 					{
-						si->backShader = safe_malloc( strlen( token ) + 1 );
+						si->backShader = (char *)safe_malloc( strlen( token ) + 1 );
 						strcpy( si->backShader, token );
 					}
 				}
@@ -1792,7 +1792,7 @@ static void ParseShaderFile( const char *filename )
 					GetTokenAppend( shaderText, qfalse );
 					if( token[ 0 ] != '\0' )
 					{
-						si->cloneShader = safe_malloc( strlen( token ) + 1 );
+						si->cloneShader = (char *)safe_malloc( strlen( token ) + 1 );
 						strcpy( si->cloneShader, token );
 					}
 				}
@@ -1803,7 +1803,7 @@ static void ParseShaderFile( const char *filename )
 					GetTokenAppend( shaderText, qfalse );
 					if( token[ 0 ] != '\0' )
 					{
-						si->remapShader = safe_malloc( strlen( token ) + 1 );
+						si->remapShader = (char *)safe_malloc( strlen( token ) + 1 );
 						strcpy( si->remapShader, token );
 					}
 				}
@@ -1815,7 +1815,7 @@ static void ParseShaderFile( const char *filename )
 					if( token[ 0 ] != '\0' )
 					{
 
-						si->deprecateShader = safe_malloc( strlen( token ) + 1 );
+						si->deprecateShader = (char *)safe_malloc( strlen( token ) + 1 );
 						strcpy( si->deprecateShader, token );
 					}
 				}
@@ -1827,7 +1827,7 @@ static void ParseShaderFile( const char *filename )
 					if( token[ 0 ] != '\0' )
 					{
 
-						si->engineShader = safe_malloc( strlen( token ) + 1 );
+						si->engineShader = (char *)safe_malloc( strlen( token ) + 1 );
 						strcpy( si->engineShader, token );
 					}
 				}
@@ -1946,7 +1946,7 @@ static void ParseShaderFile( const char *filename )
 					alpha = (!Q_stricmp( token, "q3map_alphaGen" ) || !Q_stricmp( token, "q3map_alphaMod" )) ? 1 : 0;
 					
 					/* allocate new colormod */
-					cm = safe_malloc( sizeof( *cm ) );
+					cm = (colorMod_t *)safe_malloc( sizeof( *cm ) );
 					memset( cm, 0, sizeof( *cm ) );
 					
 					/* attach to shader */
@@ -2042,7 +2042,7 @@ static void ParseShaderFile( const char *filename )
 					/* dotProduct ( X Y Z ) */
 					else if( !Q_stricmp( token, "dotProduct" ) )
 					{
-						cm->type = CM_COLOR_DOT_PRODUCT + alpha;
+						cm->type = (colorModType_t)(CM_COLOR_DOT_PRODUCT + alpha);
 						Parse1DMatrixAppend( shaderText, 3, cm->data );
 					}
 
@@ -2050,7 +2050,7 @@ static void ParseShaderFile( const char *filename )
 					/* dotProduct2 ( X Y Z ) */
 					else if( !Q_stricmp( token, "dotProduct2" ) )
 					{
-						cm->type = CM_COLOR_DOT_PRODUCT_2 + alpha;
+						cm->type = (colorModType_t)(CM_COLOR_DOT_PRODUCT_2 + alpha);
 						Parse1DMatrixAppend( shaderText, 3, cm->data );
 					}
 					
@@ -2294,7 +2294,7 @@ static void ParseCustomInfoParms( void )
 			break;
 		}
 
-		custSurfaceParms[ numCustSurfaceParms ].name = safe_malloc( MAX_OS_PATH );
+		custSurfaceParms[ numCustSurfaceParms ].name = (char *)safe_malloc( MAX_OS_PATH );
 		strcpy( custSurfaceParms[ numCustSurfaceParms ].name, token );
 		GetToken( qfalse );
 		sscanf( token, "%x", &custSurfaceParms[ numCustSurfaceParms ].contentFlags );
@@ -2321,7 +2321,7 @@ static void ParseCustomInfoParms( void )
 			break;
 		}
 
-		custSurfaceParms[ numCustSurfaceParms ].name = safe_malloc( MAX_OS_PATH );
+		custSurfaceParms[ numCustSurfaceParms ].name = (char *)safe_malloc( MAX_OS_PATH );
 		strcpy( custSurfaceParms[ numCustSurfaceParms ].name, token );
 		GetToken( qfalse );
 		sscanf( token, "%x", &custSurfaceParms[ numCustSurfaceParms ].surfaceFlags );
@@ -2384,7 +2384,7 @@ void LoadShaderInfo( void )
 			/* new shader file */
 			if( j == numShaderFiles )
 			{
-				shaderFiles[ numShaderFiles ] = safe_malloc( MAX_OS_PATH );
+				shaderFiles[ numShaderFiles ] =  (char *)safe_malloc( MAX_OS_PATH );
 				strcpy( shaderFiles[ numShaderFiles ], token );
 				numShaderFiles++;
 			}

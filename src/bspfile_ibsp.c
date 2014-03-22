@@ -99,7 +99,7 @@ static void CopyBrushSidesLump( ibspHeader_t *header )
 	numBSPBrushSides = GetLumpElements( (bspHeader_t*) header, LUMP_BRUSHSIDES, sizeof( *in ) );
 	
 	/* copy */
-	in = GetLump( (bspHeader_t*) header, LUMP_BRUSHSIDES );
+	in = (ibspBrushSide_t *)GetLump( (bspHeader_t*) header, LUMP_BRUSHSIDES );
 	out = bspBrushSides;
 	for( i = 0; i < numBSPBrushSides; i++ )
 	{
@@ -121,7 +121,7 @@ static void AddBrushSidesLump( FILE *file, ibspHeader_t *header )
 	
 	/* allocate output buffer */
 	size = numBSPBrushSides * sizeof( *buffer );
-	buffer = safe_malloc( size );
+	buffer = (ibspBrushSide_t *)safe_malloc( size );
 	memset( buffer, 0, size );
 	
 	/* convert */
@@ -182,7 +182,7 @@ static void CopyDrawSurfacesLump( ibspHeader_t *header )
 	SetDrawSurfaces( numBSPDrawSurfaces );
 	
 	/* copy */
-	in = GetLump( (bspHeader_t*) header, LUMP_SURFACES );
+	in = (ibspDrawSurface_t *)GetLump( (bspHeader_t*) header, LUMP_SURFACES );
 	out = bspDrawSurfaces;
 	for( i = 0; i < numBSPDrawSurfaces; i++ )
 	{
@@ -235,7 +235,7 @@ static void AddDrawSurfacesLump( FILE *file, ibspHeader_t *header )
 	
 	/* allocate output buffer */
 	size = numBSPDrawSurfaces * sizeof( *buffer );
-	buffer = safe_malloc( size );
+	buffer = (ibspDrawSurface_t *)safe_malloc( size );
 	memset( buffer, 0, size );
 	
 	/* convert */
@@ -302,7 +302,7 @@ static void CopyDrawVertsLump( ibspHeader_t *header )
 	SetDrawVerts( numBSPDrawVerts );
 	
 	/* copy */
-	in = GetLump( (bspHeader_t*) header, LUMP_DRAWVERTS );
+	in = (ibspDrawVert_t *)GetLump( (bspHeader_t*) header, LUMP_DRAWVERTS );
 	out = bspDrawVerts;
 	for( i = 0; i < numBSPDrawVerts; i++ )
 	{
@@ -335,7 +335,7 @@ static void AddDrawVertsLump( FILE *file, ibspHeader_t *header )
 	
 	/* allocate output buffer */
 	size = numBSPDrawVerts * sizeof( *buffer );
-	buffer = safe_malloc( size );
+	buffer = (ibspDrawVert_t *)safe_malloc( size );
 	memset( buffer, 0, size );
 	
 	/* convert */
@@ -391,11 +391,11 @@ static void CopyLightGridLumps( ibspHeader_t *header )
 	numBSPGridPoints = GetLumpElements( (bspHeader_t*) header, LUMP_LIGHTGRID, sizeof( *in ) );
 	
 	/* allocate buffer */
-	bspGridPoints = safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
+	bspGridPoints = (bspGridPoint_t *)safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
 	memset( bspGridPoints, 0, numBSPGridPoints * sizeof( *bspGridPoints ) );
 	
 	/* copy */
-	in = GetLump( (bspHeader_t*) header, LUMP_LIGHTGRID );
+	in = (ibspGridPoint_t *)GetLump( (bspHeader_t*) header, LUMP_LIGHTGRID );
 	out = bspGridPoints;
 	for( i = 0; i < numBSPGridPoints; i++ )
 	{
@@ -429,7 +429,7 @@ static void AddLightGridLumps( FILE *file, ibspHeader_t *header )
 		return;
 	
 	/* allocate temporary buffer */
-	buffer = safe_malloc( numBSPGridPoints * sizeof( *out ) );
+	buffer = (ibspGridPoint_t *)safe_malloc( numBSPGridPoints * sizeof( *out ) );
 	
 	/* convert */
 	in = bspGridPoints;
@@ -507,7 +507,7 @@ void LoadIBSPFile( const char *filename )
 	numBSPVisBytes = CopyLump( (bspHeader_t*) header, LUMP_VISIBILITY, bspVisBytes, 1 );
 	
 	numBSPLightBytes = GetLumpElements( (bspHeader_t*) header, LUMP_LIGHTMAPS, 1 );
-		bspLightBytes = safe_malloc( numBSPLightBytes );
+		bspLightBytes = (byte *)safe_malloc( numBSPLightBytes );
 		CopyLump( (bspHeader_t*) header, LUMP_LIGHTMAPS, bspLightBytes, 1 );
 	
 	bspEntDataSize = CopyLump( (bspHeader_t*) header, LUMP_ENTITIES, bspEntData, 1);

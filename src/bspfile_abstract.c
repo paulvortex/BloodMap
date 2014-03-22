@@ -66,7 +66,7 @@ void IncDrawVerts()
 	{
 		numBSPDrawVertsBuffer = MAX_MAP_DRAW_VERTS / 37;
 		
-		bspDrawVerts = safe_malloc_info(sizeof(bspDrawVert_t) * numBSPDrawVertsBuffer, "IncDrawVerts");
+		bspDrawVerts = (bspDrawVert_t *)safe_malloc_info(sizeof(bspDrawVert_t) * numBSPDrawVertsBuffer, "IncDrawVerts");
 
 	}
 	else if(numBSPDrawVerts > numBSPDrawVertsBuffer)
@@ -77,7 +77,7 @@ void IncDrawVerts()
 		if(numBSPDrawVertsBuffer > MAX_MAP_DRAW_VERTS)
 			numBSPDrawVertsBuffer = MAX_MAP_DRAW_VERTS;
 
-		bspDrawVerts = realloc(bspDrawVerts, sizeof(bspDrawVert_t) * numBSPDrawVertsBuffer);
+		bspDrawVerts = (bspDrawVert_t *)realloc(bspDrawVerts, sizeof(bspDrawVert_t) * numBSPDrawVertsBuffer);
 
 		if(!bspDrawVerts)
 			Error( "realloc() failed (IncDrawVerts)");
@@ -94,7 +94,7 @@ void SetDrawVerts(int n)
 	numBSPDrawVerts = n;
 	numBSPDrawVertsBuffer = numBSPDrawVerts;
 
-	bspDrawVerts = safe_malloc_info(sizeof(bspDrawVert_t) * numBSPDrawVertsBuffer, "IncDrawVerts");
+	bspDrawVerts = (bspDrawVert_t *)safe_malloc_info(sizeof(bspDrawVert_t) * numBSPDrawVertsBuffer, "IncDrawVerts");
 
 	memset(bspDrawVerts, 0, n * sizeof(bspDrawVert_t));
 }
@@ -107,7 +107,7 @@ void SetDrawSurfacesBuffer()
 
 	numBSPDrawSurfacesBuffer = MAX_MAP_DRAW_SURFS;
 
-	bspDrawSurfaces = safe_malloc_info(sizeof(bspDrawSurface_t) * numBSPDrawSurfacesBuffer, "IncDrawSurfaces");
+	bspDrawSurfaces = (bspDrawSurface_t *)safe_malloc_info(sizeof(bspDrawSurface_t) * numBSPDrawSurfacesBuffer, "IncDrawSurfaces");
 
 	memset(bspDrawSurfaces, 0, MAX_MAP_DRAW_SURFS * sizeof(bspDrawVert_t));
 }
@@ -120,7 +120,7 @@ void SetDrawSurfaces(int n)
 	numBSPDrawSurfaces = n;
 	numBSPDrawSurfacesBuffer = numBSPDrawSurfaces;
 
-	bspDrawSurfaces = safe_malloc_info(sizeof(bspDrawSurface_t) * numBSPDrawSurfacesBuffer, "IncDrawSurfaces");
+	bspDrawSurfaces = (bspDrawSurface_t *)safe_malloc_info(sizeof(bspDrawSurface_t) * numBSPDrawSurfacesBuffer, "IncDrawSurfaces");
 
 	memset(bspDrawSurfaces, 0, n * sizeof(bspDrawVert_t));
 }
@@ -497,7 +497,7 @@ epair_t *ParseEPair( void )
 	
 	
 	/* allocate and clear new epair */
-	e = safe_malloc( sizeof( epair_t ) );
+	e = (epair_t *)safe_malloc( sizeof( epair_t ) );
 	memset( e, 0, sizeof( epair_t ) );
 	
 	/* handle key */
@@ -695,7 +695,7 @@ void SetKeyValue( entity_t *ent, const char *key, const char *value )
 	}
 	
 	/* create new epair */
-	ep = safe_malloc( sizeof( *ep ) );
+	ep = (epair_t *)safe_malloc( sizeof( *ep ) );
 	ep->next = ent->epairs;
 	ent->epairs = ep;
 	ep->key = copystring( key );

@@ -145,7 +145,7 @@ static void vfsInitPakFile (const char *filename)
     vfsFixDOSName (filename_inzip);
     g_strdown (filename_inzip);
     
-    file->name = strdup (filename_inzip);
+    file->name = _strdup (filename_inzip);
     file->size = file_info.uncompressed_size;
     file->zipfile = uf;
     memcpy (&file->zipinfo, uf, sizeof (unz_s));
@@ -250,7 +250,7 @@ int vfsGetFileCount (const char *filename)
   {
     strcpy (tmp, g_strDirs[i]);
     strcat (tmp, fixed);
-    if (access (tmp, R_OK) == 0)
+    if (_access (tmp, R_OK) == 0)
       count++;
   }
   
@@ -300,7 +300,7 @@ int vfsLoadFile (const char *filename, void **bufferptr, int index)
   {
     strcpy (tmp, g_strDirs[i]);
     strcat (tmp, filename);
-    if (access (tmp, R_OK) == 0)
+    if (_access (tmp, R_OK) == 0)
     {
       if (count == index)
       {

@@ -61,7 +61,7 @@
 				WarningLevel="3"
 				SuppressStartupBanner="true"
 				DebugInformationFormat="3"
-				CompileAs="0"
+				CompileAs="2"
 				DisableSpecificWarnings="4996"
 			/>
 			<Tool
@@ -126,6 +126,7 @@
 			UseOfMFC="0"
 			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
+			WholeProgramOptimization="1"
 			BuildLogFile="build\release\x64\BuildLog.htm"
 			>
 			<Tool
@@ -153,7 +154,7 @@
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
 				EnableFiberSafeOptimizations="false"
-				WholeProgramOptimization="false"
+				WholeProgramOptimization="true"
 				AdditionalIncludeDirectories=".\..\src\games;.\..\src\common;.\..\src\libs;.\..\dependencies\x64\libxml\include;.\..\dependencies\x64\gtk2\include;&quot;.\..\dependencies\x64\gtk2\include\glib-2.0&quot;;&quot;.\..\dependencies\x64\gtk2\lib\glib-2.0\include&quot;"
 				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;NDEBUG,WIN64,_CONSOLE"
 				StringPooling="true"
@@ -173,7 +174,7 @@
 				SuppressStartupBanner="true"
 				DebugInformationFormat="3"
 				CallingConvention="0"
-				CompileAs="0"
+				CompileAs="2"
 				DisableSpecificWarnings="4996"
 			/>
 			<Tool
@@ -203,7 +204,6 @@
 				StackReserveSize="4194304"
 				LargeAddressAware="2"
 				OptimizeReferences="2"
-				LinkTimeCodeGeneration="0"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
 				TargetMachine="17"

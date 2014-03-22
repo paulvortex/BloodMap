@@ -1280,7 +1280,7 @@ void LoadEntityIndexMap( entity_t *e )
 		
 		/* convert to bytes */
 		size = w * h;
-		pixels = safe_malloc( size );
+		pixels = (byte *)safe_malloc( size );
 		for( i = 0; i < size; i++ )
 		{
 			pixels[ i ] = ((pixels32[ i ] & 0xFF) * numLayers) / 256;
@@ -1326,7 +1326,7 @@ void LoadEntityIndexMap( entity_t *e )
 	}
 
 	/* create a new index map */
-	im = safe_malloc( sizeof( *im ) );
+	im = (indexMap_t *)safe_malloc( sizeof( *im ) );
 	memset( im, 0, sizeof( *im ) );
 	
 	/* set it up */

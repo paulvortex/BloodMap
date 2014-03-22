@@ -82,7 +82,7 @@ static void LoadDDSBuffer( byte *buffer, int size, byte **pixels, int *width, in
 	/* create image pixel buffer */
 	*width = w;
 	*height = h;
-	*pixels = safe_malloc( w * h * 4 );
+	*pixels = (byte *)safe_malloc( w * h * 4 );
 	
 	/* decompress the dds texture */
 	DDSDecompress( (ddsBuffer_t*) buffer, *pixels );
@@ -218,10 +218,10 @@ static void LoadPNGBuffer( byte *buffer, int size, byte **pixels, int *width, in
 	/* create image pixel buffer */
 	*width = w;
 	*height = h;
-	*pixels = safe_malloc( w * h * 4 );
+	*pixels = (byte *)safe_malloc( w * h * 4 );
 	
 	/* create row pointers */
-	rowPointers = safe_malloc( h * sizeof( byte* ) );
+	rowPointers = (byte **)safe_malloc( h * sizeof( byte* ) );
 	for( i = 0; i < h; i++ )
 		rowPointers[ i ] = *pixels + (i * w * 4);
 	
@@ -252,14 +252,14 @@ static void ImageInit( void )
 		memset( images, 0, sizeof( images ) );
 		
 		/* generate *bogus image */
-		images[ 0 ].name = safe_malloc( strlen( DEFAULT_IMAGE ) + 1 );
+		images[ 0 ].name = (char *)safe_malloc( strlen( DEFAULT_IMAGE ) + 1 );
 		strcpy( images[ 0 ].name, DEFAULT_IMAGE );
-		images[ 0 ].filename = safe_malloc( strlen( DEFAULT_IMAGE ) + 1 );
+		images[ 0 ].filename = (char *)safe_malloc( strlen( DEFAULT_IMAGE ) + 1 );
 		strcpy( images[ 0 ].filename, DEFAULT_IMAGE );
 		images[ 0 ].width = 64;
 		images[ 0 ].height = 64;
 		images[ 0 ].refCount = 1;
-		images[ 0 ].pixels = safe_malloc( 64 * 64 * 4 );
+		images[ 0 ].pixels = (byte *)safe_malloc( 64 * 64 * 4 );
 		for( i = 0; i < (64 * 64 * 4); i++ )
 			images[ 0 ].pixels[ i ] = 255;
 	}
@@ -383,7 +383,7 @@ image_t *ImageLoad( const char *filename )
 		Error( "MAX_IMAGES (%d) exceeded, there are too many image files referenced by the map.", MAX_IMAGES );
 	
 	/* set it up */
-	image->name = safe_malloc( strlen( name ) + 1 );
+	image->name = (char *)safe_malloc( strlen( name ) + 1 );
 	strcpy( image->name, name );
 	
 	/* attempt to load tga */
@@ -454,7 +454,7 @@ image_t *ImageLoad( const char *filename )
 	}
 	
 	/* set filename */
-	image->filename = safe_malloc( strlen( name ) + 1 );
+	image->filename = (char *)safe_malloc( strlen( name ) + 1 );
 	strcpy( image->filename, name );
 	
 	/* set count */

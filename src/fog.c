@@ -53,10 +53,10 @@ mesh_t *DrawSurfToMesh( mapDrawSurface_t *ds )
 	mesh_t		*m;
 	
 	
-	m = safe_malloc( sizeof( *m ) );
+	m = (mesh_t *)safe_malloc( sizeof( *m ) );
 	m->width = ds->patchWidth;
 	m->height = ds->patchHeight;
-	m->verts = safe_malloc( sizeof(m->verts[ 0 ]) * m->width * m->height );
+	m->verts = (bspDrawVert_t *)safe_malloc( sizeof(m->verts[ 0 ]) * m->width * m->height );
 	memcpy( m->verts, ds->verts, sizeof(m->verts[ 0 ]) * m->width * m->height );
 	
 	return m;
@@ -156,7 +156,7 @@ void SplitMeshByPlane( mesh_t *in, vec3_t normal, float dist, mesh_t **front, me
 
 
 	// create two new meshes
-	f = safe_malloc( sizeof( *f ) );
+	f = (mesh_t *)safe_malloc( sizeof( *f ) );
 	f->width = split + 2;
 	if ( ! (f->width & 1) ) {
 		f->width++;
@@ -168,9 +168,9 @@ void SplitMeshByPlane( mesh_t *in, vec3_t normal, float dist, mesh_t **front, me
 		Error( "MAX_PATCH_SIZE after split");
 	}
 	f->height = in->height;
-	f->verts = safe_malloc( sizeof(f->verts[0]) * f->width * f->height );
+	f->verts = (bspDrawVert_t *)safe_malloc( sizeof(f->verts[0]) * f->width * f->height );
 
-	b = safe_malloc( sizeof( *b ) );
+	b = (mesh_t *)safe_malloc( sizeof( *b ) );
 	b->width = in->width - split;
 	if ( ! (b->width & 1) ) {
 		b->width++;
@@ -182,7 +182,7 @@ void SplitMeshByPlane( mesh_t *in, vec3_t normal, float dist, mesh_t **front, me
 		Error( "MAX_PATCH_SIZE after split");
 	}
 	b->height = in->height;
-	b->verts = safe_malloc( sizeof(b->verts[0]) * b->width * b->height );
+	b->verts = (bspDrawVert_t *)safe_malloc( sizeof(b->verts[0]) * b->width * b->height );
 
 	if ( d[0][0] > 0 ) {
 		*front = f;
@@ -299,7 +299,7 @@ qboolean ChopPatchSurfaceByBrush( entity_t *e, mapDrawSurface_t *ds, brush_t *b 
 		newds->patchWidth = outside[ i ]->width;
 		newds->patchHeight = outside[ i ]->height;
 		newds->numVerts = outside[ i ]->width * outside[ i ]->height;
-		newds->verts = safe_malloc( newds->numVerts * sizeof( *newds->verts ) );
+		newds->verts = (bspDrawVert_t *)safe_malloc( newds->numVerts * sizeof( *newds->verts ) );
 		memcpy( newds->verts, outside[ i ]->verts, newds->numVerts * sizeof( *newds->verts ) );
 		
 		/* free the source mesh */
@@ -319,7 +319,7 @@ qboolean ChopPatchSurfaceByBrush( entity_t *e, mapDrawSurface_t *ds, brush_t *b 
 		ds->patchHeight = m->height;
 		ds->numVerts = m->width * m->height;
 		free( ds->verts );
-		ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
+		ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
 		memcpy( ds->verts, m->verts, ds->numVerts * sizeof( *ds->verts ) );
 	}
 	

@@ -57,7 +57,7 @@ void AllocateDiskPage( diskCache_t *dk, int num, int size )
 		dp->num = num;
 #ifdef DISKCACHE_MEMTEST
 		dp->file = (FILE *)(1); // vortex: hack
-		dp->data = safe_malloc(size);
+		dp->data = (byte *)safe_malloc(size);
 #else
 		sprintf_s(tempname, MAX_QPATH, "%s_%i.diskcache.tmp", dk->cachepath, numCacheFiles);
 		dp->filename = safe_malloc(strlen(tempname)+1);
