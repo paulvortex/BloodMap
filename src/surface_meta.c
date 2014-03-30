@@ -61,7 +61,6 @@ static int					numMetaTriangles = 0;
 static metaTriangle_t		*metaTriangles = NULL;
 
 
-
 /*
 ClearMetaVertexes()
 called before staring a new entity to clear out the triangle list
@@ -189,11 +188,11 @@ int FindMetaTriangle( metaTriangle_t *src, bspDrawVert_t *a, bspDrawVert_t *b, b
 	}
 	
 	/* ydnar 2002-10-03: repair any bogus normals (busted ase import kludge) */
-	if( VectorLength( a->normal ) <= 0.0f )
+	if( VectorIsNull( a->normal ) )
 		VectorCopy( src->plane, a->normal );
-	if( VectorLength( b->normal ) <= 0.0f )
+	if( VectorIsNull( b->normal ) )
 		VectorCopy( src->plane, b->normal );
-	if( VectorLength( c->normal ) <= 0.0f )
+	if( VectorIsNull( c->normal ) )
 		VectorCopy( src->plane, c->normal );
 	
 	/* ydnar 2002-10-04: set lightmap axis if not already set */
@@ -250,7 +249,6 @@ static void SurfaceToMetaTriangles( mapDrawSurface_t *ds )
 	int				i;
 	metaTriangle_t	src;
 	bspDrawVert_t	a, b, c;
-	
 	
 	/* only handle certain types of surfaces */
 	/* vortex: disabled as its a double check */
@@ -624,13 +622,13 @@ void StripFaceSurface( mapDrawSurface_t *ds )
 
 
 /*
-EmitMetaStatictics
+EmitMetaStats
 vortex: prints meta statistics in general output
 */
 
 void EmitMetaStats()
 {
-	Sys_Printf( "--- EmitMetaStats ---\n" );
+	Sys_Printf( "--- MetaStats ---\n" );
 	Sys_Printf( "%9d total meta surfaces\n", numMetaSurfaces );
 	Sys_Printf( "%9d stripped surfaces\n", numStripSurfaces );
 	Sys_Printf( "%9d fanned surfaces\n", numFanSurfaces );
@@ -674,15 +672,15 @@ void MakeEntityMetaTriangles( entity_t *e )
 		ds = &mapDrawSurfs[ i ];
 		if( ds->numVerts <= 0 )
 			continue;
-		
+
 		/* ignore autosprite surfaces */
 		if( ds->shaderInfo->autosprite )
 			continue;
-		
+
 		/* meta this surface? */
-		if( meta == qfalse && ds->shaderInfo->forceMeta == qfalse )
+		if( ( meta == qfalse && ds->shaderInfo->forceMeta == qfalse ) || ds->shaderInfo->noMeta == qtrue)
 			continue;
-		
+
 		/* switch on type */
 		switch( ds->type )
 		{
@@ -1003,8 +1001,6 @@ averages coincident vertex normals in the meta triangles
 #define THETA_EPSILON			0.000001
 #define EQUAL_NORMAL_EPSILON	0.01
 
-extern qboolean VectorCompareExt( vec3_t n1, vec3_t n2, float epsilon );
-
 void SmoothMetaTriangles( void )
 {
 	int				i, j, k, f, fOld, start, cs, numVerts, numVotes, numSmoothed;
@@ -1183,9 +1179,8 @@ returns the index of that vert (or < 0 on failure)
 
 int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincident )
 {
-	int				i;
-	bspDrawVert_t	*dv2;
-	
+	int	i;
+	bspDrawVert_t *dv2;
 	
 	/* go through the verts and find a suitable candidate */
 	for( i = 0; i < ds->numVerts; i++ )
@@ -1194,7 +1189,7 @@ int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincid
 		dv2 = &ds->verts[ i ];
 		
 		/* compare xyz and normal */
-		if( VectorCompare( dv1->xyz, dv2->xyz ) == qfalse )
+		if( !VectorEqual( dv1->xyz, dv2->xyz ) )
 			continue;
 		if( VectorCompare( dv1->normal, dv2->normal ) == qfalse )
 			continue;
@@ -1224,8 +1219,6 @@ int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincid
 }
 
 
-
-
 /*
 AddMetaTriangleToSurface()
 attempts to add a metatriangle to a surface
@@ -1245,11 +1238,11 @@ returns the score of the triangle added
 
 static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, qboolean testAdd )
 {
-	int					i, score, coincident, ai, bi, ci, oldTexRange[ 2 ];
-	float				lmMax;
-	vec3_t				mins, maxs;
-	qboolean			inTexRange, es, et;
-	mapDrawSurface_t	old;
+	int i, score, coincident, ai, bi, ci, oldTexRange[ 2 ];
+	float lmMax;
+	vec3_t mins, maxs;
+	qboolean inTexRange, es, et;
+	mapDrawSurface_t old;
 	
 	/* overflow check */
 	if( ds->numIndexes >= maxSurfaceIndexes )
@@ -1265,7 +1258,6 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 
 	/* planar surfaces will only merge with triangles in the same plane */
 	if( npDegrees == 0.0f && ds->shaderInfo->nonplanar == qfalse && ds->planeNum >= 0 )
-	//if( npDegrees == 0.0f && ds->smoothNormals == 0.0f && ds->shaderInfo->nonplanar == qfalse && ds->planeNum >= 0 )
 	{
 		if( VectorCompare( mapplanes[ ds->planeNum ].normal, tri->plane ) == qfalse || mapplanes[ ds->planeNum ].dist != tri->plane[ 3 ] )
 			return 0;
@@ -1293,9 +1285,9 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 	ci = AddMetaVertToSurface( ds, &metaVerts[ tri->indexes[ 2 ] ], &coincident );
 
 	/* vortex: with broad merge on BSP stage we can freely merge vertexlit-only surfaces (lightmapped surfaces needs to be merged later) */
-	if (broadMerge)
-		if (ds->shaderInfo->compileFlags & C_VERTEXLIT)
-			score += (3 * VERT_SCORE);
+	//if( broadMerge == qtrue && lightmapped == qfalse )
+	if( broadMerge == qtrue && (ds->shaderInfo->compileFlags & C_VERTEXLIT) )
+		score += (3 * VERT_SCORE);
 	
 	/* check vertex underflow */
 	if( ai < 0 || bi < 0 || ci < 0 )
@@ -1315,7 +1307,7 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 	AddPointToBounds( metaVerts[ tri->indexes[ 2 ] ].xyz, mins, maxs );
 	
 	/* check lightmap bounds overflow (after at least 1 triangle has been added) */
-	if( !(ds->shaderInfo->compileFlags & C_VERTEXLIT) && ds->numIndexes > 0 && VectorLength( ds->lightmapAxis ) > 0.0f &&(VectorCompare( ds->mins, mins ) == qfalse || VectorCompare( ds->maxs, maxs ) == qfalse) )
+	if( !(ds->shaderInfo->compileFlags & C_VERTEXLIT) && ds->numIndexes > 0 && !VectorIsNull( ds->lightmapAxis ) &&(VectorCompare( ds->mins, mins ) == qfalse || VectorCompare( ds->maxs, maxs ) == qfalse) )
 	{
 		/* set maximum size before lightmap scaling (normally 2032 units) */
 		/* 2004-02-24: scale lightmap test size by 2 to catch larger brush faces */
@@ -1335,10 +1327,8 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 	oldTexRange[ 0 ] = ds->texRange[ 0 ];
 	oldTexRange[ 1 ] = ds->texRange[ 1 ];
 	inTexRange = CalcSurfaceTextureRange( ds );
-	
 	es = (ds->texRange[ 0 ] > oldTexRange[ 0 ]) ? qtrue : qfalse;
 	et = (ds->texRange[ 1 ] > oldTexRange[ 1 ]) ? qtrue : qfalse;
-	
 	if( inTexRange == qfalse && ds->numIndexes > 0 )
 	{
 		memcpy( ds, &old, sizeof( *ds ) );
@@ -1377,10 +1367,10 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 			(ci == ds->indexes[ i ] && ai == ds->indexes[ i + 2 ] && bi == ds->indexes[ i + 1 ]) )
 		{
 			/* warn about it */
-			Sys_Printf( "WARNING: Flipped triangle: (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f)\n",
-				ds->verts[ ai ].xyz[ 0 ], ds->verts[ ai ].xyz[ 1 ], ds->verts[ ai ].xyz[ 2 ],
-				ds->verts[ bi ].xyz[ 0 ], ds->verts[ bi ].xyz[ 1 ], ds->verts[ bi ].xyz[ 2 ],
-				ds->verts[ ci ].xyz[ 0 ], ds->verts[ ci ].xyz[ 1 ], ds->verts[ ci ].xyz[ 2 ] );
+			//Sys_Printf( "WARNING: Flipped triangle: (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f)\n",
+			//	ds->verts[ ai ].xyz[ 0 ], ds->verts[ ai ].xyz[ 1 ], ds->verts[ ai ].xyz[ 2 ],
+			//	ds->verts[ bi ].xyz[ 0 ], ds->verts[ bi ].xyz[ 1 ], ds->verts[ bi ].xyz[ 2 ],
+			//	ds->verts[ ci ].xyz[ 0 ], ds->verts[ ci ].xyz[ 1 ], ds->verts[ ci ].xyz[ 2 ] );
 			
 			/* reverse triangle already present */
 			memcpy( ds, &old, sizeof( *ds ) );
@@ -1431,8 +1421,6 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 	return score;
 }
 
-
-
 /*
 MetaTrianglesToSurface()
 creates map drawsurface(s) from the list of possibles
@@ -1446,7 +1434,6 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 	bspDrawVert_t		*verts;
 	int					*indexes;
 	qboolean			added;
-	
 	
 	/* allocate arrays */
 	verts = (bspDrawVert_t *)safe_malloc( sizeof( *verts ) * maxSurfaceVerts );
@@ -1498,7 +1485,7 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 		while( added )
 		{
 			/* print pacifier */
-			f = 10 * *numAdded / numMetaTriangles;
+			f = min(10 * *numAdded / numMetaTriangles, 9);
 			if( f > *fOld )
 			{
 				*fOld = f;
@@ -1561,7 +1548,7 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 		/* add to count */
 		numMergedSurfaces++;
 	}
-	
+
 	/* free arrays */
 	free( verts );
 	free( indexes );
@@ -1656,7 +1643,7 @@ merges meta triangles into drawsurfaces
 
 void MergeMetaTriangles( void )
 {
-	int					i, j, fOld, start, numAdded;
+	int					i, j, fOld, start, startDrawSurf, numAdded;
 	metaTriangle_t		*head, *end;
 	
 	
@@ -1664,17 +1651,18 @@ void MergeMetaTriangles( void )
 	if( numMetaTriangles <= 0 )
 		return;
 	
+	/* init pacifier */
+	fOld = -1;
+	start = I_FloatTime();
+	startDrawSurf = numMapDrawSurfs;
+	numAdded = 0;
+
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- MergeMetaTriangles ---\n" );
 	
 	/* sort the triangles by shader major, fognum minor */
 	qsort( metaTriangles, numMetaTriangles, sizeof( metaTriangle_t ), CompareMetaTriangles );
 
-	/* init pacifier */
-	fOld = -1;
-	start = I_FloatTime();
-	numAdded = 0;
-	
 	/* merge */
 	for( i = 0, j = 0; i < numMetaTriangles; i = j )
 	{
@@ -1702,6 +1690,7 @@ void MergeMetaTriangles( void )
 	}
 	
 	/* clear meta triangle list */
+	fOld = numMetaTriangles;
 	ClearMetaTriangles();
 	
 	/* print time */
@@ -1709,6 +1698,7 @@ void MergeMetaTriangles( void )
 		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 	
 	/* emit some stats */
+	Sys_FPrintf( SYS_VRB, "%9d triangles processed\n", fOld );
 	Sys_FPrintf( SYS_VRB, "%9d surfaces merged\n", numMergedSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d vertexes merged\n", numMergedVerts );
 }

@@ -210,8 +210,10 @@ void DiskCacheTest( void )
 
 void DiskCacheStats( void )
 {
+	/*
 	Sys_FPrintf( SYS_VRB, "--- DiskCacheStats ---\n" );
 	Sys_FPrintf( SYS_VRB, "%9i files\n", numCacheFiles);
 	Sys_FPrintf( SYS_VRB, "%9.2f Mbytes used\n", cacheSize );
 	Sys_FPrintf( SYS_VRB, "%9.2f seconds elapsed\n", cacheCpuTime );
+	*/
 }

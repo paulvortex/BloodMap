@@ -142,10 +142,6 @@ static void FixBrushSides( entity_t *e )
 	sideRef_t			*sideRef;
 	bspBrushSide_t		*side;
 	
-	
-	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- FixBrushSides ---\n" );
-	
 	/* walk list of drawsurfaces */
 	for( i = e->firstDrawSurf; i < numMapDrawSurfs; i++ )
 	{
@@ -394,8 +390,9 @@ void ProcessWorldModel( void )
 	}
 	
 	/* add references to the final drawsurfs in the apropriate clusters */
-	FilterDrawsurfsIntoTree( e, tree );
-	
+	FilterDrawsurfsIntoTree( e, tree, qtrue );
+	EmitDrawsurfsStats();
+
 	/* match drawsurfaces back to original brushsides (sof2) */
 	FixBrushSides( e );
 	
@@ -476,11 +473,11 @@ void ProcessSubModel( void )
 	MergeMetaTriangles();
 	
 	/* add references to the final drawsurfs in the apropriate clusters */
-	FilterDrawsurfsIntoTree( e, tree );
+	FilterDrawsurfsIntoTree( e, tree, qfalse );
 	
 	/* match drawsurfaces back to original brushsides (sof2) */
 	FixBrushSides( e );
-	
+
 	/* finish */
 	EndModel( e, node );
 	FreeTree( tree );
@@ -548,12 +545,13 @@ void ProcessModels( void )
 	if ( submodels > 10 )
 		Sys_Printf (" (%d)\n", (int) (I_FloatTime() - start) );
 
-	/* emit stats */
-	Sys_Printf( "%9i submodels\n", submodels);
-
 	/* restore -v setting */
 	verbose = oldVerbose;
-	
+
+	/* emit stats */
+	Sys_Printf( "%9i submodels\n", submodels);
+	EmitDrawsurfsStats();
+
 	/* write fogs */
 	EmitFogs();
 
@@ -570,7 +568,7 @@ handles creation of a bsp from a map file
 int BSPMain( int argc, char **argv )
 {
 	int			i;
-	char		path[ 1024 ], tempSource[ 1024 ];
+	char		path[ 1024 ], tempSource[ 1024 ], foliageFile[ 1024 ];
 
 	/* note it */
 	Sys_Printf( "--- BSP ---\n" );
@@ -595,6 +593,58 @@ int BSPMain( int argc, char **argv )
 		Sys_Printf( " Emit flares: enabled\n");
 	else
 		Sys_Printf( " Emit flares: disabled\n");
+
+#if 0
+	{
+		unsigned int n, numCycles, f, fOld, start;
+		vec3_t testVec;
+		numCycles = 4000000000;
+		Sys_Printf( "--- Test Speeds ---\n" );
+		Sys_Printf(  "%9i cycles\n", numCycles );
+
+		/* pass 1 */
+		Sys_Printf( "--- Pass 1 ---\n" );
+		start = I_FloatTime();
+		fOld = -1;
+		VectorSet(testVec, 5.0f, 5.0f, 5.0f);
+		for( n = 0; n < numCycles; n++ )
+		{
+			/* print pacifier */
+			f = 10 * n / numCycles;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf(SYS_VRB, "%d...", f );
+			}
+
+			/* process */
+			VectorCompare(testVec, testVec);
+		}
+		Sys_FPrintf(SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+
+		/* pass 2 */
+		Sys_Printf( "--- Pass 2 ---\n" );
+		start = I_FloatTime();
+		fOld = -1;
+		VectorSet(testVec, 5.0f, 5.0f, 5.0f);
+		for( n = 0; n < numCycles; n++ )
+		{
+			/* print pacifier */
+			f = 10 * n / numCycles;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf(SYS_VRB, "%d...", f );
+			}
+
+			/* process */
+			VectorCompare2(testVec, testVec);
+		}
+		Sys_FPrintf(SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+		Error("***");
+	}
+#endif
+
 
 	Sys_Printf( "--- CommandLine ---\n" );
 	
@@ -625,7 +675,11 @@ int BSPMain( int argc, char **argv )
 			Sys_Printf( "Disabling collision for detail brushes\n" );
 			nodetailcollision = qtrue;
 		}
-
+		else if( !strcmp( argv[ i ],  "-nofoliage" ) )
+		{
+			Sys_Printf( "Disabling foliage\n" );
+			nofoliage = qtrue;
+		}
 		else if( !strcmp( argv[ i ],  "-nofog" ) )
 		{
 			Sys_Printf( "Fog volumes disabled\n" );
@@ -830,19 +884,34 @@ int BSPMain( int argc, char **argv )
 
 	/* load shaders */
 	LoadShaderInfo();
+
+	/* check foliage file */
+	strcpy( foliageFile, source );
+	strcat( foliageFile, "_foliage.reg" );
+	if( FileExists( foliageFile ) == qtrue )
+		Sys_Printf( "Map has foliage file.\n " );
+	else
+		foliageFile[ 0 ] = 0;
 	
 	/* load original file from temp spot in case it was renamed by the editor on the way in */
 	if( strlen( tempSource ) > 0 )
-		LoadMapFile( tempSource, qfalse );
+		LoadMapFile( tempSource, qfalse, qfalse );
 	else
-		LoadMapFile( name, qfalse );
-	
-	/* ydnar: decal setup */
-	ProcessDecals();
+		LoadMapFile( name, qfalse, qfalse  );
 
+	/* load foliage file */
+	if( strlen( foliageFile ) > 0 && nofoliage == qfalse )
+		LoadMapFile( foliageFile, qfalse, qtrue );
+
+	/* vortex: preload triangle models */
+	LoadTriangleModels();
+	
 	/* vortex: decorator */
 	ProcessDecorations();
-	
+
+	/* process decals */
+	ProcessDecals();
+
 	/* ydnar: cloned brush model entities */
 	SetCloneModelNumbers();
 	

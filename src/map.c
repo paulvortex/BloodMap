@@ -1372,7 +1372,7 @@ ParseMapEntity()
 parses a single entity out of a map file
 */
 
-static qboolean ParseMapEntity( qboolean onlyLights )
+static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 {
 	epair_t			*ep;
 	const char		*classname, *value;
@@ -1486,6 +1486,13 @@ static qboolean ParseMapEntity( qboolean onlyLights )
 	
 	/* ydnar: only lights? */
 	if( onlyLights && Q_strncasecmp( classname, "light", 5 ) )
+	{
+		numEntities--;
+		return qtrue;
+	}
+
+	/* vortex: only foliage? */
+	if( onlyFoliage && Q_strncasecmp( classname, "misc_model", 10 ) )
 	{
 		numEntities--;
 		return qtrue;
@@ -1635,15 +1642,15 @@ LoadMapFile()
 loads a map file into a list of entities
 */
 
-void LoadMapFile( char *filename, qboolean onlyLights )
+void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
 {		
 	FILE		*file;
 	brush_t		*b;
 	int			oldNumEntities, numMapBrushes;
 
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- LoadMapFile ---\n" );
-	Sys_Printf( "Loading %s\n", filename );
+	if( onlyFoliage == qfalse )
+		Sys_FPrintf( SYS_VRB, "--- LoadMapFile ---\n" );
 	
 	/* hack */
 	file = SafeOpenRead( filename );
@@ -1653,24 +1660,32 @@ void LoadMapFile( char *filename, qboolean onlyLights )
 	LoadScriptFile( filename, -1 );
 	
 	/* setup */
-	if( onlyLights )
+	if( onlyLights || onlyFoliage )
 		oldNumEntities = numEntities;
 	else
 		numEntities = 0;
 	
 	/* initial setup */
-	numMapDrawSurfs = 0;
-	c_detail = 0;
-	g_bBrushPrimit = BPRIMIT_UNDEFINED;
-	
-	/* allocate a very large temporary brush for building the brushes as they are loaded */
-	buildBrush = AllocBrush( MAX_BUILD_SIDES );
-	
+	if ( onlyFoliage == qfalse )
+	{
+		numMapDrawSurfs = 0;
+		c_detail = 0;
+		g_bBrushPrimit = BPRIMIT_UNDEFINED;
+
+		/* allocate a very large temporary brush for building the brushes as they are loaded */
+		buildBrush = AllocBrush( MAX_BUILD_SIDES );
+	}
+
 	/* parse the map file */
-	while( ParseMapEntity( onlyLights ) );
+	while( ParseMapEntity( onlyLights, onlyFoliage ) );
 	
 	/* light loading */
-	if( onlyLights )
+	if ( onlyFoliage )
+	{
+		/* emit some statistics */
+		Sys_FPrintf( SYS_VRB, "%9d foliage models\n", numEntities - oldNumEntities );
+	}
+	else if( onlyLights )
 	{
 		/* emit some statistics */
 		Sys_FPrintf( SYS_VRB, "%9d light entities\n", numEntities - oldNumEntities );
@@ -1699,9 +1714,7 @@ void LoadMapFile( char *filename, qboolean onlyLights )
 		Sys_FPrintf( SYS_VRB, "%9d entities\n", numEntities );
 		Sys_FPrintf( SYS_VRB, "%9d planes\n", nummapplanes);
 		Sys_FPrintf( SYS_VRB, "%9d areaportals\n", c_areaportals);
-		Sys_FPrintf( SYS_VRB, "Size: %5.0f, %5.0f, %5.0f to %5.0f, %5.0f, %5.0f\n",
-			mapMins[ 0 ], mapMins[ 1 ], mapMins[ 2 ],
-			mapMaxs[ 0 ], mapMaxs[ 1 ], mapMaxs[ 2 ]);
+		Sys_FPrintf( SYS_VRB, "Size: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mapMins[ 0 ], mapMins[ 1 ], mapMins[ 2 ], mapMaxs[ 0 ], mapMaxs[ 1 ], mapMaxs[ 2 ]);
 		
 		/* write bogus map */
 		if( fakemap )

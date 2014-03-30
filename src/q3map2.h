@@ -287,7 +287,7 @@ abstracted bsp file
 
 #define EXTERNAL_LIGHTMAP		"lm_%04d.tga"
 
-#define MAX_LIGHTMAPS			1			/* RBSP */ /* VorteX: disable lightstyles */
+#define MAX_LIGHTMAPS			2			/* RBSP */ /* VorteX: disable lightstyles */
 #define MAX_LIGHT_STYLES		64
 #define	MAX_SWITCHED_LIGHTS		32
 #define LS_NORMAL				0x00
@@ -700,6 +700,7 @@ typedef struct shaderInfo_s
 	qb_t				legacyTerrain;					/* ydnar: enable legacy terrain crutches */
 	qb_t				indexed;						/* ydnar: attempt to use indexmap (terrain alphamap style) */
 	qb_t				forceMeta;						/* ydnar: force metasurface path */
+	qb_t				noMeta;							/* vortex: disable metasurface path */
 	qb_t				noClip;							/* ydnar: don't clip into bsp, preserve original face winding */
 	qb_t				noFast;							/* ydnar: supress fast lighting for surfaces with this shader */
 	qb_t				invert;							/* ydnar: reverse facing */
@@ -1031,6 +1032,7 @@ typedef struct mapDrawSurface_s
 	float				lightmapScale;
 	byte				smoothNormals;
 	int					vertTexProj;
+	qboolean			noAlphaFix;
 
 	/* ydnar: surface classification */
 	vec3_t				mins, maxs;
@@ -1571,7 +1573,7 @@ void						MakeMeshNormals( mesh_t in );
 void						PutMeshOnCurve( mesh_t in );
 
 /* map.c */
-void 						LoadMapFile( char *filename, qboolean onlyLights );
+void 						LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage );
 int							FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points );
 int							PlaneTypeForNormal( vec3_t normal );
 void						AddBrushBevels( void );
@@ -1650,11 +1652,12 @@ tree_t						*FaceBSP( face_t *list );
 
 
 /* model.c */
+void                        LoadTriangleModels( void );
 void						PicoPrintFunc( int level, const char *str );
 void						PicoLoadFileFunc( char *name, byte **buffer, int *bufSize );
 picoModel_t					*FindModel( char *name, int frame );
 picoModel_t					*LoadModel( char *name, int frame );
-void						InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj );
+void						InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj, qboolean noAlphaFix );
 void						AddTriangleModels( entity_t *e );
 
 
@@ -1664,7 +1667,7 @@ void						FinishSurface( mapDrawSurface_t *ds );
 void						StripFaceSurface( mapDrawSurface_t *ds );
 qboolean					CalcSurfaceTextureRange( mapDrawSurface_t *ds );
 qboolean					CalcLightmapAxis( vec3_t normal, vec3_t axis );
-void						ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds );
+void                        ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds );
 void						ClassifyEntitySurfaces( entity_t *e );
 void						TidyEntitySurfaces( entity_t *e );
 mapDrawSurface_t			*CloneSurface( mapDrawSurface_t *src, shaderInfo_t *si );
@@ -1682,7 +1685,8 @@ void						MakeFogHullSurfs( entity_t *e, tree_t *tree, char *shader );
 void						SubdivideFaceSurfaces( entity_t *e, tree_t *tree );
 void						AddEntitySurfaceModels( entity_t *e );
 int							AddSurfaceModels( mapDrawSurface_t *ds );
-void						FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree );
+void						FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier );
+void                        EmitDrawsurfsStats( );
 void						EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds );
 static void					EmitTriangleSurface( mapDrawSurface_t *ds );
 
@@ -1983,6 +1987,7 @@ Q_EXTERN qboolean			noclipmodel Q_ASSIGN( qfalse ); /* vortex: disable misc_mode
 Q_EXTERN qboolean			notjunc Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fulldetail Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nodetailcollision Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			nofoliage Q_ASSIGN( qfalse ); /* vortex: don't load foliage file */
 Q_EXTERN qboolean			nowater Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noCurveBrushes Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fakemap Q_ASSIGN( qfalse );

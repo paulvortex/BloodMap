@@ -602,8 +602,8 @@ void BeginModel( void )
 	}
 	
 	/* note size */
-	Sys_FPrintf( SYS_VRB, "BSP bounds: { %f %f %f } { %f %f %f }\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ] );
-	Sys_FPrintf( SYS_VRB, "Lightgrid bounds: { %f %f %f } { %f %f %f }\n", lgMins[ 0 ], lgMins[ 1 ], lgMins[ 2 ], lgMaxs[ 0 ], lgMaxs[ 1 ], lgMaxs[ 2 ] );
+	Sys_FPrintf( SYS_VRB, "BSP bounds: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ] );
+	Sys_FPrintf( SYS_VRB, "Lightgrid bounds: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", lgMins[ 0 ], lgMins[ 1 ], lgMins[ 2 ], lgMaxs[ 0 ], lgMaxs[ 1 ], lgMaxs[ 2 ] );
 	
 	/* set firsts */
 	mod->firstBSPSurface = numBSPDrawSurfaces;
@@ -622,11 +622,7 @@ void EndModel( entity_t *e, node_t *headnode )
 {
 	bspModel_t	*mod;
 	int i;
-	
-	
-	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- EndModel ---\n" );
-	
+
 	/* emit the bsp */
 	mod = &bspModels[ numBSPModels ];
 	EmitDrawNode_r( headnode );

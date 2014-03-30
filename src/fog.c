@@ -480,7 +480,7 @@ void FogDrawSurfaces( entity_t *e )
 	
 	
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "----- FogDrawSurfs -----\n" );
+	Sys_FPrintf( SYS_VRB, "---- FogDrawSurfs ----\n" );
 	
 	/* reset counters */
 	numFogged = 0;

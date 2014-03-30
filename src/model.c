@@ -199,14 +199,35 @@ picoModel_t *LoadModel( char *name, int frame )
 	return *pm;
 }
 
+/*
+PreloadModel() - vortex
+preloads picomodel, returns true once loaded a model
+*/
 
+qboolean PreloadModel( char *name, int frame) 
+{
+	picoModel_t	*model;
+
+	/* try to find model */
+	model = FindModel( name, frame );
+	if( model != NULL )
+		return qfalse;
+
+	/* get model */
+	model = LoadModel( name, frame );
+	if( model != NULL )
+		return qtrue;
+
+	/* fail */
+	return qfalse;
+}
 
 /*
 InsertModel() - ydnar
 adds a picomodel into the bsp
 */
 
-void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj )
+void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj, qboolean noAlphaFix )
 {
 	int					i, j, k, s, numSurfaces;
 	m4x4_t				identity, nTransform;
@@ -277,6 +298,7 @@ void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_
 		ds->entityNum = eNum;
 		ds->castShadows = castShadows;
 		ds->recvShadows = recvShadows;
+		ds->noAlphaFix = noAlphaFix;
 		
 		/* get shader name */
         shader = PicoGetSurfaceShader( surface );
@@ -323,10 +345,14 @@ void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_
 		/* set shader */
 		ds->shaderInfo = si;
 
+		/* set shading angle */
+		if( shadeAngle > 0.0f )
+			ds->smoothNormals = shadeAngle;
+
 		/* force to meta? */
 		if( (si != NULL && si->forceMeta) || (spawnFlags & 4) )	/* 3rd bit */
 			ds->type = SURFACE_FORCED_META;
-
+	
 		/* fix the surface's normals (jal: conditioned by shader info) */
 		if( !(spawnFlags & 64) && ( shadeAngle == 0.0f || ds->type != SURFACE_FORCED_META ) )
 			PicoFixSurfaceNormals( surface );
@@ -338,10 +364,6 @@ void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_
 		/* set lightmap scale */
 		if( lightmapScale > 0.0f )
 			ds->lightmapScale = lightmapScale;
-
-		/* set shading angle */
-		if( shadeAngle > 0.0f )
-			ds->smoothNormals = shadeAngle;
 
 		/* set vertical texture projection */
 		if ( vertTexProj > 0 )
@@ -631,6 +653,64 @@ void InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_
 }
 
 
+/*
+LoadTriangleModels()
+preload triangle models map is using
+*/
+
+void LoadTriangleModels( void )
+{
+	int num, frame, start, f, fOld, numLoadedModels;
+	const char *model;
+	entity_t *e;
+
+	numLoadedModels = 0;
+
+	/* note it */
+	Sys_FPrintf( SYS_VRB, "--- LoadTriangleModels ---\n" );
+
+	/* load */
+	start = I_FloatTime();
+	fOld = -1;
+	for( num = 1; num < numEntities; num++ )
+	{
+		/* get ent */
+		e = &entities[ num ];
+
+		/* print pacifier */
+		f = 10 * num / numEntities;
+		if( f != fOld )
+		{
+			fOld = f;
+			Sys_Printf( "%d...", f );
+		}
+
+		/* convert misc_models into raw geometry  */
+		if( Q_stricmp( "misc_model", ValueForKey( e, "classname" ) ) )
+			continue;
+
+		/* get model name */
+		/* vortex: add _model synonim */
+		model = ValueForKey( e, "_model" );	
+		if( model[ 0 ] == '\0' )
+			model = ValueForKey( e, "model" );
+		if( model[ 0 ] == '\0' )
+			continue;
+
+		/* get model frame */
+		frame = IntForKey( e, "_frame" );
+
+		/* insert the model */
+		if (PreloadModel( (char*) model, frame ))
+			numLoadedModels++;
+	}
+
+	/* print overall time */
+	Sys_Printf (" (%d)\n", (int) (I_FloatTime() - start) );
+
+	/* emit stats */
+	Sys_Printf( "%9i unique model/frame combinations\n", numLoadedModels);
+}
 
 /*
 AddTriangleModels()
@@ -649,6 +729,7 @@ void AddTriangleModels( entity_t *e )
 	float			temp, baseLightmapScale, lightmapScale, uvScale;
 	byte			baseSmoothNormals, smoothNormals;
 	int				baseVertTexProj, vertTexProj;
+	qboolean        noAlphaFix;
 	vec3_t			origin, scale, angles;
 	m4x4_t			transform;
 	epair_t			*ep;
@@ -699,7 +780,7 @@ void AddTriangleModels( entity_t *e )
 		/* get e2 */
 		e2 = &entities[ num ];
 		
-		/* convert misc_models into raw geometry, or forced entities with 'usemodel' */
+		/* convert misc_models into raw geometry  */
 		if( Q_stricmp( "misc_model", ValueForKey( e2, "classname" ) ) )
 			continue;
 
@@ -843,8 +924,11 @@ void AddTriangleModels( entity_t *e )
 		if( vertTexProj <= 0 )
 			vertTexProj = baseVertTexProj;
 
+		/* vortex: prevent alpha-fix stage on entity */
+		noAlphaFix = (IntForKey(mapEnt, "_noalphafix") > 0) ? qtrue : qfalse;
+
 		/* insert the model */
-		InsertModel( (char*) model, frame, transform, uvScale, remap, celShader, mapEntityNum, castShadows, recvShadows, spawnFlags, lightmapScale, 0, smoothNormals, vertTexProj );
+		InsertModel( (char*) model, frame, transform, uvScale, remap, celShader, mapEntityNum, castShadows, recvShadows, spawnFlags, lightmapScale, 0, smoothNormals, vertTexProj, noAlphaFix );
 		
 		/* free shader remappings */
 		while( remap != NULL )

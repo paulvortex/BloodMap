@@ -244,13 +244,13 @@ int PatchBSPMain( int argc, char **argv )
 
 	/* load MAP file */
 	Sys_Printf( "--- LoadMap ---\n" );
-	LoadMapFile(name, qfalse);
+	LoadMapFile(name, qfalse, qfalse);
 	Sys_Printf( "%9d entities\n", numEntities );
 
 	/* preprocess map */
 	Sys_Printf( "--- CompileEntities ---\n" );
-	ProcessDecals();
 	ProcessDecorations();
+	ProcessDecals();
 	SetModelNumbers();
 	SetCloneModelNumbers();
 	numBSPEntities = numEntities;

@@ -940,7 +940,7 @@ static void LoadShaderImages( shaderInfo_t *si )
 		color[ 3 ] += si->lightImage->pixels[ i * 4 + 3 ];
 	}
 	
-	if( VectorLength( si->color ) <= 0.0f )
+	if( VectorIsNull( si->color ) )
 	{
 		ColorNormalize( color, si->color );
 		VectorScale( color, (1.0f / count), si->averageColor );
@@ -1117,8 +1117,6 @@ static void ParseShaderFile( const char *filename )
 			strcat( shaderText, "\n" );
 			si->shaderText = (char *)safe_malloc( strlen( shaderText ) + 1 );
 			strcpy( si->shaderText, shaderText );
-			//%	if( VectorLength( si->vecs[ 0 ] ) )
-			//%		Sys_Printf( "%s\n", shaderText );
 		}
 		
 		/* ydnar: clear shader text buffer */
@@ -1871,6 +1869,12 @@ static void ParseShaderFile( const char *filename )
 					si->forceMeta = qtrue;
 				}
 
+				/* vortex: q3map_noMeta - disable metasurface pipeline */
+				else if( !Q_stricmp( token, "q3map_noMeta" ) )
+				{
+					si->noMeta = qtrue;
+				}
+
 				/* ydnar: gs mods: q3map_shadeAngle <degrees> */
 				else if( !Q_stricmp( token, "q3map_shadeAngle" ) )
 				{
@@ -2350,7 +2354,8 @@ void LoadShaderInfo( void )
 	char			filename[ 1024 ];
 	char			*shaderFiles[ MAX_SHADER_FILES ];
 	
-	
+	Sys_FPrintf(SYS_VRB, "--- LoadShaderInfo ---\n");
+
 	/* rr2do2: parse custom infoparms first */
 	if( useCustomInfoParms )
 		ParseCustomInfoParms();

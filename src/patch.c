@@ -308,7 +308,7 @@ void ParsePatch( qboolean onlyLights )
 				/* create inverse vector */
 				VectorCopy( delta2, delta3 );
 				delta3[ 3 ] = delta2[ 3 ];
-				VectorInverse( delta3 );
+				VectorNegate( delta3, delta3 );
 				
 				/* compare */
 				if( VectorCompare( delta, delta2 ) == qfalse && VectorCompare( delta, delta3 ) == qfalse )

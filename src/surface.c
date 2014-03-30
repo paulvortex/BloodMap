@@ -36,8 +36,6 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 /* dependencies */
 #include "q3map2.h"
 
-
-
 /*
 AllocDrawSurface()
 ydnar: gs mods: changed to force an explicit type when allocating
@@ -537,7 +535,7 @@ void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
 		}
 		
 		/* test for bogus plane */
-		if( VectorLength( plane ) <= 0.0f )
+		if( VectorIsNull( plane ) )
 		{
 			ds->planar = qfalse;
 			ds->planeNum = -1;
@@ -657,10 +655,6 @@ classifies all surfaces in an entity
 void ClassifyEntitySurfaces( entity_t *e )
 {
 	int		i;
-	
-	
-	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- ClassifyEntitySurfaces ---\n" );
 	
 	/* walk the surface list */
 	for( i = e->firstDrawSurf; i < numMapDrawSurfs; i++ )
@@ -801,6 +795,8 @@ shaderInfo_t *GetIndexedShader( shaderInfo_t *parent, indexMap_t *im, int numPoi
 		si->globalTexture = qtrue;
 	if( parent->forceMeta )
 		si->forceMeta = qtrue;
+	if( parent->noMeta )
+		si->noMeta = qtrue;
 	if( parent->nonplanar )
 		si->nonplanar = qtrue;
 	if( si->shadeAngleDegrees == 0.0 )
@@ -812,7 +808,7 @@ shaderInfo_t *GetIndexedShader( shaderInfo_t *parent, indexMap_t *im, int numPoi
 		VectorCopy( parent->vecs[ 0 ], si->vecs[ 0 ] );
 		VectorCopy( parent->vecs[ 1 ], si->vecs[ 1 ] );
 	}
-	if( VectorLength( parent->lightmapAxis ) > 0.0f && VectorLength( si->lightmapAxis ) <= 0.0f )
+	if( !VectorIsNull( parent->lightmapAxis ) && VectorIsNull( si->lightmapAxis ) )
 	{
 		/* set lightmap projection axis */
 		VectorCopy( parent->lightmapAxis, si->lightmapAxis );
@@ -1020,18 +1016,6 @@ moved here from patch.c
 */
 
 #define YDNAR_NORMAL_EPSILON 0.50f
-
-qboolean VectorCompareExt( vec3_t n1, vec3_t n2, float epsilon )
-{
-	int		i;
-	
-	
-	/* test */
-	for( i= 0; i < 3; i++ )
-		if( fabs( n1[ i ] - n2[ i ]) > epsilon )
-			return qfalse;
-	return qtrue;
-}
 
 mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh )
 {
@@ -2756,8 +2740,7 @@ static void EmitTriangleSurface( mapDrawSurface_t *ds )
 		out->surfaceType = MST_FOLIAGE;
 	
 	/* ydnar: gs mods: handle lightmapped terrain (force to planar type) */
-	//%	else if( VectorLength( ds->lightmapAxis ) <= 0.0f || ds->type == SURFACE_TRIANGLES || ds->type == SURFACE_FOGHULL || debugSurfaces )
-	else if( (VectorLength( ds->lightmapAxis ) <= 0.0f && ds->planar == qfalse) ||
+	else if( (VectorIsNull( ds->lightmapAxis ) && ds->planar == qfalse) ||
 		ds->type == SURFACE_TRIANGLES ||
 		ds->type == SURFACE_FOGHULL ||
 		ds->numVerts > maxLMSurfaceVerts ||
@@ -2839,6 +2822,7 @@ static void EmitTriangleSurface( mapDrawSurface_t *ds )
 	EmitDrawIndexes( ds, out );
 	
 	/* add to count */
+	//Sys_Printf( " %s - %s - %i\n", ds->shaderInfo->shader, surfaceTypes[ ds->type ], numSurfacesByType[ ds->type ] );
 	numSurfacesByType[ ds->type ]++;
 }
 
@@ -3172,7 +3156,7 @@ int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, surfaceModel_t *model, b
 			}
 			
 			/* insert the model */
-			InsertModel( (char *) model->model, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, 0, ds->smoothNormals, ds->vertTexProj );
+			InsertModel( (char *) model->model, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix );
 			
 			/* return to sender */
 			return 1;
@@ -3433,146 +3417,229 @@ static void VolumeColorMods( entity_t *e, mapDrawSurface_t *ds )
 }
 
 
-
 /*
-AverageVertexAlpha() - vortex
+FixDrawsurfVertexAlpha() - vortex
 find near vertexes and performs averaging of vertex alpha on them
 to remove seams caused by multiple alphaMods applied at once
 */
 
-int FixVertexAlpha(entity_t *e)
+int numAlphaFixedVerts = 0;
+entity_t *alphaFixEntity = NULL;
+ThreadMutex *alphaFixMutex = NULL;
+
+void FixDrawsurfVertexAlpha(int dsnum)
 {
-	int	i, j, k, l, dsnum, color, fixedVerts;
+	int	i, j, k, l, numSurfs, color;
 	mapDrawSurface_t *ds, *ds2;
 	shaderInfo_t *si, *si2;
-	vec3_t delta;
-
-	fixedVerts = 0;
-	/* iterate crossing drawsurfaces */
-	for (dsnum = e->firstDrawSurf; dsnum < numMapDrawSurfs; dsnum++)
-	{
-		ds = &mapDrawSurfs[ dsnum ];
-		si = ds->shaderInfo;
-		if( ds->skybox || ( ds->numVerts == 0 && ds->type != SURFACE_FLARE && ds->type != SURFACE_SHADER ) )
-			continue;
+	//float delta;
 	
-		/* iterate each drawsurface, find all drawsurfaces can iterate */
-		if (!si->fixVertexAlpha)
+	ds = &mapDrawSurfs[ alphaFixEntity->firstDrawSurf + dsnum ];
+	si = ds->shaderInfo;
+	numSurfs = numMapDrawSurfs - alphaFixEntity->firstDrawSurf;;
+
+	/* early out conditions */
+	if( ds->skybox || ( ds->numVerts == 0 && ds->type != SURFACE_FLARE && ds->type != SURFACE_SHADER ) )
+		return;
+	if (si->fixVertexAlpha == qfalse)
+		return;
+	if( ds->noAlphaFix )
+		return;
+
+	/* iterate each drawsurface, find all drawsurfaces can iterate */
+	for (i = 0; i < numSurfs; i++)
+	{
+		ds2 = &mapDrawSurfs[ alphaFixEntity->firstDrawSurf + i ];
+		si2 = ds2->shaderInfo;
+		if (si2->fixVertexAlpha == qfalse)
 			continue;
-		for (i = e->firstDrawSurf; i < numMapDrawSurfs; i++)
+
+		/* check if surfaces have any common layers */
+		if (si->fixVertexAlphaLayers[0] != si2->fixVertexAlphaLayers[0] && si->fixVertexAlphaLayers[0] != si2->fixVertexAlphaLayers[1] &&
+			si->fixVertexAlphaLayers[1] != si2->fixVertexAlphaLayers[0] && si->fixVertexAlphaLayers[1] != si2->fixVertexAlphaLayers[1])
+			continue;
+
+		/* test bbox */
+		if( ds2->mins[ 0 ] > ds->maxs[ 0 ] || ds2->maxs[ 0 ] < ds->mins[ 0 ] ||
+			ds2->mins[ 1 ] > ds->maxs[ 1 ] || ds2->maxs[ 1 ] < ds->mins[ 1 ] ||
+			ds2->mins[ 2 ] > ds->maxs[ 2 ] || ds2->maxs[ 2 ] < ds->mins[ 2 ] )
+			continue;
+
+		/* dont test against self */
+		if (i == dsnum)
+			continue;
+
+		/* walk all verts and find ones lying same space */
+		for( j = 0; j < ds2->numVerts; j++ )
 		{
-			ds2 = &mapDrawSurfs[ i ];
-			si2 = ds2->shaderInfo;
-			if (!si2->fixVertexAlpha)
-				continue;
-
-			/* test bbox */
-			if( ds2->mins[ 0 ] > ds->maxs[ 0 ] || ds2->maxs[ 0 ] < ds->mins[ 0 ] ||
-				ds2->mins[ 1 ] > ds->maxs[ 1 ] || ds2->maxs[ 1 ] < ds->mins[ 1 ] ||
-				ds2->mins[ 2 ] > ds->maxs[ 2 ] || ds2->maxs[ 2 ] < ds->mins[ 2 ] )
-				continue;
-
-			/* dont test against self */
-			if (i == dsnum)
-				continue;
-
-			/* walk all verts and find ones lying same space */
-			for( j = 0; j < ds2->numVerts; j++ )
+			for( k = 0; k < ds->numVerts; k++ )
 			{
-				for( k = 0; k < ds->numVerts; k++ )
+				/* test distance */
+				if( !VectorEqual(ds2->verts[ j ].xyz, ds->verts[ k ].xyz) )
+				/*
+				delta = ds2->verts[ j ].xyz,[ 0 ] - ds->verts[ k ].xyz [ 0 ];
+				if ( delta > 1 || delta < -1 )
+					continue;
+				delta = ds2->verts[ j ].xyz[ 1 ] - ds->verts[ k ].xyz [ 1 ];
+				if ( delta > 1 || delta < -1 )
+					continue;
+				delta = ds2->verts[ j ].xyz[ 2 ] - ds->verts[ k ].xyz [ 2 ];
+				if ( delta > 1 || delta < -1 )
+				*/
+					continue;
+				
+				numAlphaFixedVerts++;
+
+				/* average */
+				if (si->fixVertexAlphaLayers[0] == si2->fixVertexAlphaLayers[0] && si->fixVertexAlphaLayers[1] == si2->fixVertexAlphaLayers[1])
 				{
-					/* test distance */
-					VectorSubtract( ds2->verts[j].xyz, ds->verts[k].xyz, delta );
-					if (VectorLength(delta) > 1)
-						continue;
-			
-					fixedVerts++;
-					/* average */
-					if (si->fixVertexAlphaLayers[0] == si2->fixVertexAlphaLayers[0] && si->fixVertexAlphaLayers[1] == si2->fixVertexAlphaLayers[1])
+					for (l = 0; l < MAX_LIGHTMAPS; l++)
 					{
-						for (l = 0; l < MAX_LIGHTMAPS; l++)
-						{
-							color = ((ds2->verts[j].color[l][3] + ds->verts[k].color[l][3]) / 2);
-							ds->verts[k].color[l][3] = (byte) color;
-							ds2->verts[j].color[l][3] = (byte) color;
-						}
-						continue;
+						color = ((ds2->verts[j].color[l][3] + ds->verts[k].color[l][3]) / 2);
+						ThreadMutexLock( &alphaFixMutex[ dsnum ] );
+						ds->verts[k].color[l][3] = (byte) color;
+						ThreadMutexUnlock( &alphaFixMutex[ dsnum ] );
+						ThreadMutexLock( &alphaFixMutex[ i ] );
+						ds2->verts[j].color[l][3] = (byte) color;
+						ThreadMutexUnlock( &alphaFixMutex[ i ] );
 					}
-					/* connect 0-0 */
-					if (si->fixVertexAlphaLayers[0] == si2->fixVertexAlphaLayers[0])
+					continue;
+				}
+				/* connect 0-0 */
+				if (si->fixVertexAlphaLayers[0] == si2->fixVertexAlphaLayers[0])
+				{
+					/* connect in primary layer */
+					for (l = 0; l < MAX_LIGHTMAPS; l++)
 					{
-						// connect in primary layer
-						for (l = 0; l < MAX_LIGHTMAPS; l++)
-						{
-							ds->verts[k].color[l][3] = 0;
-							ds2->verts[j].color[l][3] = 0;
-						}
-						continue;
+						ThreadMutexLock( &alphaFixMutex[ dsnum ] );
+						ds->verts[k].color[l][3] = 0;
+						ThreadMutexUnlock( &alphaFixMutex[ dsnum ] );
+						ThreadMutexLock( &alphaFixMutex[ i ] );
+						ds2->verts[j].color[l][3] = 0;
+						ThreadMutexUnlock( &alphaFixMutex[ i ] );
 					}
-					/* cross-connect 0-1 */
-					if (si->fixVertexAlphaLayers[0] == si2->fixVertexAlphaLayers[1])
+					continue;
+				}
+				/* cross-connect 0-1 */
+				if (si->fixVertexAlphaLayers[0] == si2->fixVertexAlphaLayers[1])
+				{
+					/* connect in primary layer */
+					for (l = 0; l < MAX_LIGHTMAPS; l++)
 					{
-						// connect in primary layer
-						for (l = 0; l < MAX_LIGHTMAPS; l++)
-						{
-							ds->verts[k].color[l][3] = 0;
-							ds2->verts[j].color[l][3] = 255;
-						}
-						continue;
+						ThreadMutexLock( &alphaFixMutex[ dsnum ] );
+						ds->verts[k].color[l][3] = 0;
+						ThreadMutexUnlock( &alphaFixMutex[ dsnum ] );
+						ThreadMutexLock( &alphaFixMutex[ i ] );
+						ds2->verts[j].color[l][3] = 255;
+						ThreadMutexUnlock( &alphaFixMutex[ i ] );
 					}
-					/* cross-connect 1-0 */
-					if (si->fixVertexAlphaLayers[1] == si2->fixVertexAlphaLayers[0])
+					continue;
+				}
+				/* cross-connect 1-0 */
+				if (si->fixVertexAlphaLayers[1] == si2->fixVertexAlphaLayers[0])
+				{
+					/* connect in primary layer */
+					for (l = 0; l < MAX_LIGHTMAPS; l++)
 					{
-						// connect in primary layer
-						for (l = 0; l < MAX_LIGHTMAPS; l++)
-						{
-							ds->verts[k].color[l][3] = 255;
-							ds2->verts[j].color[l][3] = 0;
-						}
-						continue;
+						ThreadMutexLock( &alphaFixMutex[ dsnum ] );
+						ds->verts[k].color[l][3] = 255;
+						ThreadMutexUnlock( &alphaFixMutex[ dsnum ] );
+						ThreadMutexLock( &alphaFixMutex[ i ] );
+						ds2->verts[j].color[l][3] = 0;
+						ThreadMutexUnlock( &alphaFixMutex[ i ] );
 					}
-					/* connect 1-1 */
-					if (si->fixVertexAlphaLayers[1] == si2->fixVertexAlphaLayers[1])
+					continue;
+				}
+				/* connect 1-1 */
+				if (si->fixVertexAlphaLayers[1] == si2->fixVertexAlphaLayers[1])
+				{
+					/* connect in primary layer */
+					for (l = 0; l < MAX_LIGHTMAPS; l++)
 					{
-						// connect in primary layer
-						for (l = 0; l < MAX_LIGHTMAPS; l++)
-						{
-							color = ((ds2->verts[j].color[l][3] + ds->verts[k].color[l][3]) / 2);
-							ds->verts[k].color[l][3] = 255;
-							ds2->verts[j].color[l][3] = 255;
-						}
-						continue;
+						color = ((ds2->verts[j].color[l][3] + ds->verts[k].color[l][3]) / 2);
+						ThreadMutexLock( &alphaFixMutex[ dsnum ] );
+						ds->verts[k].color[l][3] = 255;
+						ThreadMutexUnlock( &alphaFixMutex[ dsnum ] );
+						ThreadMutexLock( &alphaFixMutex[ i ] );
+						ds2->verts[j].color[l][3] = 255;
+						ThreadMutexUnlock( &alphaFixMutex[ i ] );
 					}
+					continue;
 				}
 			}
 		}
 	}
-	return fixedVerts;
 }
 
-
 /*
-FilterDrawsurfsIntoTree()
-upon completion, all drawsurfs that actually generate a reference
-will have been emited to the bspfile arrays, and the references
-will have valid final indexes
+FixVertexAlpha() - vortex
+part of FilterDrawsurfsIntoTree()
+fixes seams on vertex alpha on entity drawsurfaces
 */
 
-void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree )
+void FixVertexAlpha(entity_t *e, qboolean showpacifier)
 {
-	int					i, j;
-	mapDrawSurface_t	*ds;
-	shaderInfo_t		*si;
-	vec3_t				origin, mins, maxs;
-	int					refs;
-	int					numSurfs, numRefs, numSkyboxSurfaces, numFixedVerts;
-	
+	int	i, numSurfs;
+
+
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- FilterDrawsurfsIntoTree ---\n" );
+	if( showpacifier == qtrue )
+		Sys_Printf( "--- FixVertexAlpha ---\n" );
+
+	/* init mutexes */
+	numSurfs = numMapDrawSurfs - e->firstDrawSurf;
+	alphaFixMutex = (ThreadMutex *)safe_malloc(numSurfs * sizeof(ThreadMutex *));
+	for( i = 0; i < numSurfs; i++)
+		ThreadMutexInit( &alphaFixMutex[ i ] );
+
+	/* iterate crossing drawsurfaces */
+	alphaFixEntity = e;
+	numAlphaFixedVerts = 0;
+	RunThreadsOnIndividual(numSurfs, showpacifier, FixDrawsurfVertexAlpha);
+
+	/* delete mutexes */
+	for( i = 0; i < numSurfs; i++)
+		ThreadMutexDelete( &alphaFixMutex[ i ] );
+	free( alphaFixMutex );
+
+	/* emit stats */
+	Sys_FPrintf( SYS_VRB, "%9d vertexes fixed\n", numAlphaFixedVerts );
+}
+
+/*
+ApplyVolumeMods() - vortex
+part of FilterDrawsurfsIntoTree()
+apply shader abd brush colormods to surface vertexes
+*/
+
+void ApplyVolumeMods(entity_t *e, qboolean showpacifier)
+{
+	int	i, j, f, fOld, start;
+	mapDrawSurface_t *ds;
+	shaderInfo_t *si;
+
+	/* note it */
+	if( showpacifier == qtrue )
+		Sys_Printf( "--- ApplyVolumeMods ---\n" );
+
+	/* init pacifier */
+	start = I_FloatTime();
+	fOld = -1;
 
 	/* apply mods */
 	for( i = e->firstDrawSurf; i < numMapDrawSurfs; i++ )
 	{
+		/* print pacifier */
+		if( showpacifier == qtrue )
+		{
+			f = 10 * (i - e->firstDrawSurf) / (numMapDrawSurfs - e->firstDrawSurf);
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_Printf( "%d...", f );
+			}
+		}
+
 		/* get surface and try to early out */
 		ds = &mapDrawSurfs[ i ];
 		if( ds->numVerts == 0 && ds->type != SURFACE_FLARE && ds->type != SURFACE_SHADER )
@@ -3598,7 +3665,7 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree )
 			Fur( ds );
 			
 		/* ydnar/sd: make foliage surfaces */
-		if( si->foliage != NULL )
+		if( si->foliage != NULL && nofoliage == qfalse )
 			Foliage( ds );
 			
 		/* create a flare surface if necessary */
@@ -3606,11 +3673,40 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree )
 			AddSurfaceFlare( ds, e->origin );
 	}
 
-	/* VorteX: fix seams in vertex-alpha surfaces, 4 passes because many verts can be connected in one point */
-	numFixedVerts = FixVertexAlpha(e);
-	numFixedVerts = FixVertexAlpha(e);
-	numFixedVerts = FixVertexAlpha(e);
-	numFixedVerts = FixVertexAlpha(e);
+	/* print time */
+	if( showpacifier == qtrue )
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
+}
+
+/*
+FilterDrawsurfsIntoTree()
+upon completion, all drawsurfs that actually generate a reference
+will have been emited to the bspfile arrays, and the references
+will have valid final indexes
+*/
+
+void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier )
+{
+	int	i, f, fOld, start;
+	mapDrawSurface_t *ds;
+	shaderInfo_t *si;
+	vec3_t origin, mins, maxs;
+	int refs;
+	int	numSurfs, numRefs, numSkyboxSurfaces;
+	
+	/* apply mods */
+	ApplyVolumeMods( e, showpacifier );
+
+	/* fix vertex alpha */
+	FixVertexAlpha( e, showpacifier );
+
+	/* note it */
+	if( showpacifier == qtrue )
+		Sys_Printf( "--- FilterDrawsurfsIntoTree ---\n" );
+
+	/* init pacifier */
+	start = I_FloatTime();
+	fOld = -1;
 
 	/* filter surfaces into the tree */
 	numSurfs = 0;
@@ -3618,6 +3714,17 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree )
 	numSkyboxSurfaces = 0;
 	for( i = e->firstDrawSurf; i < numMapDrawSurfs; i++ )
 	{
+		/* print pacifier */
+		if( showpacifier == qtrue )
+		{
+			f = 10 * (i - e->firstDrawSurf) / (numMapDrawSurfs - e->firstDrawSurf);
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_Printf( "%d...", f );
+			}
+		}
+
 		/* get surface and try to early out */
 		ds = &mapDrawSurfs[ i ];
 		if( ds->numVerts == 0 && ds->type != SURFACE_FLARE && ds->type != SURFACE_SHADER )
@@ -3731,7 +3838,7 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree )
 				refs = 0;
 				break;
 		}
-		
+
 		/* tot up the references */
 		if( refs > 0 )
 		{
@@ -3764,20 +3871,28 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree )
 		}
 	}
 
+	/* print time */
+	if( showpacifier == qtrue )
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* emit some statistics */
 	Sys_FPrintf( SYS_VRB, "%9d references\n", numRefs );
-	Sys_FPrintf( SYS_VRB, "%9d (%d) emitted drawsurfs\n", numSurfs, numBSPDrawSurfaces );
+	Sys_FPrintf( SYS_VRB, "%9d surfaces\n", numSurfs );
+	Sys_FPrintf( SYS_VRB, "%9d skybox surfaces generated\n", numSkyboxSurfaces );
+}
+
+void EmitDrawsurfsStats()
+{
+	int i;
+
+	Sys_FPrintf( SYS_VRB, "%9d emitted drawsurfs\n", numBSPDrawSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d stripped face surfaces\n", numStripSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d fanned face surfaces\n", numFanSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d surface models generated\n", numSurfaceModels );
-	Sys_FPrintf( SYS_VRB, "%9d skybox surfaces generated\n", numSkyboxSurfaces );
 	for( i = 0; i < NUM_SURFACE_TYPES; i++ )
-		Sys_FPrintf( SYS_VRB, "%9d %s surfaces\n", numSurfacesByType[ i ], surfaceTypes[ i ] );
-	
+		if ( numSurfacesByType[ i ] )
+			Sys_FPrintf( SYS_VRB, "%9d %s surfaces\n", numSurfacesByType[ i ], surfaceTypes[ i ] );
 	Sys_FPrintf( SYS_VRB, "%9d redundant indexes supressed, saving %d Kbytes\n", numRedundantIndexes, (numRedundantIndexes * 4 / 1024) );
-	Sys_FPrintf( SYS_VRB, "%9d vertexes alpha-fixed\n", numFixedVerts );
 }
-
 
 
