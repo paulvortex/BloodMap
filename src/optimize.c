@@ -297,7 +297,7 @@ void MergeDrawSurfaces(void)
 	bspDrawSurface_t *ds, *ds2, *newDrawSurfaces;
 	bspDrawVert_t *newDrawVerts, *dv, *dv2;
 	int *newDrawIndexes, *newLeafSurfaces, *di, *di2, firstDS, numDS;
-	vec3_t newsize;
+	vec3_t newmins, newmaxs, newsize;
 
 	Sys_Printf( "--- MergeDrawSurfaces ---\n" );
 
@@ -412,15 +412,23 @@ void MergeDrawSurfaces(void)
 				ds2 = ms2->ds;
 
 				/* surface should match shader and lightmapnum */
-				if (ds->shaderNum == ds2->shaderNum && ds->lightmapNum[0] == ds2->lightmapNum[0])
+				if (ds->shaderNum == ds2->shaderNum && ds->lightmapNum[ 0 ] == ds2->lightmapNum[ 0 ])
 				{
-					/* check min/max bounds */
-					newsize[0] = max(ms->absmax[0], ms2->absmax[0]) - min(ms->absmin[0], ms2->absmin[0]);
-					newsize[1] = max(ms->absmax[1], ms2->absmax[1]) - min(ms->absmin[1], ms2->absmin[1]);
-					newsize[2] = max(ms->absmax[2], ms2->absmax[2]) - min(ms->absmin[2], ms2->absmin[2]);
-					if (newsize[0] < max(mergeBlock[0], ms2->absmax[0] - ms2->absmin[0]) && 
-						newsize[1] < max(mergeBlock[1], ms2->absmax[1] - ms2->absmin[1]) &&
-						newsize[2] < max(mergeBlock[2], ms2->absmax[2] - ms2->absmin[2]))
+					vec3_t testBlock;
+
+					/* calc new size) */
+					VectorCopy(ms2->absmin, newmins);
+					VectorCopy(ms2->absmax, newmaxs);
+					testBlock[ 0 ] = max(mergeBlock[ 0 ], fabs(newmaxs[ 0 ] - newmins[ 0 ]));
+					testBlock[ 1 ] = max(mergeBlock[ 1 ], fabs(newmaxs[ 1 ] - newmins[ 1 ]));
+					testBlock[ 2 ] = max(mergeBlock[ 2 ], fabs(newmaxs[ 2 ] - newmins[ 2 ]));
+					AddPointToBounds(ms->absmin, newmins, newmaxs);
+					AddPointToBounds(ms->absmax, newmins, newmaxs);
+					newsize[ 0 ] = fabs(newmaxs[ 0 ] - newmins[ 0 ]);
+					newsize[ 1 ] = fabs(newmaxs[ 1 ] - newmins[ 1 ]);
+					newsize[ 2 ] = fabs(newmaxs[ 2 ] - newmins[ 2 ]);
+					/* test size */
+					if (newsize[ 0 ] <= testBlock[ 0 ] && newsize[ 1 ] <= testBlock[ 1 ] && newsize[ 2 ] <= testBlock[ 2 ])
 					{
 						/* allow merge */
 						if (!ms2->last)
@@ -621,9 +629,9 @@ typedef struct bspDrawVertMeta_s
 }
 bspDrawVertMeta_t;
 
-#define VERTMERGE_ORIGIN_EPSILON  0.01
+#define VERTMERGE_ORIGIN_EPSILON  0.05
 #define VERTMERGE_NORMAL_EPSILON  0.2
-#define VERTMERGE_TC_EPSILON      0.02
+#define VERTMERGE_TC_EPSILON      0.091
 #define VERTMERGE_LMTC_EPSILON    0.0005
 #define VERTMERGE_COLOR_EPSILON   32
 #define VERTMERGE_ALPHA_EPSILON   32
@@ -671,9 +679,9 @@ qboolean Vec1CompareExt(float n1, float n2, float epsilon)
 
 void MergeDrawVerts(void)
 {
-	int i, start, f, fOld, modelnum, surfacenum, vertnum, indexnum, a, b, c;
+	int i, j, k, start, f, fOld, modelnum, surfacenum, vertnum, indexnum, a, b, c;
 	int numVertsProcessed, numVertsToMerge, numNewVerts, numNewIndexes, numRemovedTriangles, *newDrawIndexes;
-	int firstVert, numVerts, firstIndex, numIndexes;
+	int firstVert, firstIndex;
 	bspModel_t *model;
 	bspDrawSurface_t *ds;
 	bspDrawVert_t *dv, *dv2, *newDrawVerts;
@@ -754,7 +762,7 @@ void MergeDrawVerts(void)
 				numVertsProcessed++;
 
 				/* find coincident vertices */
-				if (ds->surfaceType == MST_PLANAR && ds->surfaceType == MST_TRIANGLE_SOUP)
+				if (ds->surfaceType == MST_PLANAR || ds->surfaceType == MST_TRIANGLE_SOUP)
 				{
 					for (i = 0; i < vertnum; i++)
 					{
@@ -825,9 +833,8 @@ void MergeDrawVerts(void)
 		{
 			ds = &bspDrawSurfaces[ model->firstBSPSurface + surfacenum ];
 			firstVert = numNewVerts;
-			numVerts = 0;
 			firstIndex = numNewIndexes;
-			numIndexes = 0;
+	
 			/* walk all draw verts */
 			for (vertnum = 0; vertnum < ds->numVerts; vertnum++)
 			{
@@ -837,20 +844,29 @@ void MergeDrawVerts(void)
 				dv = mv->dv;
 				dv2 = &newDrawVerts[numNewVerts];
 				memcpy(dv2, dv, sizeof(bspDrawVert_t));
+				mv->newIndex = numNewVerts;
 				numNewVerts++;
 			}
-			/* walk all draw indexes */
+			/* walk all triangles */
 			for (indexnum = 0; indexnum < ds->numIndexes; indexnum += 3)
 			{
 				i = ds->firstVert + bspDrawIndexes[ds->firstIndex + indexnum];
+				j = ds->firstVert + bspDrawIndexes[ds->firstIndex + indexnum + 1];
+				k = ds->firstVert + bspDrawIndexes[ds->firstIndex + indexnum + 2];
 				if (i < 0 || i > numBSPDrawVerts)
 					Sys_Printf("WARNING: drawvert %i out of range 0 - %i\n", i, numBSPDrawVerts);
+				else if (j < 0 || j > numBSPDrawVerts)
+					Sys_Printf("WARNING: drawvert %i out of range 0 - %i\n", j, numBSPDrawVerts);
+				else if (k < 0 || k > numBSPDrawVerts)
+					Sys_Printf("WARNING: drawvert %i out of range 0 - %i\n", k, numBSPDrawVerts);
 				else
 				{
 					a = ((metaVerts[i].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[i].mergedto)->newIndex : metaVerts[i].newIndex) - firstVert;
-					b = ((metaVerts[i+1].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[i+1].mergedto)->newIndex : metaVerts[i+1].newIndex) - firstVert;
-					c = ((metaVerts[i+2].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[i+2].mergedto)->newIndex : metaVerts[i+2].newIndex) - firstVert;
-					if (a == b || a == c || b == c)
+					b = ((metaVerts[j].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[j].mergedto)->newIndex : metaVerts[j].newIndex) - firstVert;
+					c = ((metaVerts[k].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[k].mergedto)->newIndex : metaVerts[k].newIndex) - firstVert;
+					if (a < 0 || b < 0 || c < 0)
+						Sys_Printf("WARNING: Degraded new index %i %i %i\n", a, b, c);
+					else if (a == b || a == c || b == c)
 						numRemovedTriangles++;
 					else
 					{
