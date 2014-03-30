@@ -250,12 +250,14 @@ static int _ase_canload( PM_PARAMS_CANLOAD )
 	return PICO_PMV_OK;
 }
 
-typedef struct aseVertex_s aseVertex_t;
-struct aseVertex_s
+typedef struct aseVertex_s
 {
-	picoVec3_t xyz;
-	picoIndex_t id;
-};
+	picoVec3_t   xyz;
+	picoIndex_t  id;
+	picoIndex_t *faceRef;
+	picoIndex_t  numFaceRef;
+	picoIndex_t  maxFaceRef;
+} aseVertex_t;
 
 typedef struct aseTexCoord_s aseTexCoord_t;
 struct aseTexCoord_s
@@ -459,9 +461,7 @@ static void _ase_submit_triangles_unshared ( picoModel_t* model , aseMaterial_t*
 
 static int VectorCompareExtn( picoVec3_t n1, picoVec3_t n2, float epsilon )
 {
-	int		i;
-	
-	
+	int i;
 	/* test */
 	for( i= 0; i < 3; i++ )
 		if( fabs( n1[ i ] - n2[ i ]) > epsilon )
@@ -469,164 +469,165 @@ static int VectorCompareExtn( picoVec3_t n1, picoVec3_t n2, float epsilon )
 	return 1;
 }
 
-#define CrossProductTemp(a,b,c)		((c)[0]=(a)[1]*(b)[2]-(a)[2]*(b)[1],(c)[1]=(a)[2]*(b)[0]-(a)[0]*(b)[2],(c)[2]=(a)[0]*(b)[1]-(a)[1]*(b)[0])
+#define CrossProductTemp(a,b,c) ((c)[0]=(a)[1]*(b)[2]-(a)[2]*(b)[1],(c)[1]=(a)[2]*(b)[0]-(a)[0]*(b)[2],(c)[2]=(a)[0]*(b)[1]-(a)[1]*(b)[0])
 
-static void _ase_submit_triangles( picoModel_t* model , aseMaterial_t* materials , aseVertex_t* vertices, aseTexCoord_t* texcoords, aseColor_t* colors, aseFace_t* faces, int numFaces )
+static void _ase_submit_triangles( picoModel_t* model , aseMaterial_t* materials , aseVertex_t* vertices, aseTexCoord_t* texcoords, aseColor_t* colors, aseFace_t* faces, int numFaces, int numVertices )
 {
-   
-   picoVec3_t accum;
-   int index;
-   int counter;
-   aseFacesIter_t i = faces, end = faces + numFaces;
-   counter=0;
+	picoVec3_t accum;
+	int j, index, counter;
+	aseFacesIter_t i = faces, end = faces + numFaces;
+	aseVertex_t *v, *endv = vertices + numVertices;
+	picoVec3_t* xyz[3];
+	picoVec3_t* normal[3];
+	picoVec2_t* st[3];
+	picoColor_t* color[3];
+	picoIndex_t smooth[3], smgroup;
 
-   //rebuild normals
-   for(i=faces; i != end; ++i)
-   {
-    
-      //&(*i).facenormal
-	   //vec3_t v1, v2;
-	   //VectorSubtract(va, vb, v1);
-	   //VectorSubtract(vc, vb, v2);
-      //CrossProduct(v1, v2, out);
-      
-      picoVec3_t a,b,c;
-      picoVec3_t v1,v2,v3;
-      int j;
-      counter++;
-      for (j=0;j<3;j++)
-      {
-         a[j]    =  vertices[(*i).indices[0]].xyz[j];
-         b[j]    =  vertices[(*i).indices[1]].xyz[j];
-         c[j]    =  vertices[(*i).indices[2]].xyz[j];
-      }
-      for (j=0;j<3;j++)
-      {
-         v1[j]=a[j]-b[j];
-         v2[j]=c[j]-b[j];
-      }
-      
-      CrossProductTemp(v1,v2,v3);
-      _pico_normalize_vec(v3);
-      (*i).facenormal[0]=v3[0];
-      (*i).facenormal[1]=v3[1];
-      (*i).facenormal[2]=v3[2];
-      
-      
-   }
-   
-   
-   //if (counter>0) Sys_Printf( "Rebuilding %d Normals\n", counter * 3 );
-   for(i=faces; i != end; ++i)
+	// init connected faces
+	for (v = vertices; v != endv; ++v) 
 	{
-      /* look up the shader for the material/submaterial pair */
-		aseSubMaterial_t* subMtl = _ase_get_submaterial_or_default( materials, (*i).materialId, (*i).subMaterialId );
+		v->faceRef = NULL;
+		v->numFaceRef = 0;
+		v->maxFaceRef = 0;
+	}
+	// rebuild face normals
+	counter = 0;
+	for (i = faces; i != end; ++i)
+	{
+		picoVec3_t a, b, c;
+		picoVec3_t v1, v2, v3;
+		int j;
 
-      if( subMtl == NULL )
+		for (j = 0; j < 3; j++)
 		{
-			return;
+			a[j] = vertices[(*i).indices[0]].xyz[j];
+			b[j] = vertices[(*i).indices[1]].xyz[j];
+			c[j] = vertices[(*i).indices[2]].xyz[j];
 		}
-
+		for (j = 0; j < 3; j++)
 		{
-			picoVec3_t* xyz[3];
-         picoVec3_t *a[3];
-			picoVec3_t* normal[3];
-			picoVec2_t* st[3];
-			picoColor_t* color[3];
-			picoIndex_t smooth[3];
+			v1[j] = a[j] - b[j];
+			v2[j] = c[j] - b[j];
+		}
+		CrossProductTemp(v1, v2, v3);
+		_pico_normalize_vec(v3);
+		i->facenormal[0] = v3[0];
+		i->facenormal[1] = v3[1];
+		i->facenormal[2] = v3[2];
 
-			int j,z;
-
-         
-   
-         /* we pull the data from the vertex, color and texcoord arrays using the face index data */
-         for ( j = 0 ; j < 3 ; j ++ )
+		/* fill up connected faces */
+		#define PM_ASE_REBUILD_NORMALS_FACEREF_START 3
+		#define PM_ASE_REBUILD_NORMALS_FACEREF_GROW 10
+		for ( j = 0 ; j < 3 ; j ++ )
+		{
+			v = &vertices[i->indices[j]];
+			if (v->numFaceRef >= v->maxFaceRef)
 			{
-            aseFacesIter_t q = faces;
-            aseFacesIter_t qend = faces + numFaces;
-
-            xyz[j]    = &vertices[(*i).indices[j]].xyz;
-            
-            // Use Face normal
-            normal[j] = &(*i).facenormal;
-             
-     
-            //Oooor we can use the smoothing group
-
-            //Slow method, but testing
-            //Find All faces that use this vertex, average their facenormals.
-            // skip where smoothgroups both equal 0, or don't have any shared bits (x & y)
-            index=(*i).indices[j];
-    
-//            accum[0]=0;
-  //          accum[1]=0;
-    //        accum[2]=0;
-            accum[0]=(*i).facenormal[0];
-            accum[1]=(*i).facenormal[1];
-            accum[2]=(*i).facenormal[2];
-            counter=1;
-           
-            
-            z=0;
-            for(; q != qend; ++q)
-            {
-               z++;
-               if (q==i)
-                  continue;
-               // if  ( (*q).indices[0]==index || (*q).indices[1]==index || (*q).indices[2]==index) 
-                a[0]=  &vertices[(*q).indices[0] ].xyz; 
-                a[1]=  &vertices[(*q).indices[1] ].xyz; 
-                a[2]=  &vertices[(*q).indices[2] ].xyz; 
-               
-               if ( VectorCompareExtn(*a[0],*xyz[j],0.01f)>0 ||
-                    VectorCompareExtn(*a[1],*xyz[j],0.01f)>0 ||
-                    VectorCompareExtn(*a[2],*xyz[j],0.01f)>0
-                  )
-               {
-                  if ( (*i).smoothingGroup==0 && (*q).smoothingGroup ==0 )
-                     continue;
-
-                  if ( (*i).smoothingGroup & (*q).smoothingGroup  )
-                  {
-                     accum[0]+=(*q).facenormal[0];
-                     accum[1]+=(*q).facenormal[1];
-                     accum[2]+=(*q).facenormal[2];
-                     
-                     counter++;
-             
-                  }
-               }
-            } 
-            _pico_normalize_vec(accum); 
-
-            (*i).vertexnormal[j][0]=accum[0];
-            (*i).vertexnormal[j][1]=accum[1];
-            (*i).vertexnormal[j][2]=accum[2];
-            normal[j]=&(*i).vertexnormal[j]; 
-                        
-
-				st[j]     = &texcoords[(*i).indices[j + 3]].texcoord;
-	 	 	      
-          	if( colors != NULL && (*i).indices[j + 6] >= 0 )
+				/* allocate/grow */
+				if (!v->faceRef) 
 				{
-					color[j] = &colors[(*i).indices[j + 6]].color;
+					v->faceRef = _pico_alloc( (v->numFaceRef + PM_ASE_REBUILD_NORMALS_FACEREF_START) * sizeof(picoIndex_t) );
+					v->maxFaceRef = v->numFaceRef + PM_ASE_REBUILD_NORMALS_FACEREF_START;
 				}
 				else
 				{
-					color[j] = &white;
+					picoIndex_t *newFaceRef = _pico_alloc( (v->numFaceRef + PM_ASE_REBUILD_NORMALS_FACEREF_GROW) * sizeof(picoIndex_t) );
+					memcpy(newFaceRef, v->faceRef, v->numFaceRef * sizeof(picoIndex_t));
+					_pico_free(v->faceRef);
+					v->faceRef = newFaceRef;
+					v->maxFaceRef = v->numFaceRef + PM_ASE_REBUILD_NORMALS_FACEREF_GROW;
 				}
-
-				smooth[j] = 0;//  (vertices[(*i).indices[j]].id * (1 << 16)) + (*i).smoothingGroup; /* don't merge vertices */
-				
 			}
-
-			/* submit the triangle to the model */
-			PicoAddTriangleToModel ( model , xyz , normal , 1 , st , 1 , color , subMtl->shader, smooth );
+			v->faceRef[v->numFaceRef] = counter;
+			v->numFaceRef++;
 		}
-
+		/* advance */
+		counter++;
 	}
-}
+	// rebuild vertex normals
+	for (i = faces; i != end; ++i)
+	{
+		/* look up the shader for the material/submaterial pair */
+		aseSubMaterial_t* subMtl = _ase_get_submaterial_or_default( materials, (*i).materialId, (*i).subMaterialId );
+		if (subMtl == NULL)
+			return;
+		/* we pull the data from the vertex, color and texcoord arrays using the face index data */
+		for ( j = 0 ; j < 3 ; j ++ )
+		{
+			aseFacesIter_t q = faces;
+			aseFacesIter_t qend = faces + numFaces;
+			xyz[j] = &vertices[(*i).indices[j]].xyz;
+            normal[j] = &(*i).facenormal;
+            // smoothing group support
+            index = i->indices[j];
+			smgroup = (*i).smoothingGroup;
+			if (smgroup)
+			{
+				aseFacesIter_t face2, face2end;
+				picoIndex_t *faceIndices;
 
+				v = &vertices[i->indices[j]];
+				accum[0] = i->facenormal[0];
+				accum[1] = i->facenormal[1];
+				accum[2] = i->facenormal[2];
+				faceIndices = i->indices;
+#if 1
+				// vortex: optimized by 15x
+				face2 = &faces[v->faceRef[0]];
+				face2end = face2 + v->numFaceRef;
+				for ( ; face2 != face2end; ++face2)
+				{
+					if (face2->indices[0] != faceIndices[j] && face2->indices[1] != faceIndices[j] && face2->indices[2] != faceIndices[j])
+						continue;
+					if (!(face2->smoothingGroup & smgroup))
+						continue;
+					if (face2 == i)
+						continue;
+					accum[0] += face2->facenormal[0];
+					accum[1] += face2->facenormal[1];
+					accum[2] += face2->facenormal[2];
+				}
+#else
+				for(; q != qend; ++q)
+				{
+					if (q->indices[0] != faceIndices[j] && q->indices[1] != faceIndices[j] && q->indices[2] != faceIndices[j])
+						continue;
+					if (!(q->smoothingGroup & smgroup))
+						continue;
+					if (q == i)
+						continue;
+					accum[0] += q->facenormal[0];
+					accum[1] += q->facenormal[1];
+					accum[2] += q->facenormal[2];
+				}
+#endif
+				_pico_normalize_vec(accum); 
+				i->vertexnormal[j][0] = accum[0];
+				i->vertexnormal[j][1] = accum[1];
+				i->vertexnormal[j][2] = accum[2];
+			}
+			else
+			{
+				i->vertexnormal[j][0] = i->facenormal[0];
+				i->vertexnormal[j][1] = i->facenormal[1];
+				i->vertexnormal[j][2] = i->facenormal[2];
+			}
+			normal[j] = &(*i).vertexnormal[j]; 
+			st[j] = &texcoords[i->indices[j + 3]].texcoord;
+          	if (colors != NULL && i->indices[j + 6] >= 0)
+				color[j] = &colors[i->indices[j + 6]].color;
+			else
+				color[j] = &white;
+			smooth[j] = 0; // (vertices[(*i).indices[j]].id * (1 << 16)) + (*i).smoothingGroup; /* don't merge vertices */
+		}
+		/* submit the triangle to the model */
+		PicoAddTriangleToModel(model, xyz, normal, 1, st, 1, color, subMtl->shader, smooth);
+	}
+	/* free allocated data */
+	for (v = vertices; v != endv; ++v) 
+		if (v->faceRef)
+			_pico_free(v->faceRef);
+}
 
 /* _ase_load:
  *  loads a 3dsmax ase model file.
@@ -648,9 +649,9 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 	int numColorVertices = 0;
 	int numColorVertexFaces = 0;
 	int vertexId = 0;
-   int currentVertexFace=0;
-   int currentVertexIndex=0;
-   int counter=0;
+	int currentVertexFace=0;
+	int currentVertexIndex=0;
+	int counter=0;
 
 	aseMaterial_t* materials = NULL;
 
@@ -668,9 +669,11 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 		PicoFreeModel( model ); \
 		return NULL; \
 	}
+
 	/* create a new pico parser */
 	p = _pico_new_parser( (picoByte_t *)buffer,bufSize );
-	if (p == NULL) return NULL;
+	if (p == NULL)
+		return NULL;
 
 	/* create a new pico model */
 	model = PicoNewModel();
@@ -679,6 +682,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 		_pico_free_parser( p );
 		return NULL;
 	}
+
 	/* do model setup */
 	PicoSetModelFrameNum( model, frameNum );
 	PicoSetModelName( model, fileName );
@@ -694,18 +698,19 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 		if (_pico_parse_first( p ) == NULL)
 			break;
 
-		/* we just skip empty lines */
+		/*  skip empty lines */
 		if (p->token == NULL || !strlen( p->token ))
 			continue;
 
-		/* we skip invalid ase statements */
+		/* skip invalid ase statements */
 		if (p->token[0] != '*' && p->token[0] != '{' && p->token[0] != '}')
 		{
 			_pico_parse_skip_rest( p );
 			continue;
 		}
+
 		/* remember node name */
-		if (!_pico_stricmp(p->token,"*node_name"))
+		if (!_pico_stricmp(p->token, "*node_name"))
 		{
 			/* read node name */
 			char *ptr = _pico_parse( p,0 );
@@ -715,25 +720,25 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 			/* remember node name */
 			strncpy( lastNodeName,ptr,sizeof(lastNodeName) );
 		}
+
 		/* model mesh (originally contained within geomobject) */
-		else if (!_pico_stricmp(p->token,"*mesh"))
+		else if (!_pico_stricmp(p->token, "*mesh"))
 		{
 			/* finish existing surface */
-			_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces);
+			_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces, numVertices);
 			_pico_free(faces);
 			_pico_free(vertices);
 			_pico_free(texcoords);
 			_pico_free(colors);
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_numvertex"))
+		else if (!_pico_stricmp(p->token, "*mesh_numvertex"))
 		{
   			if (!_pico_parse_int( p, &numVertices) )
 				_ase_error_return("Missing MESH_NUMVERTEX value");
-
 			vertices = _pico_calloc(numVertices, sizeof(aseVertex_t));
-         currentVertexIndex=0;   
+			currentVertexIndex = 0;   
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_numfaces"))
+		else if (!_pico_stricmp(p->token, "*mesh_numfaces"))
 		{
 			if (!_pico_parse_int( p, &numFaces) )
 				_ase_error_return("Missing MESH_NUMFACES value");
@@ -741,27 +746,25 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 			faces = _pico_calloc(numFaces, sizeof(aseFace_t));
 
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_numtvertex"))
+		else if (!_pico_stricmp(p->token, "*mesh_numtvertex"))
 		{
 			if (!_pico_parse_int( p, &numTextureVertices) )
 				_ase_error_return("Missing MESH_NUMTVERTEX value");
-
 			texcoords = _pico_calloc(numTextureVertices, sizeof(aseTexCoord_t));
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_numtvfaces"))
+		else if (!_pico_stricmp(p->token, "*mesh_numtvfaces"))
 		{
 			if (!_pico_parse_int( p, &numTextureVertexFaces) )
 				_ase_error_return("Missing MESH_NUMTVFACES value");
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_numcvertex"))
+		else if (!_pico_stricmp(p->token, "*mesh_numcvertex"))
 		{
 			if (!_pico_parse_int( p, &numColorVertices) )
 				_ase_error_return("Missing MESH_NUMCVERTEX value");
-
 			colors = _pico_calloc(numColorVertices, sizeof(aseColor_t));
 			memset( colors, 255, numColorVertices * sizeof( aseColor_t ) );	/* ydnar: force colors to white initially */
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_numcvfaces"))
+		else if (!_pico_stricmp(p->token, "*mesh_numcvfaces"))
 		{
 			if (!_pico_parse_int( p, &numColorVertexFaces) )
 				_ase_error_return("Missing MESH_NUMCVFACES value");
@@ -770,14 +773,13 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 		/* geomobjects after the mesh blocks. we must assume that the */
 		/* new mesh was already created so all we can do here is assign */
 		/* the material reference id (shader index) now. */
-		else if (!_pico_stricmp(p->token,"*material_ref"))
+		else if (!_pico_stricmp(p->token, "*material_ref"))
 		{
 			int mtlId;
 
 			/* get the material ref (0..n) */
 			if (!_pico_parse_int( p,&mtlId) )
 				_ase_error_return("Missing material reference ID");
-
 			{
 				int i = 0;
 				/* fix up all of the aseFaceList in the surface to point to the parent material */
@@ -789,51 +791,41 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 			}
 		}
 		/* model mesh vertex */
-		else if (!_pico_stricmp(p->token,"*mesh_vertex"))
+		else if (!_pico_stricmp(p->token, "*mesh_vertex"))
 		{
-			int			index;
-
+			int	index;
 			if( numVertices == 0 )
 				_ase_error_return("Vertex parse error");
-
 			/* get vertex data (orig: index +y -x +z) */
 			if (!_pico_parse_int( p,&index ))
 				_ase_error_return("Vertex parse error");
 			if (!_pico_parse_vec( p,vertices[index].xyz ))
 				_ase_error_return("Vertex parse error");
-
 			vertices[index].id = vertexId++;
 		}
-		else if (!_pico_stricmp(p->token,"*mesh_facenormal"))
+		else if (!_pico_stricmp(p->token, "*mesh_facenormal"))
 		{
-		   //Grab the faceindex for the next vertex normals.
-         if( numVertices == 0 )
+			// Grab the faceindex for the next vertex normals.
+			if( numVertices == 0 )
 				_ase_error_return("Vertex parse error (facenormals)");
-
-         if (!_pico_parse_int( p,&currentVertexFace ))
+			if (!_pico_parse_int( p,&currentVertexFace ))
 				_ase_error_return("Vertex parse error");
-
  			if (!_pico_parse_vec( p,faces[currentVertexFace].facenormal ))
 				_ase_error_return("Vertex parse error");
-
-      }
-      /* model mesh vertex normal */
-		else if (!_pico_stricmp(p->token,"*mesh_vertexnormal"))
+		}
+		/* model mesh vertex normal */
+		else if (!_pico_stricmp(p->token, "*mesh_vertexnormal"))
 		{
-			int			index;
-
+			int index;
 			if( numVertices == 0 )
 				_ase_error_return("Vertex parse error");
-
 			/* get vertex data (orig: index +y -x +z) */
 			if (!_pico_parse_int( p,&index ))
 				_ase_error_return("Vertex parse error");
-
          //^^ Index is 'wrong' in .ase models.  they reference the same vert index with multiple normals..
          // I've tried, this is a lost cause.  Use the SG's
          // 
 			/*
-         
          if (!_pico_parse_vec( p,vertices[counter].normal ))
 				_ase_error_return("Vertex parse error");
          vertices[counter].faceid=index;
@@ -841,13 +833,12 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
          */
 		}
 		/* model mesh face */
-		else if (!_pico_stricmp(p->token,"*mesh_normals"))
-      {
-      //   counter=0; //part of the above vertex normals fix
-      }
-         
-      /* model mesh face */
-		else if (!_pico_stricmp(p->token,"*mesh_face"))
+		else if (!_pico_stricmp(p->token, "*mesh_normals"))
+		{
+		  //   counter=0; //part of the above vertex normals fix
+		}
+		/* model mesh face */
+		else if (!_pico_stricmp(p->token, "*mesh_face"))
 		{
 			picoIndex_t indexes[3];
 			int index;
@@ -924,25 +915,21 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 			faces[index].indices[2] = indexes[0];
 		}
 		/* model texture vertex */
-		else if (!_pico_stricmp(p->token,"*mesh_tvert"))
+		else if (!_pico_stricmp(p->token, "*mesh_tvert"))
 		{
-			int			index;
+			int index;
 
 			if( numVertices == 0 )
 				_ase_error_return("Vertex parse error");
-
 			/* get uv vertex index */
 			if (!_pico_parse_int( p,&index ))
 				_ase_error_return("UV vertex parse error");
-
 			/* get uv vertex s */
 			if (!_pico_parse_float( p,&texcoords[index].texcoord[0] ))
 				_ase_error_return("UV vertex parse error");
-
 			/* get uv vertex t */
 			if (!_pico_parse_float( p,&texcoords[index].texcoord[1] ))
 				_ase_error_return("UV vertex parse error");
-			
 			/* ydnar: invert t */
 			texcoords[index].texcoord[ 1 ] = 1.0f - texcoords[index].texcoord[ 1 ];
 		}
@@ -950,97 +937,79 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 		else if( !_pico_stricmp( p->token, "*mesh_tface" ) )
 		{
 			picoIndex_t indexes[3];
-			int			index;
+			int index;
 			
 			if( numFaces == 0 )
 				_ase_error_return("Texture face parse error");
-			
 			/* get face index */
 			if (!_pico_parse_int( p,&index ))
 				_ase_error_return("Texture face parse error");
-			
 			/* get 1st vertex index */
 			if (!_pico_parse_int( p,&indexes[0] ))
 				_ase_error_return("Texture face parse error");
-			
 			/* get 2nd vertex index */
 			if (!_pico_parse_int( p,&indexes[1] ))
 				_ase_error_return("Texture face parse error");
-			
 			/* get 3rd vertex index */
 			if (!_pico_parse_int( p,&indexes[2] ))
 				_ase_error_return("Texture face parse error");
-
 			faces[index].indices[3] = indexes[2];
 			faces[index].indices[4] = indexes[1];
 			faces[index].indices[5] = indexes[0];
 		}
 		/* model color vertex */
-		else if (!_pico_stricmp(p->token,"*mesh_vertcol"))
+		else if (!_pico_stricmp(p->token, "*mesh_vertcol"))
 		{
-			int			index;
-			float		colorInput;
-
-			if( numVertices == 0 )
+			int	index;
+			float colorInput;
+			if (numVertices == 0)
 				_ase_error_return("Color Vertex parse error");
-
 			/* get color vertex index */
 			if (!_pico_parse_int( p,&index ))
 				_ase_error_return("Color vertex parse error");
-
 			/* get R component */
 			if (!_pico_parse_float( p,&colorInput ))
 				_ase_error_return("Color vertex parse error");
 			colors[index].color[0] = (picoByte_t)(colorInput * 255);
-
 			/* get G component */
 			if (!_pico_parse_float( p,&colorInput ))
 				_ase_error_return("Color vertex parse error");
 			colors[index].color[1] = (picoByte_t)(colorInput * 255);
-
 			/* get B component */
 			if (!_pico_parse_float( p,&colorInput ))
 				_ase_error_return("Color vertex parse error");
 			colors[index].color[2] = (picoByte_t)(colorInput * 255);
-			
 			/* leave alpha alone since we don't get any data from the ASE format */
 			colors[index].color[3] = 255;
-
-         /* 27 hack, red as alpha */
-         colors[index].color[3]=colors[index].color[0];
-         colors[index].color[0]=255;
-         colors[index].color[1]=255;
-         colors[index].color[2]=255;
-
+			/* 27 hack, red as alpha */
+			colors[index].color[3]=colors[index].color[0];
+			colors[index].color[0]=255;
+			colors[index].color[1]=255;
+			colors[index].color[2]=255;
 		}
 		/* model color face */
-		else if (!_pico_stricmp(p->token,"*mesh_cface"))
+		else if (!_pico_stricmp(p->token, "*mesh_cface"))
 		{
 			picoIndex_t indexes[3];
-			int			index;
+			int	index;
 
-			if( numFaces == 0 )
+			if (numFaces == 0)
 				_ase_error_return("Face parse error");
-
 			/* get face index */
 			if (!_pico_parse_int( p,&index ))
 				_ase_error_return("Face parse error");
-
 			/* get 1st cvertex index */
 			//			_pico_parse( p,0 );
 			if (!_pico_parse_int( p,&indexes[0] ))
 				_ase_error_return("Face parse error");
-
 			/* get 2nd cvertex index */
 			//			_pico_parse( p,0 );
 			if (!_pico_parse_int( p,&indexes[1] ))
 				_ase_error_return("Face parse error");
-
 			/* get 3rd cvertex index */
 			//			_pico_parse( p,0 );
 			if (!_pico_parse_int( p,&indexes[2] ))
 				_ase_error_return("Face parse error");
-
 			faces[index].indices[6] = indexes[2];
 			faces[index].indices[7] = indexes[1];
 			faces[index].indices[8] = indexes[0];
@@ -1057,27 +1026,24 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 			char				*mapname = NULL;
 			int					subMtlId, subMaterialLevel = -1;
 			
-			
 			/* get material index */
 			_pico_parse_int( p,&index );
-			
 			/* check brace */
 			if (!_pico_parse_check(p,1,"{"))
 				_ase_error_return("Material missing opening brace");
-			
 			/* parse material block */
 			while( 1 )
 			{
 				/* get next token */
-				if (_pico_parse(p,1) == NULL) break;
-				if (!strlen(p->token)) continue;
-
+				if (_pico_parse(p,1) == NULL)
+					break;
+				if (!strlen(p->token))
+					continue;
 				/* handle levels */
 				if (p->token[0] == '{') level++;
 				if (p->token[0] == '}') level--;
 				if (!level) break;
-
-				if( level == subMaterialLevel )
+				if (level == subMaterialLevel)
 				{
 					/* set material name */
 					_pico_first_token( materialName );
@@ -1085,31 +1051,24 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 
 					/* set shader's transparency */
 					PicoSetShaderTransparency( shader,transValue );
-
 					/* set shader's ambient color */
 					PicoSetShaderAmbientColor( shader,ambientColor );
-
 					/* set diffuse alpha to transparency */
 					diffuseColor[3] = (picoByte_t)( transValue * 255.0 );
-
 					/* set shader's diffuse color */
 					PicoSetShaderDiffuseColor( shader,diffuseColor );
-
 					/* set shader's specular color */
 					PicoSetShaderSpecularColor( shader,specularColor );
-
 					/* set shader's shininess */
 					PicoSetShaderShininess( shader,shineValue );
-
 					/* set material map name */
 					PicoSetShaderMapName( shader, mapname );
-
 					subMaterial = _ase_add_submaterial( &materials, index, subMtlId, shader );
 					subMaterialLevel = -1;
 				}
 
 				/* parse submaterial index */
-				if (!_pico_stricmp(p->token,"*submaterial"))
+				if (!_pico_stricmp(p->token, "*submaterial"))
 				{											
 					/* allocate new pico shader */
 					_pico_parse_int( p , &subMtlId );
@@ -1123,7 +1082,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					subMaterialLevel = level;
 				}
 				/* parse material name */
-				else if (!_pico_stricmp(p->token,"*material_name"))
+				else if (!_pico_stricmp(p->token, "*material_name"))
 				{
 					char* name = _pico_parse(p,0);
 					if ( name == NULL)
@@ -1135,7 +1094,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					continue;
 				}
 				/* parse material transparency */
-				else if (!_pico_stricmp(p->token,"*material_transparency"))
+				else if (!_pico_stricmp(p->token, "*material_transparency"))
 				{
 					/* get transparency value from ase */
 					if (!_pico_parse_float( p,&transValue ))
@@ -1146,7 +1105,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					continue;
 				}
 				/* parse material shininess */
-				else if (!_pico_stricmp(p->token,"*material_shine"))
+				else if (!_pico_stricmp(p->token, "*material_shine"))
 				{
 					/* remark:
 					 * - not sure but instead of '*material_shine' i might
@@ -1164,7 +1123,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					continue;
 				}
 				/* parse ambient material color */
-				else if (!_pico_stricmp(p->token,"*material_ambient"))
+				else if (!_pico_stricmp(p->token, "*material_ambient"))
 				{
 					picoVec3_t  vec;
 					/* get r,g,b float values from ase */
@@ -1182,7 +1141,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					continue;
 				}
 				/* parse diffuse material color */
-				else if (!_pico_stricmp(p->token,"*material_diffuse"))
+				else if (!_pico_stricmp(p->token, "*material_diffuse"))
 				{
 					picoVec3_t  vec;
 
@@ -1201,7 +1160,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					continue;
 				}
 				/* parse specular material color */
-				else if (!_pico_stricmp(p->token,"*material_specular"))
+				else if (!_pico_stricmp(p->token, "*material_specular"))
 				{
 					picoVec3_t  vec;
 
@@ -1220,7 +1179,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 					continue;
 				}
 				/* material diffuse map */
-				else if (!_pico_stricmp(p->token,"*map_diffuse") )
+				else if (!_pico_stricmp(p->token, "*map_diffuse") )
 				{
 					int sublevel = 0;
 
@@ -1237,7 +1196,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 						if (!sublevel) break;
 						
 						/* parse diffuse map bitmap */
-						if (!_pico_stricmp(p->token,"*bitmap"))
+						if (!_pico_stricmp(p->token, "*bitmap"))
 						{
 							char* name = _pico_parse(p,0);
 							if (name == NULL)
@@ -1362,7 +1321,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 	}
 	
 	/* ydnar: finish existing surface */
-	_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces);
+	_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces, numVertices);
 	_pico_free(faces);
 	_pico_free(vertices);
 	_pico_free(texcoords);
