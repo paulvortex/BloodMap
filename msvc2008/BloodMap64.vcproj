@@ -153,7 +153,8 @@
 				InlineFunctionExpansion="2"
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
-				EnableFiberSafeOptimizations="false"
+				OmitFramePointers="true"
+				EnableFiberSafeOptimizations="true"
 				WholeProgramOptimization="true"
 				AdditionalIncludeDirectories=".\..\src\games;.\..\src\common;.\..\src\libs;.\..\dependencies\x64\libxml\include;.\..\dependencies\x64\gtk2\include;&quot;.\..\dependencies\x64\gtk2\include\glib-2.0&quot;;&quot;.\..\dependencies\x64\gtk2\lib\glib-2.0\include&quot;"
 				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;NDEBUG,WIN64,_CONSOLE"
@@ -175,7 +176,6 @@
 				DebugInformationFormat="3"
 				CallingConvention="0"
 				CompileAs="2"
-				DisableSpecificWarnings="4996"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -204,6 +204,7 @@
 				StackReserveSize="4194304"
 				LargeAddressAware="2"
 				OptimizeReferences="2"
+				LinkTimeCodeGeneration="1"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
 				TargetMachine="17"
