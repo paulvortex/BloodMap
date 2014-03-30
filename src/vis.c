@@ -253,10 +253,10 @@ void CalcPassageVis(void)
 	RunThreadsOnIndividual (numportals*2, qfalse, PassageFlow);
 	_printf("\n");
 #else
-	Sys_Printf( "\n--- CreatePassages (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- CreatePassages (%d) ---\n", numportals * 2 );
 	RunThreadsOnIndividual( numportals*2, qtrue, CreatePassages );
 	
-	Sys_Printf( "\n--- PassageFlow (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- PassageFlow (%d) ---\n", numportals * 2 );
 	RunThreadsOnIndividual( numportals * 2, qtrue, PassageFlow );
 #endif
 }
@@ -278,10 +278,10 @@ void CalcPassagePortalVis(void)
 	RunThreadsOnIndividual (numportals*2, qfalse, PassagePortalFlow);
 	Sys_Printf("\n");
 #else
-	Sys_Printf( "\n--- CreatePassages (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- CreatePassages (%d) ---\n", numportals * 2 );
 	RunThreadsOnIndividual( numportals * 2, qtrue, CreatePassages);
 	
-	Sys_Printf( "\n--- PassagePortalFlow (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- PassagePortalFlow (%d) ---\n", numportals * 2 );
 	RunThreadsOnIndividual( numportals * 2, qtrue, PassagePortalFlow );
 #endif
 }
@@ -313,7 +313,6 @@ void CalcVis (void)
 	int			i;
 	const char	*value;
 	
-	
 	/* ydnar: rr2do2's farplane code */
 	farPlaneDist = 0.0f;
 	value = ValueForKey( &entities[ 0 ], "_farplanedist" );		/* proper '_' prefixed key */
@@ -330,36 +329,25 @@ void CalcVis (void)
 			farPlaneDist = 0.0f;
 	}
 	
-	
-	
-	Sys_Printf( "\n--- BasePortalVis (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- BasePortalVis (%d) ---\n", numportals * 2 );
 	RunThreadsOnIndividual( numportals * 2, qtrue, BasePortalVis );
-	
-//	RunThreadsOnIndividual (numportals*2, qtrue, BetterPortalVis);
 
 	SortPortals ();
 
-  if (fastvis) {
-    CalcFastVis();
-  }
-  else if ( noPassageVis ) {
-    CalcPortalVis();
-  }
-  else if ( passageVisOnly ) {
-    CalcPassageVis();
-  }
-  else {
-    CalcPassagePortalVis();
-  }
-	//
-	// assemble the leaf vis lists by oring and compressing the portal lists
-	//
+	if (fastvis)
+		CalcFastVis();
+	else if ( noPassageVis )
+		CalcPortalVis();
+	else if ( passageVisOnly )
+		CalcPassageVis();
+	else
+		CalcPassagePortalVis();
+	/* assemble the leaf vis lists by oring and compressing the portal lists */
 	Sys_Printf("creating leaf vis...\n");
 	for (i=0 ; i<portalclusters ; i++)
 		ClusterMerge (i);
-
-  Sys_Printf( "Total visible clusters: %i\n", totalvis );
-  Sys_Printf( "Average clusters visible: %i\n", totalvis / portalclusters );
+	Sys_Printf( "Total visible clusters: %i\n", totalvis );
+	Sys_Printf( "Average clusters visible: %i\n", totalvis / portalclusters );
 }
 
 /*
@@ -1114,8 +1102,6 @@ int VisMain (int argc, char **argv)
 	
 	CountActivePortals();
 	/* WritePortals( "maps/hints.prs" );*/
-	
-	Sys_Printf( "visdatasize:%i\n", numBSPVisBytes );
 	
 	CalcVis();
 	
