@@ -57,12 +57,8 @@ decalProjector_t;
 
 static int					numProjectors = 0;
 static decalProjector_t		projectors[ MAX_PROJECTORS ];
-
 static int					numDecalSurfaces = 0;
-
 static vec3_t				entityOrigin;
-
-
 
 /*
 DVectorNormalize()
@@ -91,8 +87,6 @@ dvec_t DVectorNormalize( dvec3_t in, dvec3_t out )
 	
 	return len;
 }
-
-
 
 /*
 MakeTextureMatrix()
@@ -238,45 +232,19 @@ static qboolean MakeTextureMatrix( decalProjector_t *dp, vec4_t projection, bspD
 	}
 	#endif
 	
-	/* debug code */
-	#if 1
-		Sys_Printf( "Mat: [ %f %f %f %f ] [ %f %f %f %f ] Theta: %f (%f)\n",
-			dp->texMat[ 0 ][ 0 ], dp->texMat[ 0 ][ 1 ], dp->texMat[ 0 ][ 2 ], dp->texMat[ 0 ][ 3 ], 
-			dp->texMat[ 1 ][ 0 ], dp->texMat[ 1 ][ 1 ], dp->texMat[ 1 ][ 2 ], dp->texMat[ 1 ][ 3 ],
-			RAD2DEG( acos( DotProduct( dp->texMat[ 0 ], dp->texMat[ 1 ] ) ) ),
-			RAD2DEG( acos( DotProduct( axis[ 0 ], axis[ 1 ] ) ) ) );
-		
-		Sys_Printf( "XYZ: %f %f %f ST: %f %f ST(t): %f %f\n",
-			a->xyz[ 0 ], a->xyz[ 1 ], a->xyz[ 2 ],
-			a->st[ 0 ], a->st[ 1 ],
-			DotProduct( a->xyz, dp->texMat[ 0 ] ) + dp->texMat[ 0 ][ 3 ], DotProduct( a->xyz, dp->texMat[ 1 ] ) + dp->texMat[ 1 ][ 3 ] );
-	#endif
-	
 	/* test texture matrix */
 	s = DotProduct( a->xyz, dp->texMat[ 0 ] ) + dp->texMat[ 0 ][ 3 ];
 	t = DotProduct( a->xyz, dp->texMat[ 1 ] ) + dp->texMat[ 1 ][ 3 ];
 	if( fabs( s - a->st[ 0 ] ) > 0.01 || fabs( t - a->st[ 1 ] ) > 0.01 )
-	{
-		Sys_Printf( "Bad texture matrix! (A) (%f, %f) != (%f, %f)\n",
-			s, t, a->st[ 0 ], a->st[ 1 ] );
-		//%	return qfalse;
-	}
+		Sys_Printf( "Bad texture matrix! (A) (%f, %f) != (%f, %f)\n", s, t, a->st[ 0 ], a->st[ 1 ] );
 	s = DotProduct( b->xyz, dp->texMat[ 0 ] ) + dp->texMat[ 0 ][ 3 ];
 	t = DotProduct( b->xyz, dp->texMat[ 1 ] ) + dp->texMat[ 1 ][ 3 ];
 	if( fabs( s - b->st[ 0 ] ) > 0.01 || fabs( t - b->st[ 1 ] ) > 0.01 )
-	{
-		Sys_Printf( "Bad texture matrix! (B) (%f, %f) != (%f, %f)\n",
-			s, t, b->st[ 0 ], b->st[ 1 ] );
-		//%	return qfalse;
-	}
+		Sys_Printf( "Bad texture matrix! (B) (%f, %f) != (%f, %f)\n", s, t, b->st[ 0 ], b->st[ 1 ] );
 	s = DotProduct( c->xyz, dp->texMat[ 0 ] ) + dp->texMat[ 0 ][ 3 ];
 	t = DotProduct( c->xyz, dp->texMat[ 1 ] ) + dp->texMat[ 1 ][ 3 ];
 	if( fabs( s - c->st[ 0 ] ) > 0.01 || fabs( t - c->st[ 1 ] ) > 0.01 )
-	{
-		Sys_Printf( "Bad texture matrix! (C) (%f, %f) != (%f, %f)\n",
-			s, t, c->st[ 0 ], c->st[ 1 ] );
-		//%	return qfalse;
-	}
+		Sys_Printf( "Bad texture matrix! (C) (%f, %f) != (%f, %f)\n", s, t, c->st[ 0 ], c->st[ 1 ] );
 	
 	/* disco */
 	return qtrue;
@@ -298,6 +266,9 @@ static void TransformDecalProjector( decalProjector_t *in, vec3_t axis[ 3 ], vec
 	/* copy misc stuff */
 	out->si = in->si;
 	out->numPlanes = in->numPlanes;
+	out->lightmapScale = in->lightmapScale;
+	out->smoothNormals = in->smoothNormals;
+	out->backfacecull = in->backfacecull;
 	
 	/* translate bounding box and sphere (note: rotated projector bounding box will be invalid!) */
 	VectorSubtract( in->mins, origin, out->mins );
@@ -356,7 +327,7 @@ static int MakeDecalProjector( shaderInfo_t *si, vec4_t projection, float distan
 	/* basic setup */
 	dp->si = si;
 	dp->numPlanes = numVerts + 2;
-	dp->backfacecull = -90000; // backface_dot;
+	dp->backfacecull = 0.0;
 	dp->lightmapScale = lightmapScale;
 	dp->smoothNormals = smoothNormals;
 	
@@ -471,11 +442,11 @@ void ProcessDecals( void )
 			lightmapScale = 0.0f;
 
 		/* vortex: per-entity normal smoothing */
-		if( strcmp( "", ValueForKey( mapEnt, "_smoothnormals" ) ) || strcmp( "", ValueForKey( mapEnt, "_np" ) ) )
+		if( strcmp( "", ValueForKey( e, "_smoothnormals" ) ) || strcmp( "", ValueForKey( e, "_np" ) ) )
 		{
-			smoothNormals = IntForKey(mapEnt, "_smoothnormals");
+			smoothNormals = IntForKey(e, "_smoothnormals");
 			if (smoothNormals <= 0)
-				smoothNormals = IntForKey(mapEnt, "_np");
+				smoothNormals = IntForKey(e, "_np");
 		}
 		else
 			smoothNormals = 0;
@@ -660,7 +631,7 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 	ds2->numVerts = w->numpoints;
 	ds2->verts = (bspDrawVert_t *)safe_malloc( ds2->numVerts * sizeof( *ds2->verts ) );
 	memset( ds2->verts, 0, ds2->numVerts * sizeof( *ds2->verts ) );
-	
+
 	/* set vertexes */
 	for( i = 0; i < ds2->numVerts; i++ )
 	{
@@ -875,16 +846,19 @@ void MakeEntityDecals( entity_t *e )
 	for( i = 0; i < numProjectors; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numProjectors;
-		if( f != fOld )
+		if( numProjectors > 10 )
 		{
-			fOld = f;
-			Sys_FPrintf( SYS_VRB, "%d...", f );
+			f = 10 * i / numProjectors;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf( SYS_VRB, "%d...", f );
+			}
 		}
 		
 		/* get projector */
 		TransformDecalProjector( &projectors[ i ], identityAxis, e->origin, &dp );
-		
+
 		/* walk the list of surfaces in the entity */
 		for( j = e->firstDrawSurf; j < numMapDrawSurfs; j++ )
 		{
@@ -929,7 +903,8 @@ void MakeEntityDecals( entity_t *e )
 	}
 	
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	if( numProjectors > 10 )
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 	
 	/* emit some stats */
 	Sys_FPrintf( SYS_VRB, "%9d decal surfaces\n", numDecalSurfaces );
