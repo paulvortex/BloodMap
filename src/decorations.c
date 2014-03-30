@@ -3,12 +3,19 @@
 
 #include "q3map2.h"
 
-/* marker */
+// marker
 #define DECORATIONS_C
 
-#define MAX_DECORE_GROUPS		128
-#define MAX_DECORE_ACTIONS		64
+// limits
+#define MAX_DECORE_GROUPS		1024
+#define MAX_DECORE_ACTIONS		128
+#define MAX_DECORE_TESTNODES	512
 
+// defaults
+#define DEFAULT_DECORE_TESTNODES 64
+#define MIN_DECORE_TESTNODES     10
+
+// action codes
 typedef enum
 {
 	DECOREACTION_NULL,
@@ -17,116 +24,138 @@ typedef enum
 	DECOREACTION_KEY_SETFLAG,	
 	DECOREACTION_KEY_UNSETFLAG,
 	DECOREACTION_KEY_TOGGLEFLAG,
-}dactioncode_t;
+}decoreActionCode_t;
 
+// action
 typedef struct decoreaction_s
 {
-	dactioncode_t	code;			// action type
-	char			parm[ 128 ];
-	double			value;
-	char			data[ 256 ];
-}daction_t;
+	decoreActionCode_t code;
+	char			   parm[ 128 ];
+	double			   value;
+	char			   data[ 256 ];
+}decoreAction_t;
 
-// node stuff
+// node
 typedef struct dnode_s
 {
 	void *ptr; // pointer to object
-	char *name;
 	void *next;
 	void *child;
-}dnode_t;
+}decoreNode_t;
 
-// actions
+// actions array
 typedef struct dactions_s
 {
-	daction_t	action[ MAX_DECORE_ACTIONS ];
-	int			num;
-}dactions_t;
+	decoreAction_t	action[ MAX_DECORE_ACTIONS ];
+	int			    num;
+}decoreActions_t;
 
-// group match
+// group match parm
 typedef enum
 {
 	GROUPMATCH_GROUP,
 	GROUPMATCH_CLASSNAME,
 	GROUPMATCH_MODEL
-}dmatch_t;
+}decoreMatchParm_t;
+
+// entities array
+typedef struct dgroupents_s
+{
+	entity_t  **entities;
+	int			numEntities;
+	int         maxEntities;
+}decoreEnts_t;
+
+// merge axis
+typedef enum
+{
+	MERGE_XYZ,
+	MERGE_XY
+}mergeAxis_t;
 
 // group general struct
 typedef struct dgroup_s
 {
 	// name of group
-	char		name[ 1024 ]; 
-	dmatch_t    match;
+	char		      name[ 1024 ]; 
+	decoreMatchParm_t match;
 	// entity actions
-	dactions_t	*actions;
+	decoreActions_t	 *actions;
 	// misc_model merging
-	int			mergeModels;
-	int			mergeRadius;
-	char		mergeClass[ 256 ];
+	int			      mergeModels;
+	int			      mergeRadius;
+	char		      mergeClass[ 1024 ];
+	mergeAxis_t       mergeAxis;
 	// entities
-	dnode_t		*entities;
-	int			numEntities;
-}dgroup_t;
+	decoreEnts_t      entities;
+	decoreEnts_t      testnodes[ MAX_DECORE_TESTNODES ];
+	// system
+	ThreadMutex       mutex;
+}decoreGroup_t;
 
-dgroup_t *decoreGroups Q_ASSIGN( NULL );
-int numDecoreGroups Q_ASSIGN ( 0 );
-int numDecoreEntities Q_ASSIGN ( 0 );
+decoreGroup_t *decoreGroups Q_ASSIGN( NULL );
+int            numDecoreGroups Q_ASSIGN ( 0 );
+int            numDecoreEntities Q_ASSIGN ( 0 );
+int            numDecoreTestNodes Q_ASSIGN ( 0 );
 
-/* options */
+/* rtlights import */
 #define MAX_SKIPSTYLES	128
-qboolean	importRtlights = qfalse;
-qboolean	importRtlightsSkipCubemapped = qfalse;
-float		importRtlightsColorscale = 1;
-float		importRtlightsSaturate = 1;
-float		importRtlightsRadiusmod = 0.5;
-int			importRtlightsSpawnflags = 0;
-float		importRtlightsNoShadowDeviance = 0.1;
-float		importRtlightsNoShadowSamples = 0.1;
-float		importRtlightsNoShadowMinDist = 0.5;
-float		importRtlightsShadowDeviance = 0.0;
-float		importRtlightsShadowSamples = 0.0;
-float		importRtlightsShadowMinDist = 0.1;
-int			importRtlightsSkipStyles[MAX_SKIPSTYLES];
-int			importRtlightsSkipStylesNum = 0;
+qboolean	   importRtlights = qfalse;
+qboolean	   importRtlightsSkipCubemapped = qfalse;
+float		   importRtlightsColorscale = 1;
+float		   importRtlightsSaturate = 1;
+float		   importRtlightsRadiusmod = 0.5;
+int			   importRtlightsSpawnflags = 0;
+float		   importRtlightsNoShadowDeviance = 0.1;
+float		   importRtlightsNoShadowSamples = 0.1;
+float		   importRtlightsNoShadowMinDist = 0.5;
+float		   importRtlightsShadowDeviance = 0.0;
+float		   importRtlightsShadowSamples = 0.0;
+float		   importRtlightsShadowMinDist = 0.1;
+int			   importRtlightsSkipStyles[MAX_SKIPSTYLES];
+int			   importRtlightsSkipStylesNum = 0;
 
 /*
 =========================================================
 
- NODES STUFF
+ NODES
 
 =========================================================
 */
 
-void PrintNode_f(dnode_t *node)
+void PrintNode_f(decoreNode_t *node)
 {
-	dnode_t *c;
+	decoreNode_t *c;
 
 	// node + children
 	Sys_Printf("node");
 	if (node->child != NULL)
 	{
 		Sys_Printf("{");
-		PrintNode_f((dnode_t *)node->child);
+		PrintNode_f((decoreNode_t *)node->child);
 		Sys_Printf("}");
 	}
 	// next nodes
 	if (node->next != NULL)
 	{
-		for (c = (dnode_t *)node->next; c != NULL; c = (dnode_t *)c->next)
+		for (c = (decoreNode_t *)node->next; c != NULL; c = (decoreNode_t *)c->next)
 		{
 			Sys_Printf(".next");
 			if (c->child != NULL)
 			{
 				Sys_Printf("{");
-				PrintNode_f((dnode_t *)c->child);
+				PrintNode_f((decoreNode_t *)c->child);
 				Sys_Printf("}");
 			}
 		}
 	}
 }
 
-// debug stuff
-void PrintNode(dnode_t *node)
+/*
+PrintNode
+node debug print
+*/
+void PrintNode(decoreNode_t *node)
 {
 	if (!node)
 		Sys_Printf("{null node}");
@@ -136,16 +165,20 @@ void PrintNode(dnode_t *node)
 	Sys_Printf("\n");
 }
 
-dnode_t *NewNodesArray(int size)
+/*
+FreeNodesArray
+allocate nodes array
+*/
+decoreNode_t *NewNodesArray(int size)
 {
-	dnode_t *nodes, *node;
+	decoreNode_t *nodes, *node;
 	int i;
 
-	nodes = (dnode_t *)safe_malloc( sizeof(dnode_t) * size );
+	nodes = (decoreNode_t *)safe_malloc( sizeof(decoreNode_t) * size );
 	for (i = 0; i < size; i++)
 	{
 		node = &nodes [ i ];
-		memset(node, 0, sizeof(dnode_t));
+		memset(node, 0, sizeof(decoreNode_t));
 		node->ptr = NULL;
 		node->child = NULL;
 		node->next = NULL;
@@ -153,24 +186,28 @@ dnode_t *NewNodesArray(int size)
 	return nodes;
 }
 
-void FreeNode(dnode_t *node)
+/*
+FreeNodesArray
+free single node
+*/
+void FreeNode(decoreNode_t *node)
 {
-	dnode_t *c, *next;
+	decoreNode_t *c, *next;
 
 	if (!node)
 		return;
 	
 	// free child node
 	if (node->child != NULL)
-		FreeNode((dnode_t *)node->child);
+		FreeNode((decoreNode_t *)node->child);
 	// free all next items
 	if (node->next != NULL)
 	{
-		for (c = (dnode_t *)node->next; c != NULL; c = next)
+		for (c = (decoreNode_t *)node->next; c != NULL; c = next)
 		{
 			if (c->child != NULL)
-				FreeNode((dnode_t *)c->child);
-			next = (dnode_t *)c->next;
+				FreeNode((decoreNode_t *)c->child);
+			next = (decoreNode_t *)c->next;
 			free(c);
 		}
 	}
@@ -178,28 +215,35 @@ void FreeNode(dnode_t *node)
 	free(node);
 }
 
-void FreeNodesArray(dnode_t *nodes, int size)
+/*
+FreeNodesArray
+frees nodes array
+*/
+void FreeNodesArray(decoreNode_t *nodes, int size)
 {
-	dnode_t *node;
+	decoreNode_t *node;
 	int i;
 
 	for (i = 0; i < size; i++)
 	{
 		node = &nodes [ i ];
 		if ( node->next != NULL )
-			FreeNode( (dnode_t *)node->next );
+			FreeNode( (decoreNode_t *)node->next );
 		if ( node->child != NULL )
-			FreeNode( (dnode_t *)node->child );
+			FreeNode( (decoreNode_t *)node->child );
 	}
 }
 
-dnode_t *NewNode(char *name, void *ptr)
+/*
+NewNode
+creates new node
+*/
+decoreNode_t *NewNode(void *ptr)
 {	
-	dnode_t *node;
+	decoreNode_t *node;
 
-	node = (dnode_t *)safe_malloc(sizeof(dnode_t));
-	memset(node, 0, sizeof(dnode_t));
-	node->name = name;
+	node = (decoreNode_t *)safe_malloc(sizeof(decoreNode_t));
+	memset(node, 0, sizeof(decoreNode_t));
 	node->ptr = ptr;
 	node->child = NULL;
 	node->next = NULL;
@@ -207,62 +251,99 @@ dnode_t *NewNode(char *name, void *ptr)
 	return node;
 }
 
-// add node in the end of chain of current node
-void AddNextNode(dnode_t *node, char *name, void *ptr)
+/*
+PushNode
+push node in the end of chain of current node
+*/
+void PushNode(decoreNode_t *node, void *ptr)
 {
-	dnode_t *n;
-
-	n = NewNode(name, ptr);
-	while(1)
-	{
-		if (node->next == NULL)
-			break;
-		node = (dnode_t *)node->next;
-	}
+	decoreNode_t *n = NewNode(ptr);
+	n->next = node->next;
 	node->next = n;
 }
 
-// add child node
-void AddChildNode(dnode_t *node, char *name, void *ptr)
+/*
+PushNodeChild
+push child node
+*/
+void PushNodeChild(decoreNode_t *node, void *ptr)
 {
-	dnode_t *n;
+	decoreNode_t *n;
 
-	n = NewNode(name, ptr);
-	if (node->child != NULL) // add a next after last child
+	n = NewNode(ptr);
+	if (node->child != NULL)
 	{
-		node = (dnode_t *)node->child;
-		while(1)
-		{
-			if (node->next == NULL)
-				break;
-			node = (dnode_t *)node->next;
-		}
-		node->next = n;
+		n->next = node->child;
+		node->child = n;
 		return;
 	}
 	node->child = n;
 }
 
-// add node to random position
-void AddNextNodeRandom(dnode_t *node, char *name, void *ptr)
+/*
+=========================================================
+
+ ENTITIES ARRAY
+
+=========================================================
+*/
+
+/*
+EntityArrayAdd
+add one entity to entities array
+*/
+void EntityArrayAdd(decoreEnts_t *groupents, entity_t *e)
 {
-	int numnodes = 0, num;
-	dnode_t *last, *n;
+	/* grow entities array */
+	if (groupents->numEntities >= groupents->maxEntities)
+	{
+		if (!groupents->entities)
+		{
+			groupents->numEntities = 0;
+			groupents->maxEntities = 1024;
+			groupents->entities = (entity_t **)safe_malloc ( groupents->maxEntities * sizeof(entity_t *) );
+		}
+		else
+		{
+			entity_t **newEntities = (entity_t **)safe_malloc ( (groupents->numEntities + 4096) * sizeof(entity_t *) );
+			memcpy(newEntities, groupents->entities, groupents->numEntities * sizeof(entity_t *));
+			free(groupents->entities);
+			groupents->entities = newEntities;
+			groupents->maxEntities = groupents->numEntities + 4096;
+		}
+	}
+	/* add entity */
+	groupents->entities[groupents->numEntities++] = e;
+}
 
-	n = NewNode(name, ptr);
+/*
+EntityArrayFlush
+free / cleanup entities array
+*/
 
-	/* get all nodes */
-	for(last = node; last->next != NULL; last = (dnode_t *)last->next)
-		numnodes++;
+void EntityArrayFlush(decoreEnts_t *groupents)
+{
+	if( groupents->entities )
+		free( groupents->entities );
+	memset( groupents, 0, sizeof( decoreEnts_t ) );
+}
 
-	/* select random node */
-	num = (int)(((double)(rand() + 0.5) / ((double)RAND_MAX + 1)) * (numnodes + 0.5));
-	for (last = node; num > 0; num--)
-		last = (dnode_t *)last->next;
 
-	/* add new node right after selected node */
-	n->next = last->next;
-	last->next = n;
+/*
+EntityArrayCopy
+copies entity array
+*/
+
+void EntityArrayCopy(decoreEnts_t *src, decoreEnts_t *dst)
+{
+	/* flush array */
+	EntityArrayFlush(dst);
+
+	/* copy */
+	dst->numEntities = src->numEntities;
+	dst->maxEntities = src->maxEntities;
+	dst->entities = (entity_t **)safe_malloc ( dst->maxEntities * sizeof(entity_t *) );
+	memcpy(dst->entities, src->entities, dst->numEntities * sizeof(entity_t *) );
 }
 
 /*
@@ -278,9 +359,9 @@ NewDecoreGroup()
 allocate new empty decore group and return it
 */
 
-dgroup_t *NewDecoreGroup(char *name, dmatch_t match)
+decoreGroup_t *NewDecoreGroup(char *name, decoreMatchParm_t match)
 {
-	dgroup_t *group;
+	decoreGroup_t *group;
 	int i;
 
 	/* range check */
@@ -297,12 +378,14 @@ dgroup_t *NewDecoreGroup(char *name, dmatch_t match)
 
 	/* set and return */
 	group = &decoreGroups[numDecoreGroups];	
+	memset(group, 0, sizeof(decoreGroup_t));
 	group->match = match;
-	group->entities = NULL;
 	group->actions = NULL;
+	group->mergeAxis = MERGE_XYZ;
 	group->mergeRadius = 128;
 	strcpy( group->name, name );
 	strcpy( group->mergeClass, "" );
+	ThreadMutexInit(&group->mutex);
 
 	numDecoreGroups++;
 	return group;
@@ -314,10 +397,11 @@ get a decoration group for entity
 returns NULL if no group
 */
 
-qboolean PopulateDecoreGroup(entity_t *e, dmatch_t match, char *keyname)
+qboolean PopulateDecoreGroup(entity_t *e, decoreMatchParm_t match, char *keyname)
 {
 	const char *value;
-	dgroup_t *group;
+	qboolean populated;
+	decoreGroup_t *group;
 	int	i;
 
 	/* get key */
@@ -326,20 +410,23 @@ qboolean PopulateDecoreGroup(entity_t *e, dmatch_t match, char *keyname)
 		return qfalse;
 
 	/* find group */
+	populated = qfalse;
 	for (i = 0; i < numDecoreGroups; i++)
 	{
 		group = &decoreGroups[i];
-		if (group->match == match && !Q_stricmp( value, group->name) )
+		if (group->match != match || Q_stricmp( value, group->name) )
+			continue;
+	
+		/* add entity to a group */
+		ThreadMutexLock(&group->mutex);
 		{
-			if (group->entities == NULL)
-				group->entities = NewNode("", e);
-			else
-				AddNextNode(group->entities, "", e );
-			group->numEntities++;
-			return qtrue;
+			EntityArrayAdd(&group->entities, e);
 		}
+		ThreadMutexUnlock(&group->mutex);
+		populated = qtrue;
+		return populated;
 	}
-	return qfalse;
+	return populated;
 }
 
 /*
@@ -347,11 +434,14 @@ FreeDecoreGroup()
 free all allocated fiels on decoregroup struct
 */
 
-void FreeDecoreGroup( dgroup_t *group )
+void FreeDecoreGroup( decoreGroup_t *group )
 {
-	// free ents
-	if ( group->entities != NULL )
-		FreeNode( group->entities );
+	int i;
+
+	/* free entities arrays */
+	EntityArrayFlush( &group->entities );
+	for( i = 0; i < MAX_DECORE_TESTNODES; i++ )
+		EntityArrayFlush( &group->testnodes[ i ] );
 }
 
 /*
@@ -369,9 +459,9 @@ char *DecoreParseParm(char *opname, int parmnum)
 }
 
 // parse actions sequence
-void DecoreParseActions ( dactions_t *actions )
+void DecoreParseActions ( decoreActions_t *actions )
 {
-	daction_t actiondata;
+	decoreAction_t actiondata;
 
 	MatchToken( "{" );
 
@@ -399,7 +489,7 @@ void DecoreParseActions ( dactions_t *actions )
 			Error( "DecoreParseActions: numActions == MAX_DECORE_ACTIONS at line %i", scriptline );
 
 		/* nullify previous action */
-		memset(&actiondata, 0, sizeof(daction_t));
+		memset(&actiondata, 0, sizeof(decoreAction_t));
 		actiondata.code = DECOREACTION_NULL;
 
 		/* parse new action */
@@ -437,7 +527,7 @@ void DecoreParseActions ( dactions_t *actions )
 		/* add action */
 		if (actiondata.code >= 0)
 		{
-			memcpy(&actions->action[actions->num], &actiondata, sizeof(daction_t));
+			memcpy(&actions->action[actions->num], &actiondata, sizeof(decoreAction_t));
 			actions->num++;
 		}
 
@@ -455,30 +545,85 @@ qboolean BooleanFromString(const char *str)
 	return qfalse;
 }
 
-// parse options
-void DecoreParseOptions( void )
-{
-	int numbrace;
+/*
+EntityPopulateDecorationGroups()
+entity worker for decoration groups
+*/
 
-	numbrace = 1;
+
+void EntityPopulateDecorationGroups(int entNum)
+{
+	if (PopulateDecoreGroup( &entities[ entNum ], GROUPMATCH_GROUP, "_decore" ) || 
+		PopulateDecoreGroup( &entities[ entNum ], GROUPMATCH_CLASSNAME, "classname" ) ||
+		PopulateDecoreGroup( &entities[ entNum ], GROUPMATCH_MODEL, "model" ) )
+		numDecoreEntities++;
+}
+
+/*
+LoadDecorationScript()
+loads up decore groups
+sets entities for decore groups
+*/
+void LoadDecorationScript( void )
+{
+	int i;
+	decoreGroup_t *group;
+
+	/* file exists? */
+	if( vfsGetFileCount( "scripts/decorations.txt" ) == 0 )
+		return;
+
+	/* note */
+	Sys_FPrintf( SYS_VRB, "--- LoadDecorations ---\n" );
+
+	/* create the array */
+	decoreGroups = (decoreGroup_t *)safe_malloc(sizeof(decoreGroup_t) * MAX_DECORE_GROUPS);
+	memset(decoreGroups, 0, sizeof(decoreGroup_t) * MAX_DECORE_GROUPS );
+	numDecoreGroups = 0;
+
+	/* load it */
+	LoadScriptFile( "scripts/decorations.txt", 0 );
+
+	/* parse */
+	group = NULL;
 	while ( 1 )
 	{
 		if ( !GetToken( qtrue ) )
 			break;
-		if( !Q_stricmp( token, "{" ) )
-		{
-			numbrace++;
-			continue;
-		}
+
+		/* end of decore group or action list */
 		if( !Q_stricmp( token, "}" ) )
 		{
-			numbrace--;
-			if (numbrace <= 0)
-				break;
-			continue;
+			if (group == NULL)
+				Error( "LoadDecorationScript(): unexpected %s on line %i", token, scriptline);
+			group = NULL;
 		}
 
-		/* options */
+		/* new decore group */
+		if( !Q_stricmp( token, "group" ) )
+		{
+			GetToken( qfalse );
+			group = NewDecoreGroup( token, GROUPMATCH_GROUP );	
+			MatchToken( "{" );
+		}
+
+		/* new class group */
+		if( !Q_stricmp( token, "class" ) )
+		{
+			GetToken( qfalse );
+			group = NewDecoreGroup( token, GROUPMATCH_CLASSNAME );	
+			MatchToken( "{" );
+		}
+
+		/* new model group */
+		if( !Q_stricmp( token, "model" ) )
+		{
+			GetToken( qfalse );
+			group = NewDecoreGroup( token, GROUPMATCH_MODEL );	
+			MatchToken( "{" );
+		}
+
+		/* rtlights import options */
 		if( !Q_stricmp( token, "importrtlights" ) )
 		{
 			MatchToken( "{" );
@@ -575,74 +720,6 @@ void DecoreParseOptions( void )
 				}
 			}
 		}
-	}
-}
-
-void LoadDecorationScript( void )
-{
-	dgroup_t *group;
-	int i;
-
-	/* file exists? */
-	if( vfsGetFileCount( "scripts/decorations.txt" ) == 0 )
-		return;
-
-	/* note */
-	Sys_FPrintf( SYS_VRB, "--- LoadDecorationScript ---\n" );
-
-	/* create the array */
-	decoreGroups = (dgroup_t *)safe_malloc(sizeof(dgroup_t) * MAX_DECORE_GROUPS);
-	memset(decoreGroups, 0, sizeof(dgroup_t) * MAX_DECORE_GROUPS );
-	numDecoreGroups = 0;
-
-	/* load it */
-	LoadScriptFile( "scripts/decorations.txt", 0 );
-
-	/* parse */
-	group = NULL;
-	while ( 1 )
-	{
-		if ( !GetToken( qtrue ) )
-			break;
-
-		/* end of decore group or action list */
-		if( !Q_stricmp( token, "}" ) )
-		{
-			if (group == NULL)
-				Error( "LoadDecorationScript(): unexpected %s on line %i", token, scriptline);
-			group = NULL;
-		}
-
-		/* new decore group */
-		if( !Q_stricmp( token, "group" ) )
-		{
-			GetToken( qfalse );
-			group = NewDecoreGroup( token, GROUPMATCH_GROUP );	
-			MatchToken( "{" );
-		}
-
-		/* new class group */
-		if( !Q_stricmp( token, "class" ) )
-		{
-			GetToken( qfalse );
-			group = NewDecoreGroup( token, GROUPMATCH_CLASSNAME );	
-			MatchToken( "{" );
-		}
-
-		/* new class group */
-		if( !Q_stricmp( token, "model" ) )
-		{
-			GetToken( qfalse );
-			group = NewDecoreGroup( token, GROUPMATCH_MODEL );	
-			MatchToken( "{" );
-		}
-
-		/* options group */
-		if( !Q_stricmp( token, "options" ) )
-		{
-			MatchToken( "{" );
-			DecoreParseOptions();
-		}
 
 		/* parse group-related parm */
 		if (group == NULL)
@@ -651,36 +728,45 @@ void LoadDecorationScript( void )
 		if( !Q_stricmp( token, "mergemodels" ) )
 		{
 			group->mergeModels = 1;
-			GetToken( qfalse );
-			group->mergeRadius = atoi (token);
-			GetToken( qfalse );
-			strcpy( group->mergeClass , token );
+			if ( GetToken( qfalse ) == qtrue )
+				strcpy( group->mergeClass , token );
+		}
+		else if( !Q_stricmp( token, "mergeradius" ) )
+		{
+			if ( GetToken( qfalse ) == qtrue )
+				group->mergeRadius = atoi (token);
+		}
+		else if( !Q_stricmp( token, "mergeaxis" ) )
+		{
+			if ( GetToken( qfalse ) == qtrue )
+			{
+				if( !Q_stricmp( token, "xyz" ) )
+					group->mergeAxis = MERGE_XYZ;
+				else if( !Q_stricmp( token, "xy" ) )
+					group->mergeAxis = MERGE_XY;
+			}
 		}
 		else if( !Q_stricmp( token, "entity" ) )
 		{
 			if ( group->actions != NULL )
 				Error ( "LoadDecorationScript: double 'entity' definition at line %i", scriptline );
-			group->actions = (dactions_t *)safe_malloc( sizeof(dactions_t) );
-			memset( group->actions, 0, sizeof(dactions_t) );
+			group->actions = (decoreActions_t *)safe_malloc( sizeof(decoreActions_t) );
+			memset( group->actions, 0, sizeof(decoreActions_t) );
 			DecoreParseActions( group->actions );
 		}
 	}
 
 	/* find all map entities */
 	numDecoreEntities = 0;
-	for (i = 1; i < numEntities; i++)
-		if (PopulateDecoreGroup( &entities[ i ], GROUPMATCH_GROUP, "_decore" ) || 
-		    PopulateDecoreGroup( &entities[ i ], GROUPMATCH_CLASSNAME, "classname" ) ||
-		    PopulateDecoreGroup( &entities[ i ], GROUPMATCH_MODEL, "model" ) )
-			numDecoreEntities++;
+	RunThreadsOnIndividual(numEntities, verbose ? qtrue : qfalse, EntityPopulateDecorationGroups);
 
 	/* emit some stats */
 	Sys_FPrintf( SYS_VRB, "%9i decoration groups\n", numDecoreGroups );
 	for (i = 0; i < numDecoreGroups; i++)
 	{
 		group = &decoreGroups[ i ];
-		if ( group->numEntities )
-			Sys_FPrintf( SYS_VRB, "%9i entities in '%s'\n", group->numEntities, group->name);
+		if ( group->entities.numEntities )
+			Sys_FPrintf( SYS_VRB, "%9i entities in '%s'\n", group->entities.numEntities, group->name);
 	}
 }
 
@@ -689,9 +775,9 @@ EntityProcessActions()
 processes actions on specific entity
 */
 
-void EntityProcessActions(entity_t *e, dactions_t *actions)
+void EntityProcessActions(entity_t *e, decoreActions_t *actions)
 {
-	daction_t *action;
+	decoreAction_t *action;
 	char string[ 256 ];
 	int i, f;
 
@@ -761,10 +847,11 @@ MergeModelsForGroup()
 performs a merging tests for all misc_models on group
 */
 
-void DebugMergeModels(dgroup_t *group, dnode_t *dstnodes, int numSrcNodes)
+#if 0
+void DebugMergeModels(decoreGroup_t *group, decoreNode_t *dstnodes, int numSrcNodes)
 {
 	int numents, numgents, entsmin, entsmax, numgroups, totalents;
-	dnode_t *testnode, *mergenode;
+	decoreNode_t *testnode, *mergenode;
 	int i;
 
 	/* debug stats */
@@ -778,11 +865,11 @@ void DebugMergeModels(dgroup_t *group, dnode_t *dstnodes, int numSrcNodes)
 		entsmin = MAX_MAP_ENTITIES;
 		entsmax = 0;
 		/* cycle groups */
-		for (mergenode = (dnode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
+		for (mergenode = (decoreNode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
 		{
 			numgroups++;
 			numgents = 1;
-			for (testnode = (dnode_t *)mergenode->child; testnode != NULL; testnode = (dnode_t *)testnode->next)
+			for (testnode = (decoreNode_t *)mergenode->child; testnode != NULL; testnode = (decoreNode_t *)testnode->next)
 				numgents++;
 			if (numgents < entsmin)
 				entsmin = numgents;
@@ -795,131 +882,7 @@ void DebugMergeModels(dgroup_t *group, dnode_t *dstnodes, int numSrcNodes)
 	}
 	Sys_Printf( "################################################\n" );
 }
-
-// returns num of created groups
-int MergeModelsForGroup(dgroup_t *group, dnode_t *srcnodes, int numSrcNodes)
-{
-	dnode_t *src, *dst, *testnode, *mergenode, *dstnodes;
-	entity_t *e, *e2;
-	vec3_t delta;
-	char nullname[2], str[128];
-	int i, num, avgmin, avgmax, best;
-	int *stats;
-
-	/* allocate destination nodes */
-	dstnodes = NewNodesArray( numSrcNodes );
-	strcpy(nullname, "");
-
-	/* walk all test node chains */
-	for ( i = 0; i < numSrcNodes; i++ )
-	{
-		src = &srcnodes[ i ];
-		dst = &dstnodes[ i ];
-		/* walk all entities for node */
-		for ( testnode = (dnode_t *)src->next; testnode != NULL; testnode = (dnode_t *)testnode->next )
-		{
-			if (testnode->name[ 0 ] != '-')
-				continue; // already grouped
-
-			e = (entity_t *)testnode->ptr;
-
-			/* test entity against merging groups */
-			for (mergenode = (dnode_t *)dst->next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
-			{
-				e2 = (entity_t *)mergenode->ptr;
-				VectorSubtract (e->origin, e2->origin, delta);
-				if (VectorLength(delta) < group->mergeRadius)
-				{
-					testnode->name = nullname;
-					AddChildNode(mergenode, "", e );
-					break;
-				}	
-			}
-
-			if (testnode->name[ 0 ] != '-')
-				continue;
-
-			/* failed to merge for now - create new group */
-			testnode->name = nullname;
-			AddNextNode( dst, "", e );
-		}
-	}
-
-	/* calc badly-balanced groups which has less than (avg / 0.75) or greater than avg 1.25 entities count for each pass */
-	stats = (int *)safe_malloc( sizeof(int) * numSrcNodes * 2);
-	memset( stats, 0, sizeof(int) * numSrcNodes * 2 );
-	for ( i = 0; i < numSrcNodes; i++ )
-	{
-		for (mergenode = (dnode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
-			stats[i*2]++;
-		avgmin = ( group->numEntities / stats[i*2] ) * 0.75;
-		avgmax = ( group->numEntities / stats[i*2] ) * 1.25;
-
-		/* cals unbalanced groups */
-		for (mergenode = (dnode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
-		{
-			num = 1;
-			for (testnode = (dnode_t *)mergenode->child; testnode != NULL; testnode = (dnode_t *)testnode->next)
-				num++;
-			if (num < avgmin || num > avgmax)
-				stats[i*2 + 1]++;
-		}
-	}
-
-	/* pick best result */
-	best = 0;
-	for ( i = 0; i < numSrcNodes; i++ )
-	{
-		if ( stats[i*2 + 1] > stats[best*2 + 1] )
-			continue;
-		// prefere with lesser 'less groups' count
-		if ( stats[i*2 + 1] < stats[best*2 + 1] )
-			best = i;
-		// equal - compare by groups count
-		if ( stats[i*2] < stats[best*2] )
-			best = i;
-	}
-	
-	/* make actual merging (create new target chains) */
-	num = 0;
-	for (mergenode = (dnode_t *)dstnodes[ best ].next; mergenode != NULL; mergenode = (dnode_t *)mergenode->next)
-	{
-		num++;
-
-		/* make main entity be a target for others */
-		sprintf(str, "__decgrp_%s_%i", group->name, num);
-		e = CreateEntity( group->mergeClass );
-		EntityProcessActions( e, group->actions );
-		SetKeyValue( e, "targetname", str );
-		e->forceSubmodel = qtrue;
-
-		/* target head node entity */
-		e2 = (entity_t *)mergenode->ptr;
-		SetKeyValue( e2, "target", str );
-		VectorSet( delta, e2->origin[ 0 ], e2->origin[ 1 ], e2->origin[ 2 ] );
-
-		/* target all other ents */
-		for ( testnode = (dnode_t *)mergenode->child; testnode != NULL; testnode = (dnode_t *)testnode->next )
-		{
-			e2 = (entity_t *)testnode->ptr;
-			SetKeyValue( e2, "target", str );
-
-			VectorAdd( delta, e2->origin, delta );
-			VectorScale( delta, 0.5, delta );
-		}
-
-		/* set averaged origin */
-		sprintf( str, "%f %f %f", delta[ 0 ], delta[ 1 ], delta[ 2 ] );
-		SetKeyValue( e, "origin", str );
-		VectorSet( e->origin, delta[ 0 ], delta[ 1 ], delta[ 2 ] );
-	}
-
-	/* free allocated memory */
-	FreeNodesArray( dstnodes, numSrcNodes );
-	free(stats);
-
-	return num;
-}
+#endif
 
 /*
 ImportRtlights()
@@ -1087,6 +1050,212 @@ void ImportRtlights( void )
 	#undef DARKPLACES_LIGHTFLAG_REALTIMEMODE
 }
 
+
+
+/*
+CompareRandom()
+compare function for qsort()
+*/
+static int CompareRandom( const void *a, const void *b )
+{
+	return (rand() > 0.5) ? -1 : 0;
+}
+
+/*
+ShuffleTestNode()
+randomizes test node entities so there will be several groupings possible
+*/
+void ShuffleTestNode( int testNodeNum )
+{
+	decoreGroup_t *group;
+	decoreEnts_t *testnode;
+	int	i, j;
+
+	/* walk groups */
+	for( i = 0; i < numDecoreGroups; i++ )
+	{
+		group = &decoreGroups[ i ];
+
+		/* early out */
+		if (!group->entities.numEntities || !group->mergeModels)
+			continue;
+
+		/* get test node */
+		testnode = &group->testnodes[ testNodeNum ];
+		EntityArrayCopy(&group->entities, testnode);
+
+		/* fisher-yates shuffle */
+		for( j = 0; j < testnode->numEntities; j++ )
+		{
+			entity_t *temp;
+			int index;
+
+			index = rand() % testnode->numEntities;
+			if( index != j )
+			{
+				temp = testnode->entities[ index ];
+				testnode->entities[ index ] = testnode->entities[ j ];
+				testnode->entities[ j ] = temp;
+			}
+		}
+	}
+}
+
+/*
+ProcessDecorationGroup()
+processes entities under decoration group
+*/
+void ProcessDecorationGroup(int groupNum)
+{
+	decoreGroup_t *group;
+	entity_t *e;
+	int i;
+
+	/* get group */
+	group = &decoreGroups[ groupNum ];
+	if ( !group->entities.numEntities )
+		return;
+
+	/* process actions */
+	for( i = 0; i < group->entities.numEntities; i++ ) 
+	{
+		/* get entity */
+		e = group->entities.entities[ i ];
+
+		/* process actions */
+		EntityProcessActions( e, group->actions );
+	}
+
+	/* process merging */
+	if( group->mergeModels )
+	{
+		decoreNode_t *dst, *testnode, *mergenode, *dstnodes;
+		int j, num, avgmin, avgmax, best, *stats;
+		decoreEnts_t *src;
+		entity_t *e2;
+		vec3_t delta;
+		char str[512];
+
+		/* allocate destination nodes */
+		dstnodes = NewNodesArray( numDecoreTestNodes );
+
+		/* create merge candidates */
+		for ( i = 0; i < numDecoreTestNodes; i++ )
+		{
+			src = &group->testnodes[ i ];
+			dst = &dstnodes[ i ];
+
+			/* walk all entities for node */
+			for ( j = 0; j < src->numEntities; j++ )
+			{
+				e = src->entities[ j ];
+
+				/* already grouped? */
+				if (e == NULL)
+					continue;
+
+				/* test entity against existing merging groups */
+				for (mergenode = (decoreNode_t *)dst->next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
+				{
+					e2 = (entity_t *)mergenode->ptr;
+					VectorSubtract (e->origin, e2->origin, delta);
+					if ( group->mergeAxis == MERGE_XY )
+						delta[ 3 ] = 0;
+					if (VectorLength(delta) < group->mergeRadius)
+					{
+						PushNodeChild(mergenode, e );
+						src->entities[ j ] = NULL;
+						break;
+					}	
+				}
+
+				/* failed to merge for now - create new group */
+				if (src->entities[ j ] != NULL)
+				{
+					PushNode( dst, e );
+					src->entities[ j ] = NULL;
+				}
+			}
+		}
+
+		/* calc badly-balanced groups which has less than (avg / 0.75) or greater than avg 1.25 entities count for each pass */
+		stats = (int *)safe_malloc( sizeof(int) * numDecoreTestNodes * 2);
+		memset( stats, 0, sizeof(int) * numDecoreTestNodes * 2 );
+		for ( i = 0; i < numDecoreTestNodes; i++ )
+		{
+			for (mergenode = (decoreNode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
+				stats[i*2]++;
+			avgmin = ( group->entities.numEntities / stats[i*2] ) * 0.75;
+			avgmax = ( group->entities.numEntities / stats[i*2] ) * 1.25;
+
+			/* cals unbalanced groups */
+			for (mergenode = (decoreNode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
+			{
+				num = 1;
+				for (testnode = (decoreNode_t *)mergenode->child; testnode != NULL; testnode = (decoreNode_t *)testnode->next)
+					num++;
+				if (num < avgmin || num > avgmax)
+					stats[i*2 + 1]++;
+			}
+		}
+
+		/* pick best result */
+		best = 0;
+		for ( i = 0; i < numDecoreTestNodes; i++ )
+		{
+			if ( stats[i*2 + 1] > stats[best*2 + 1] )
+				continue;
+			// prefere with lesser 'less groups' count
+			if ( stats[i*2 + 1] < stats[best*2 + 1] )
+				best = i;
+			// equal - compare by groups count
+			if ( stats[i*2] < stats[best*2] )
+				best = i;
+		}
+		
+		/* make actual merging (create new target chains) */
+		num = 0;
+		for (mergenode = (decoreNode_t *)dstnodes[ best ].next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
+		{
+			num++;
+
+			/* make main entity be a target for others */
+			sprintf(str, "__decgrp_%s_%i", group->name, num);
+			e = CreateEntity( group->mergeClass );
+			EntityProcessActions( e, group->actions );
+			SetKeyValue( e, "targetname", str );
+			e->forceSubmodel = qtrue;
+
+			/* target head node entity */
+			e2 = (entity_t *)mergenode->ptr;
+			SetKeyValue( e2, "target", str );
+			VectorSet( delta, e2->origin[ 0 ], e2->origin[ 1 ], e2->origin[ 2 ] );
+
+			/* target all other ents */
+			for ( testnode = (decoreNode_t *)mergenode->child; testnode != NULL; testnode = (decoreNode_t *)testnode->next )
+			{
+				e2 = (entity_t *)testnode->ptr;
+				SetKeyValue( e2, "target", str );
+
+				VectorAdd( delta, e2->origin, delta );
+				VectorScale( delta, 0.5, delta );
+			}
+
+			/* set averaged origin */
+			sprintf( str, "%f %f %f", delta[ 0 ], delta[ 1 ], delta[ 2 ] );
+			SetKeyValue( e, "origin", str );
+			VectorSet( e->origin, delta[ 0 ], delta[ 1 ], delta[ 2 ] );
+		}
+
+		/* free allocated memory */
+		FreeNodesArray( dstnodes, numDecoreTestNodes );
+		free(stats);
+
+		/* store result for stats */
+		group->mergeModels = num;
+	}
+}
+
 /*
 ProcessDecorations()
 does all decoration job
@@ -1094,9 +1263,8 @@ does all decoration job
 
 void ProcessDecorations( void )
 {
-	dgroup_t	*group;
-	dnode_t		*node, *tnode, *testnodes;
-	int			i, f, fOld, start, walkEnts, numTestNodes;
+	int	i, f, fOld, start;
+	decoreGroup_t *group;
 
 	/* load decoration scripts */
 	decoreGroups = NULL;
@@ -1105,101 +1273,59 @@ void ProcessDecorations( void )
 		return;
 	
 	/* get number of test nodes */
-	numTestNodes = IntForKey( &entities[ 0 ], "_mergetests" );
-	if (numTestNodes <= 0)
-		numTestNodes = 4;
-	if (numTestNodes < 2)
-		numTestNodes = 2;
-	if (numTestNodes > 256)
-		numTestNodes = 256;
-	Sys_FPrintf( SYS_VRB, "%9i merge tests will be performed\n", numTestNodes );
+	numDecoreTestNodes = IntForKey( &entities[ 0 ], "_mergetests" );
+	if( numDecoreTestNodes <= 0 )
+		numDecoreTestNodes = DEFAULT_DECORE_TESTNODES;
+	if( numDecoreTestNodes < MIN_DECORE_TESTNODES )
+		numDecoreTestNodes = MIN_DECORE_TESTNODES;
+	if( numDecoreTestNodes > MAX_DECORE_TESTNODES )
+		numDecoreTestNodes = MAX_DECORE_TESTNODES;
 
-	/* note it */
-	Sys_FPrintf (SYS_VRB, "--- ProcessDecorations ---\n" );
-
-	/* model merging requires at least 2 ents */
-	for ( i = 0; i < numDecoreGroups; i++ )
-		if ( decoreGroups[ i ].numEntities < 2 )
-			decoreGroups[ i ].mergeModels = 0;
-
-	/* walk all groups and entities */
-	fOld = -1;
-	walkEnts = 0;
-	start = I_FloatTime();
+	/* init groups */
 	for ( i = 0; i < numDecoreGroups; i++ )
 	{
 		group = &decoreGroups[ i ];
-		if (!group->numEntities)
-			continue;
 
-		/* initiate merging nodes array */
-		if ( group->mergeModels )
-			testnodes = NewNodesArray(numTestNodes);
-
-		/* walk entities */
-		for( node = group->entities; node != NULL; node = (dnode_t *)node->next )
-		{
-			walkEnts++;
-
-			/* print pacifier */
-			if ( numDecoreEntities > 10 )
-			{
-				f = 10 * walkEnts / numDecoreEntities;
-				if( f != fOld )
-				{
-					fOld = f;
-					Sys_FPrintf (SYS_VRB, "%d...", f );
-				}
-			}
-
-			/* add to test nodes */
-			if ( group->mergeModels && !Q_stricmp( ValueForKey( (entity_t *)node->ptr, "classname" ), "misc_model" ) )
-			{
-				// vortex: only if not targeted
-				if (!strcmp( ValueForKey((entity_t *)node->ptr, "target" ), "" ) )
-				{
-					for ( f = 0; f < numTestNodes; f++ )
-					{
-						tnode = &testnodes[ f ];
-						if (tnode->next == NULL)
-							tnode->next = NewNode( "-", node->ptr );
-						else
-							AddNextNodeRandom( (dnode_t *)tnode->next, "-", node->ptr);
-					}
-				}
-			}
-
-			/* process key actions */
-			if ( group->actions != NULL )
-				EntityProcessActions( (entity_t *)node->ptr, group->actions );
-		}
-
-		/* merge misc_models */
-		if ( group->mergeModels )
-		{
-			/* do merging, clear stuff, reuse mergeModels for stats */
-			group->mergeModels = MergeModelsForGroup( group, testnodes, numTestNodes );
-			FreeNodesArray( testnodes, numTestNodes );
-		}
+		/* model merging requires at least 2 ents */
+		if ( decoreGroups[ i ].entities.numEntities < 2 )
+			decoreGroups[ i ].mergeModels = 0;
 	}
 
-	/* print time */
-	if ( numDecoreEntities > 10 )
-		Sys_FPrintf (SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	/* prepare merge tests */
+	Sys_FPrintf (SYS_VRB, "--- GroupDecorations ---\n" );
+	RunThreadsOnIndividual(numDecoreTestNodes, verbose ? qtrue : qfalse, ShuffleTestNode);
+	Sys_FPrintf( SYS_VRB, "%9i tests performed\n", numDecoreTestNodes );
 
-	/* emit some stats */
+	/* walk all groups and entities */
+	Sys_FPrintf (SYS_VRB, "--- ProcessDecorations ---\n" );
+	start = I_FloatTime();
+	fOld = -1;
+	for ( i = 0; i < numDecoreGroups; i++ )
+	{
+		/* print pacifier */
+		f = 10 * i / numDecoreGroups;
+		if( f != fOld )
+		{
+			fOld = f;
+			Sys_FPrintf(SYS_VRB, "%d...", f );
+		}
+
+		/* process */
+		ProcessDecorationGroup( i );
+	}
+	Sys_FPrintf(SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+
+	/* emit stats */
 	for ( i = 0; i < numDecoreGroups; i++ )
 	{
 		group = &decoreGroups[ i ];
 		if ( group->mergeModels )
-			Sys_FPrintf( SYS_VRB, "%9i models merged to %i in '%s'\n", group->numEntities, group->mergeModels, group->name );
-
+			Sys_FPrintf( SYS_VRB, "%9i models merged to %i in '%s'\n", group->entities.numEntities, group->mergeModels, group->name );
 		// free group-allocated stuff
 		FreeDecoreGroup ( group );
 	}
 	free( decoreGroups );
 	numDecoreGroups = 0;
-
 
 	/* import rtlights */
 	if (importRtlights)

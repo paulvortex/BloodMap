@@ -1,0 +1,168 @@
+// decoration groups definition file fo q3map2
+importRTlights
+{
+	active true
+	colorscale 1.5
+	saturate 0.8
+	radiusmod 0.5
+	spawnflags 32 // angle attenuation
+	// no shadow lights (area lights)
+	noShadowDeviance 5 // 5 degrees deviance to simulate penumbra
+	noShadowSamples 24 // sample with 24 lights
+	noShadowMinDist 1.5
+	// shadow lights 
+	shadowDeviance 2
+	shadowSamples 12
+	shadowMinDist 0.15
+	skipCubemapped 1 // skip cubemap-filtered lights
+	skipStyle 1 // skip light styled with #1
+}
+
+// sun lights
+group sunlight
+{
+	entity
+	{
+		default light 2500
+		default spawnflags 32
+		default _anglescale 0.5
+		default _color "0.6 0.6 0.6"
+	}
+}
+
+// chimneydark lights
+group chimneydark
+{
+	entity
+	{
+		default _anglescale 0.5
+		default light -25
+		default spawnflags 48
+	}
+}
+
+// cavedark lights
+group cavedark
+{
+	entity
+	{
+		default _anglescale 0.5
+		default light -80
+		default spawnflags 32
+	}
+}
+
+// interior models such as furniture
+group interior
+{
+	entity
+	{
+		default _cs 1
+		default _rs 1
+		flagset spawnflags 5 // cast shadows + lightmapped
+	}	
+}
+
+// generic misc_models
+group generic
+{
+	entity
+	{
+		default _cs 1
+		default _rs 1
+		flagset spawnflags 5 // cast shadows + lightmapped
+	}
+}
+
+// bmodel ents such as func_wall
+group bmodel
+{
+	entity
+	{
+		default _cs 1
+		default _rs 1
+		default _np 75
+	}
+}
+
+// fence, fence doors and other objects which can use kain mist form to pass tru
+group fence
+{
+	entity
+	{
+		default _cs 1
+		default _rs 1
+		default solid 2
+	}
+}
+
+// surface models (spikes)
+group surfacemodel
+{
+	// surfacemodels generic
+	mergeModels "misc_surfacemodel"
+	mergeRadius 120
+	mergeAxis xy
+	entity
+	{
+		default _cs 1
+		default _rs 1
+		default _ls 1.5
+		default spawnflags 5 // cast shadows + lightmapped
+	}
+}
+
+// trees
+group surfacemodel_tree
+{
+	// trees
+	mergeModels "misc_tree"
+	mergeRadius 160
+	mergeAxis xy
+	entity
+	{
+		default _cs 1
+		default _rs 1
+		default _ls 3
+		flagset spawnflags 5 // cast shadows + lightmapped
+		default solid 4 
+	}
+}
+
+// grass, flowers
+group surfacemodel_foliage
+{
+	// small foliage objects like grass
+	mergeModels "misc_foliage"
+	mergeRadius 160
+	mergeAxis xy
+	entity
+	{
+		default _cs 0
+		default _rs 1
+		default spawnflags 64 // nometa keep normals
+	}
+}
+
+// func_wall defaults
+class func_wall
+{
+	entity
+	{
+		default _cs 1
+		default _rs 1
+	}
+}
+
+// func_areadisable defaults
+class func_areadisable
+{
+	entity
+	{
+		default _cs 0
+		default _rs 0
+		default _ns 1
+		default solid 3
+	}
+}
+
