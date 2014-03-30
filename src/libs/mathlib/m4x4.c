@@ -482,9 +482,9 @@ void m4x4_get_rotation_vec3(const m4x4_t matrix, vec3_t euler, eulerOrder_t orde
 
 void m4x4_get_scale_vec3(const m4x4_t matrix, vec3_t scale)
 {
-  scale[0] = VectorLength(matrix+0);
-  scale[1] = VectorLength(matrix+4);
-  scale[2] = VectorLength(matrix+8);
+	scale[0] = VectorLength(matrix+0);
+	scale[1] = VectorLength(matrix+4);
+	scale[2] = VectorLength(matrix+8);
 }
 
 void m4x4_get_transform_vec3(const m4x4_t matrix, vec3_t translation, vec3_t euler, eulerOrder_t order, vec3_t scale)

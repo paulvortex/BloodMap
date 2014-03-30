@@ -21,14 +21,30 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 // mathlib.c -- math primitives
 #include "mathlib.h"
+
 // we use memcpy and memset
 #include <memory.h>
 
-const vec3_t vec3_origin = {0.0f,0.0f,0.0f};
-
+const vec3_t vec3_origin   = {0.0f,0.0f,0.0f};
 const vec3_t g_vec3_axis_x = { 1, 0, 0, };
 const vec3_t g_vec3_axis_y = { 0, 1, 0, };
 const vec3_t g_vec3_axis_z = { 0, 0, 1, };
+
+// Picked from Quake III sourcecode
+float invsqrt( float number )
+{
+	const float threehalfs = 1.5F;
+	float x2, y;
+	long i;
+
+	x2 = number * 0.5F;
+	y  = number;
+	i  = * ( long * ) &y;
+	i  = 0x5f3759df - ( i >> 1 );
+	y  = * ( float * ) &i;
+	y  = y * ( threehalfs - ( x2 * y * y ) );
+	return y;
+}
 
 /*
 ================
@@ -40,42 +56,48 @@ other perpendicular vectors
 */
 void MakeNormalVectors (vec3_t forward, vec3_t right, vec3_t up)
 {
-	float		d;
+	float d;
 
 	// this rotate and negate guarantees a vector
 	// not colinear with the original
 	right[1] = -forward[0];
 	right[2] = forward[1];
 	right[0] = forward[2];
-
 	d = DotProduct (right, forward);
 	VectorMA (right, -d, forward, right);
 	VectorNormalize (right, right);
 	CrossProduct (right, forward, up);
 }
 
-vec_t VectorLength(const vec3_t v)
+qboolean VectorCompare( const vec3_t v1, const vec3_t v2 )
 {
-	int		i;
-	float	length;
-	
-	length = 0.0f;
-	for (i=0 ; i< 3 ; i++)
-		length += v[i]*v[i];
-	length = (float)sqrt (length);
+	int i;
 
-	return length;
+	for ( i = 0 ; i < 3 ; i++ )
+		if ( fabs( v1[i] - v2[i] ) > EQUAL_EPSILON )
+			return qfalse;
+	return qtrue;
 }
 
-qboolean VectorCompare (const vec3_t v1, const vec3_t v2)
+qboolean VectorCompareExt (const vec3_t v1, const vec3_t v2, float epsilon)
 {
-	int		i;
-	
-	for (i=0 ; i<3 ; i++)
-		if (fabs(v1[i]-v2[i]) > EQUAL_EPSILON)
+	int i;
+
+	for ( i = 0 ; i < 3 ; i++ )
+		if ( fabs( v1[i] - v2[i] ) > epsilon )
 			return qfalse;
-			
 	return qtrue;
+}
+
+vec_t VectorLength( const vec3_t v )
+{
+	int i;
+	float length;
+	length = 0.0f;
+	for ( i = 0 ; i < 3 ; i++ )
+		length += v[i] * v[i];
+	length = (float)sqrt( length );
+	return length;
 }
 
 void VectorMA( const vec3_t va, vec_t scale, const vec3_t vb, vec3_t vc )
@@ -85,128 +107,98 @@ void VectorMA( const vec3_t va, vec_t scale, const vec3_t vb, vec3_t vc )
 	vc[2] = va[2] + scale*vb[2];
 }
 
-void _CrossProduct (vec3_t v1, vec3_t v2, vec3_t cross)
+
+vec_t VectorNormalize( const vec3_t in, vec3_t out )
 {
-	cross[0] = v1[1]*v2[2] - v1[2]*v2[1];
-	cross[1] = v1[2]*v2[0] - v1[0]*v2[2];
-	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
-}
-
-vec_t _DotProduct (vec3_t v1, vec3_t v2)
-{
-	return v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
-}
-
-void _VectorSubtract (vec3_t va, vec3_t vb, vec3_t out)
-{
-	out[0] = va[0]-vb[0];
-	out[1] = va[1]-vb[1];
-	out[2] = va[2]-vb[2];
-}
-
-void _VectorAdd (vec3_t va, vec3_t vb, vec3_t out)
-{
-	out[0] = va[0]+vb[0];
-	out[1] = va[1]+vb[1];
-	out[2] = va[2]+vb[2];
-}
-
-void _VectorCopy (vec3_t in, vec3_t out)
-{
-	out[0] = in[0];
-	out[1] = in[1];
-	out[2] = in[2];
-}
-
-vec_t VectorNormalize( const vec3_t in, vec3_t out ) {
-	vec_t	length, ilength;
-
-	length = (vec_t)sqrt (in[0]*in[0] + in[1]*in[1] + in[2]*in[2]);
-	if (length == 0)
+#if 1
+	// The sqrt() function takes double as an input and returns double as an
+	// output according the the man pages on Debian and on FreeBSD.  Therefore,
+	// I don't see a reason why using a double outright (instead of using the
+	// vec_accu_t alias for example) could possibly be frowned upon.
+	double x, y, z, length;
+	x = (double) in[0];
+	y = (double) in[1];
+	z = (double) in[2];
+	length = sqrt( ( x * x ) + ( y * y ) + ( z * z ) );
+	if ( length == 0 )
 	{
-		VectorClear (out);
+		VectorClear( out );
 		return 0;
 	}
-
-	ilength = 1.0f/length;
-	out[0] = in[0]*ilength;
-	out[1] = in[1]*ilength;
-	out[2] = in[2]*ilength;
+	out[0] = (vec_t) ( x / length );
+	out[1] = (vec_t) ( y / length );
+	out[2] = (vec_t) ( z / length );
+	return (vec_t) length;
+#else
+	vec_t length, ilength;
+	length = (vec_t)sqrt( in[0] * in[0] + in[1] * in[1] + in[2] * in[2] );
+	if ( length == 0 ) {
+		VectorClear( out );
+		return 0;
+	}
+	ilength = 1.0f / length;
+	out[0] = in[0] * ilength;
+	out[1] = in[1] * ilength;
+	out[2] = in[2] * ilength;
 
 	return length;
+
+#endif
+
 }
 
-vec_t ColorNormalize( const vec3_t in, vec3_t out ) {
-	float	max, scale;
+vec_t ColorNormalize(const vec3_t in, vec3_t out)
+{
+	float max, scale;
 
 	max = in[0];
 	if (in[1] > max)
 		max = in[1];
 	if (in[2] > max)
 		max = in[2];
-
-	if (max == 0) {
+	if (max == 0)
+	{
 		out[0] = out[1] = out[2] = 1.0;
 		return 0;
 	}
-
 	scale = 1.0f / max;
-
 	VectorScale (in, scale, out);
-
 	return max;
 }
 
-void VectorInverse (vec3_t v)
-{
-	v[0] = -v[0];
-	v[1] = -v[1];
-	v[2] = -v[2];
-}
-
-/*
-void VectorScale (vec3_t v, vec_t scale, vec3_t out)
-{
-	out[0] = v[0] * scale;
-	out[1] = v[1] * scale;
-	out[2] = v[2] * scale;
-}
-*/
-
 void VectorRotate (vec3_t vIn, vec3_t vRotation, vec3_t out)
 {
-  vec3_t vWork, va;
-  int nIndex[3][2];
-  int i;
+	vec3_t vWork, va;
+	int nIndex[3][2];
+	int i;
 
-  VectorCopy(vIn, va);
-  VectorCopy(va, vWork);
-  nIndex[0][0] = 1; nIndex[0][1] = 2;
-  nIndex[1][0] = 2; nIndex[1][1] = 0;
-  nIndex[2][0] = 0; nIndex[2][1] = 1;
-
-  for (i = 0; i < 3; i++)
-  {
-    if (vRotation[i] != 0)
-    {
-      float dAngle = vRotation[i] * Q_PI / 180.0f;
-	    float c = (vec_t)cos(dAngle);
-      float s = (vec_t)sin(dAngle);
-      vWork[nIndex[i][0]] = va[nIndex[i][0]] * c - va[nIndex[i][1]] * s;
-      vWork[nIndex[i][1]] = va[nIndex[i][0]] * s + va[nIndex[i][1]] * c;
-    }
-    VectorCopy(vWork, va);
-  }
-  VectorCopy(vWork, out);
+	VectorCopy(vIn, va);
+	VectorCopy(va, vWork);
+	nIndex[0][0] = 1; nIndex[0][1] = 2;
+	nIndex[1][0] = 2; nIndex[1][1] = 0;
+	nIndex[2][0] = 0; nIndex[2][1] = 1;
+	for (i = 0; i < 3; i++)
+	{
+		if (vRotation[i] != 0)
+		{
+			float dAngle = vRotation[i] * Q_PI / 180.0f;
+			float c = (vec_t)cos(dAngle);
+			float s = (vec_t)sin(dAngle);
+			vWork[nIndex[i][0]] = va[nIndex[i][0]] * c - va[nIndex[i][1]] * s;
+			vWork[nIndex[i][1]] = va[nIndex[i][0]] * s + va[nIndex[i][1]] * c;
+		}
+		VectorCopy(vWork, va);
+	}
+	VectorCopy(vWork, out);
 }
 
 void VectorRotateOrigin (vec3_t vIn, vec3_t vRotation, vec3_t vOrigin, vec3_t out)
 {
-  vec3_t vTemp, vTemp2;
+	vec3_t vTemp, vTemp2;
 
-  VectorSubtract(vIn, vOrigin, vTemp);
-  VectorRotate(vTemp, vRotation, vTemp2);
-  VectorAdd(vTemp2, vOrigin, out);
+	VectorSubtract(vIn, vOrigin, vTemp);
+	VectorRotate(vTemp, vRotation, vTemp2);
+	VectorAdd(vTemp2, vOrigin, out);
 }
 
 void VectorPolar(vec3_t v, float radius, float theta, float phi)
@@ -216,86 +208,66 @@ void VectorPolar(vec3_t v, float radius, float theta, float phi)
 	v[2]=(float)(radius * sin(phi));
 }
 
-void VectorSnap(vec3_t v)
-{
-  int i;
-  for (i = 0; i < 3; i++)
-  {
-    v[i] = (vec_t)FLOAT_TO_INTEGER(v[i]);
-  }
-}
-
-void VectorISnap(vec3_t point, int snap)
-{
-  int i;
-	for (i = 0 ;i < 3 ; i++)
+void VectorSnap( vec3_t v ){
+	int i;
+	for ( i = 0; i < 3; i++ )
 	{
-		point[i] = (vec_t)FLOAT_SNAP(point[i], snap);
+		v[i] = (vec_t)FLOAT_TO_INTEGER( v[i] );
 	}
 }
 
-void VectorFSnap(vec3_t point, float snap)
-{
-  int i;
-	for (i = 0 ;i < 3 ; i++)
+void VectorISnap( vec3_t point, int snap ){
+	int i;
+	for ( i = 0 ; i < 3 ; i++ )
 	{
-		point[i] = (vec_t)FLOAT_SNAP(point[i], snap);
+		point[i] = (vec_t)FLOAT_SNAP( point[i], snap );
 	}
 }
 
-void _Vector5Add (vec5_t va, vec5_t vb, vec5_t out)
-{
-	out[0] = va[0]+vb[0];
-	out[1] = va[1]+vb[1];
-	out[2] = va[2]+vb[2];
-	out[3] = va[3]+vb[3];
-	out[4] = va[4]+vb[4];
-}
-
-void _Vector5Scale (vec5_t v, vec_t scale, vec5_t out)
-{
-	out[0] = v[0] * scale;
-	out[1] = v[1] * scale;
-	out[2] = v[2] * scale;
-	out[3] = v[3] * scale;
-	out[4] = v[4] * scale;
-}
-
-void _Vector53Copy (vec5_t in, vec3_t out)
-{
-	out[0] = in[0];
-	out[1] = in[1];
-	out[2] = in[2];
+void VectorFSnap( vec3_t point, float snap ){
+	int i;
+	for ( i = 0 ; i < 3 ; i++ )
+	{
+		point[i] = (vec_t)FLOAT_SNAP( point[i], snap );
+	}
 }
 
 // NOTE: added these from Ritual's Q3Radiant
-void ClearBounds (vec3_t mins, vec3_t maxs)
-{
-	mins[0] = mins[1] = mins[2] = 99999;
-	maxs[0] = maxs[1] = maxs[2] = -99999;
+#define INVALID_BOUNDS 99999
+void ClearBounds( vec3_t mins, vec3_t maxs ){
+	mins[0] = mins[1] = mins[2] = +INVALID_BOUNDS;
+	maxs[0] = maxs[1] = maxs[2] = -INVALID_BOUNDS;
 }
 
-void AddPointToBounds (vec3_t v, vec3_t mins, vec3_t maxs)
-{
-	int		i;
-	vec_t	val;
-	
-	for (i=0 ; i<3 ; i++)
+void AddPointToBounds( vec3_t v, vec3_t mins, vec3_t maxs ){
+	int i;
+	vec_t val;
+
+	if ( mins[0] == +INVALID_BOUNDS ) {
+		if ( maxs[0] == -INVALID_BOUNDS ) {
+			VectorCopy( v, mins );
+			VectorCopy( v, maxs );
+		}
+	}
+
+	for ( i = 0 ; i < 3 ; i++ )
 	{
 		val = v[i];
-		if (val < mins[i])
+		if ( val < mins[i] ) {
 			mins[i] = val;
-		if (val > maxs[i])
+		}
+		if ( val > maxs[i] ) {
 			maxs[i] = val;
+		}
 	}
 }
 
 void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 {
-	float		angle;
-	static float		sr, sp, sy, cr, cp, cy;
+	float angle;
+	static float sr, sp, sy, cr, cp, cy;
+
 	// static to help MS compiler fp bugs
-	
 	angle = angles[YAW] * (Q_PI*2.0f / 360.0f);
 	sy = (vec_t)sin(angle);
 	cy = (vec_t)cos(angle);
@@ -305,7 +277,6 @@ void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 	angle = angles[ROLL] * (Q_PI*2.0f / 360.0f);
 	sr = (vec_t)sin(angle);
 	cr = (vec_t)cos(angle);
-	
 	if (forward)
 	{
 		forward[0] = cp*cy;
@@ -372,16 +343,15 @@ Returns false if the triangle is degenrate.
 The normal will point out of the clock for clockwise ordered points
 =====================
 */
-qboolean PlaneFromPoints( vec4_t plane, const vec3_t a, const vec3_t b, const vec3_t c ) {
+qboolean PlaneFromPoints(vec4_t plane, const vec3_t a, const vec3_t b, const vec3_t c)
+{
 	vec3_t	d1, d2;
 
 	VectorSubtract( b, a, d1 );
 	VectorSubtract( c, a, d2 );
 	CrossProduct( d2, d1, plane );
-	if ( VectorNormalize( plane, plane ) == 0 ) {
+	if( VectorNormalize(plane, plane) == 0 )
 		return qfalse;
-	}
-
 	plane[3] = DotProduct( a, plane );
 	return qtrue;
 }
@@ -394,17 +364,24 @@ qboolean PlaneFromPoints( vec4_t plane, const vec3_t a, const vec3_t b, const ve
 ** Lng = 0 at (0,0,1) to 180 (0,0,-1), encoded in 8-bit sine table format
 **
 */
-void NormalToLatLong( const vec3_t normal, byte bytes[2] ) {
+void NormalToLatLong( const vec3_t normal, byte bytes[2] )
+{
 	// check for singularities
-	if ( normal[0] == 0 && normal[1] == 0 ) {
-		if ( normal[2] > 0 ) {
+	if ( normal[0] == 0 && normal[1] == 0 )
+	{
+		if ( normal[2] > 0 ) 
+		{
 			bytes[0] = 0;
 			bytes[1] = 0;		// lat = 0, long = 0
-		} else {
+		}
+		else 
+		{
 			bytes[0] = 128;
 			bytes[1] = 0;		// lat = 0, long = 128
 		}
-	} else {
+	} 
+	else 
+	{
 		int	a, b;
 
 		a = (int)( RAD2DEG( atan2( normal[1], normal[0] ) ) * (255.0f / 360.0f ) );
@@ -423,14 +400,14 @@ void NormalToLatLong( const vec3_t normal, byte bytes[2] ) {
 PlaneTypeForNormal
 =================
 */
-int	PlaneTypeForNormal (vec3_t normal) {
+int	PlaneTypeForNormal (vec3_t normal)
+{
 	if (normal[0] == 1.0 || normal[0] == -1.0)
 		return PLANE_X;
 	if (normal[1] == 1.0 || normal[1] == -1.0)
 		return PLANE_Y;
 	if (normal[2] == 1.0 || normal[2] == -1.0)
 		return PLANE_Z;
-	
 	return PLANE_NON_AXIAL;
 }
 
@@ -480,37 +457,38 @@ void ProjectPointOnPlane( vec3_t dst, const vec3_t p, const vec3_t normal )
 }
 
 /*
-** assumes "src" is normalized
+PerpendicularVector
+assumes "src" is normalized
 */
 void PerpendicularVector( vec3_t dst, const vec3_t src )
 {
 	int	pos;
-	int i;
 	vec_t minelem = 1.0F;
 	vec3_t tempvec;
 
-	/*
-	** find the smallest magnitude axially aligned vector
-	*/
-	for ( pos = 0, i = 0; i < 3; i++ )
+	/* find the smallest magnitude axially aligned vector */
+	if( fabs( src[0] ) < minelem )
 	{
-		if ( fabs( src[i] ) < minelem )
-		{
-			pos = i;
-			minelem = (vec_t)fabs( src[i] );
-		}
+		pos = 0;
+		minelem = (vec_t)fabs( src[0] );
+	}
+	if( fabs( src[1] ) < minelem )
+	{
+		pos = 1;
+		minelem = (vec_t)fabs( src[1] );
+	}
+	if( fabs( src[2] ) < minelem )
+	{
+		pos = 2;
+		minelem = (vec_t)fabs( src[2] );
 	}
 	tempvec[0] = tempvec[1] = tempvec[2] = 0.0F;
 	tempvec[pos] = 1.0F;
 
-	/*
-	** project the point onto the plane defined by src
-	*/
+	/* project the point onto the plane defined by src */
 	ProjectPointOnPlane( dst, tempvec, src );
 
-	/*
-	** normalize the result
-	*/
+	/* normalize the result */
 	VectorNormalize( dst, dst );
 }
 
@@ -528,7 +506,6 @@ void RotatePointAroundVector( vec3_t dst, const vec3_t dir, const vec3_t point, 
 	float	zrot[3][3];
 	float	tmpmat[3][3];
 	float	rot[3][3];
-	int	i;
 	vec3_t vr, vup, vf;
 	float	rad;
 
@@ -572,7 +549,7 @@ void RotatePointAroundVector( vec3_t dst, const vec3_t dir, const vec3_t point, 
 	MatrixMultiply( m, zrot, tmpmat );
 	MatrixMultiply( tmpmat, im, rot );
 
-	for ( i = 0; i < 3; i++ ) {
-		dst[i] = rot[i][0] * point[0] + rot[i][1] * point[1] + rot[i][2] * point[2];
-	}
+	dst[0] = rot[0][0] * point[0] + rot[0][1] * point[1] + rot[0][2] * point[2];
+	dst[1] = rot[1][0] * point[0] + rot[1][1] * point[1] + rot[1][2] * point[2];
+	dst[2] = rot[2][0] * point[0] + rot[2][1] * point[1] + rot[2][2] * point[2];
 }

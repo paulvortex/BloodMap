@@ -52,7 +52,9 @@ typedef vec_t vec4_t[4];
 #define	PLANE_Z			2
 #define	PLANE_NON_AXIAL	3
 
-#define	Q_PI	3.14159265358979323846f
+#define EQUAL_EPSILON 0.001
+
+#define	Q_PI 3.14159265358979323846f
 
 extern const vec3_t vec3_origin;
 
@@ -60,59 +62,51 @@ extern const vec3_t g_vec3_axis_x;
 extern const vec3_t g_vec3_axis_y;
 extern const vec3_t g_vec3_axis_z;
 
-#define	EQUAL_EPSILON	0.001
-
 #define DotProduct(x,y) ((x)[0]*(y)[0]+(x)[1]*(y)[1]+(x)[2]*(y)[2])
 #define VectorSubtract(a,b,c) ((c)[0]=(a)[0]-(b)[0],(c)[1]=(a)[1]-(b)[1],(c)[2]=(a)[2]-(b)[2])
 #define VectorAdd(a,b,c) ((c)[0]=(a)[0]+(b)[0],(c)[1]=(a)[1]+(b)[1],(c)[2]=(a)[2]+(b)[2])
 #define VectorIncrement(a,b) ((b)[0]+=(a)[0],(b)[1]+=(a)[1],(b)[2]+=(a)[2])
 #define VectorCopy(a,b) ((b)[0]=(a)[0],(b)[1]=(a)[1],(b)[2]=(a)[2])
 #define VectorSet(v, a, b, c) ((v)[0]=(a),(v)[1]=(b),(v)[2]=(c))
+#define VectorInverse(v) ((v)[0]=-(v)[0],(v)[1]=-(v)[1],(v)[2]=-(v)[2])
 #define VectorScale(a,b,c) ((c)[0]=(b)*(a)[0],(c)[1]=(b)*(a)[1],(c)[2]=(b)*(a)[2])
 #define VectorMid(a,b,c) ((c)[0]=((a)[0]+(b)[0])*0.5f,(c)[1]=((a)[1]+(b)[1])*0.5f,(c)[2]=((a)[2]+(b)[2])*0.5f)
 #define VectorNegate(a,b) ((b)[0]=-(a)[0],(b)[1]=-(a)[1],(b)[2]=-(a)[2])
 #define CrossProduct(a,b,c) ((c)[0]=(a)[1]*(b)[2]-(a)[2]*(b)[1],(c)[1]=(a)[2]*(b)[0]-(a)[0]*(b)[2],(c)[2]=(a)[0]*(b)[1]-(a)[1]*(b)[0])
 #define VectorClear(x) ((x)[0]=(x)[1]=(x)[2]=0)
+#define VectorEqual(a,b) (a[0]==b[0] && a[1]==b[1] && a[2]==b[2])
+#define VectorIsNull(a) (a[0]==0 && a[0]==a[1] && a[0]==a[2])
 
 #define FLOAT_SNAP(f,snap) ( (float)( floor( (f) / (snap) + 0.5 ) * (snap) ) )
 #define FLOAT_TO_INTEGER(f) ( (float)( floor( (f) + 0.5 ) ) )
 
 #define Q_rint(in) ((vec_t)floor(in+0.5))
+float   invsqrt( float number ); // fast inverse square-root
 
 qboolean VectorCompare (const vec3_t v1, const vec3_t v2);
+qboolean VectorCompareExt (const vec3_t v1, const vec3_t v2, float epsilon);
+vec_t VectorLength( const vec3_t v );
 
 void MakeNormalVectors( vec3_t forward, vec3_t right, vec3_t up );
 
-vec_t VectorLength(const vec3_t v);
-
 void VectorMA( const vec3_t va, vec_t scale, const vec3_t vb, vec3_t vc );
 
-void _CrossProduct (vec3_t v1, vec3_t v2, vec3_t cross);
-vec_t VectorNormalize (const vec3_t in, vec3_t out);
-vec_t ColorNormalize( const vec3_t in, vec3_t out );
-void VectorInverse (vec3_t v);
+vec_t VectorNormalize(const vec3_t in, vec3_t out);
+vec_t ColorNormalize(const vec3_t in, vec3_t out);
+
 void VectorPolar(vec3_t v, float radius, float theta, float phi);
 
-// default snapping, to 1
-void VectorSnap(vec3_t v);
-
-// integer snapping
-void VectorISnap(vec3_t point, int snap);
-
-// Gef:   added snap to float for sub-integer grid sizes
-// TTimo: we still use the int version of VectorSnap when possible
-//        to avoid potential rounding issues
-// TTimo: renaming to VectorFSnap for C implementation
-void VectorFSnap(vec3_t point, float snap);
+void VectorSnap( vec3_t v );
+void VectorISnap( vec3_t point, int snap );
+void VectorFSnap( vec3_t point, float snap );
 
 // NOTE: added these from Ritual's Q3Radiant
-void ClearBounds (vec3_t mins, vec3_t maxs);
-void AddPointToBounds (vec3_t v, vec3_t mins, vec3_t maxs);
+void ClearBounds( vec3_t mins, vec3_t maxs );
+void AddPointToBounds( vec3_t v, vec3_t mins, vec3_t maxs );
 
-
-#define	PITCH				0		// up / down
-#define	YAW					1		// left / right
-#define	ROLL				2		// fall over
+#define	PITCH 0 // up / down
+#define	YAW	  1 // left / right
+#define	ROLL  2 // fall over
 
 void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up);
 void VectorToAngles( vec3_t vec, vec3_t angles );
@@ -127,7 +121,6 @@ void VectorRotate (vec3_t vIn, vec3_t vRotation, vec3_t out);
 void VectorRotateOrigin (vec3_t vIn, vec3_t vRotation, vec3_t vOrigin, vec3_t out);
 
 // some function merged from tools mathlib code
-
 qboolean PlaneFromPoints( vec4_t plane, const vec3_t a, const vec3_t b, const vec3_t c );
 void NormalToLatLong( const vec3_t normal, byte bytes[2] );
 int	PlaneTypeForNormal (vec3_t normal);
