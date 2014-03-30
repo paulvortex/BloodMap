@@ -24,77 +24,62 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "inout.h"
 #include "threads.h"
 
-#define	MAX_THREADS	64
+#define	MAX_THREADS	256
 
-int		dispatch;
-int		workcount;
-int		oldf;
-qboolean		pacifier;
+int	dispatch;
+int	workcount;
+int	oldf;
+qboolean pacifier;
+qboolean threaded;
 
-qboolean	threaded;
-
-/*
-=============
-GetThreadWork
-
-=============
-*/
+// get a new work for thread
 int	GetThreadWork (void)
 {
 	int	r;
 	int	f;
 
-	ThreadLock ();
-
+	ThreadLock();
 	if (dispatch == workcount)
 	{
-		ThreadUnlock ();
+		ThreadUnlock();
 		return -1;
 	}
-
 	f = 10*dispatch / workcount;
 	if (f != oldf)
 	{
 		oldf = f;
-		if (pacifier)
+		if (pacifier == qtrue)
 		{
 			Sys_Printf ("%i...", f);
 			fflush( stdout );	/* ydnar */
 		}
 	}
-
 	r = dispatch;
 	dispatch++;
 	ThreadUnlock ();
-
 	return r;
 }
 
-
 void (*workfunction) (int);
-
 void ThreadWorkerFunction (int threadnum)
 {
-	int		work;
-
+	int	work;
 	while (1)
 	{
 		work = GetThreadWork ();
 		if (work == -1)
 			break;
-//Sys_Printf ("thread %i, work %i\n", threadnum, work);
 		workfunction(work);
 	}
 }
 
-void RunThreadsOnIndividual (int workcnt, qboolean showpacifier, void(*func)(int))
+void RunThreadsOnIndividual(int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	if (numthreads == -1)
 		ThreadSetDefault ();
 	workfunction = func;
-  RunThreadsOn (workcnt, showpacifier, ThreadWorkerFunction);
+	RunThreadsOn(workcnt, showpacifier, ThreadWorkerFunction);
 }
-
 
 /*
 ===================================================================
@@ -103,14 +88,11 @@ WIN32 / WIN64
 
 ===================================================================
 */
+
 #if defined(WIN32) || defined(WIN64)
 
-#define	USED
-
-#include <windows.h>
-
-int		numthreads = -1;
-CRITICAL_SECTION		crit;
+int	numthreads = -1;
+CRITICAL_SECTION crit;
 static int enter;
 
 void ThreadSetDefault (void)
@@ -124,10 +106,8 @@ void ThreadSetDefault (void)
 		if (numthreads < 1 || numthreads > 32)
 			numthreads = 1;
 	}
-
 	Sys_Printf ("%i threads\n", numthreads);
 }
-
 
 void ThreadLock (void)
 {
@@ -149,12 +129,7 @@ void ThreadUnlock (void)
 	LeaveCriticalSection (&crit);
 }
 
-/*
-=============
-RunThreadsOn
-=============
-*/
-void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
+void RunThreadsOn(int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	int		threadid[MAX_THREADS];
 	HANDLE	threadhandle[MAX_THREADS];
@@ -168,9 +143,7 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 	pacifier = showpacifier;
 	threaded = qtrue;
 
-	//
 	// run threads in parallel
-	//
 	InitializeCriticalSection (&crit);
 
 	if (numthreads == 1)
@@ -184,16 +157,13 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 			threadhandle[i] = CreateThread(
 			   NULL,	// LPSECURITY_ATTRIBUTES lpsa,
 			   //0,		// DWORD cbStack,
-
-				/* ydnar: cranking stack size to eliminate radiosity crash with 1MB stack on win32 */
-				(4096 * 1024),
-
+			   /* ydnar: cranking stack size to eliminate radiosity crash with 1MB stack on win32 */
+			   (4096 * 1024),
 			   (LPTHREAD_START_ROUTINE)func,	// LPTHREAD_START_ROUTINE lpStartAddr,
 			   (LPVOID)i,	// LPVOID lpvThreadParm,
 			   0,			//   DWORD fdwCreate,
 			   (LPDWORD)&threadid[i]);
 		}
-
 		for (i=0 ; i<numthreads ; i++)
 			WaitForSingleObject (threadhandle[i], INFINITE);
 	}
@@ -201,11 +171,26 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 
 	threaded = qfalse;
 	end = I_FloatTime ();
-	if (pacifier)
+	if (pacifier == qtrue)
 		Sys_Printf (" (%i)\n", end-start);
 }
 
-
+void ThreadMutexInit(ThreadMutex *mutex)
+{
+	mutex->handle = CreateMutex(NULL, FALSE, NULL);
+}
+void ThreadMutexLock(ThreadMutex *mutex)
+{
+	WaitForSingleObject(mutex->handle, INFINITE);
+}
+void ThreadMutexUnlock(ThreadMutex *mutex)
+{
+	ReleaseMutex(mutex->handle);
+}
+void ThreadMutexDelete(ThreadMutex *mutex)
+{
+	CloseHandle(mutex->handle);
+}
 #endif
 
 /*
