@@ -866,7 +866,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 	verts = &yDrawVerts[ ds2->firstVert ];
 	
 	/* calculate lightmap origin */
-	if( VectorLength( ds2->lightmapVecs[ 2 ] ) )
+	if( !VectorIsNull( ds2->lightmapVecs[ 2 ] ) )
 		VectorCopy( ds2->lightmapVecs[ 2 ], plane );
 	else
 		VectorCopy( lm->axis, plane );
@@ -881,8 +881,8 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 	VectorCopy( lm->origin, ds->lightmapOrigin );
 	
 	/* for planar surfaces, create lightmap vectors for st->xyz conversion */
-	if( VectorLength( ds->lightmapVecs[ 2 ] ) || 1 )	/* ydnar: can't remember what exactly i was thinking here... */
-	{
+	/* if( VectorLength( ds->lightmapVecs[ 2 ] ) || 1 ) */	/* ydnar: can't remember what exactly i was thinking here... */
+	//{
 		/* allocate space for the vectors */
 		lm->vecs = (vec3_t *)safe_malloc( 3 * sizeof( vec3_t ) );
 		memset( lm->vecs, 0, 3 * sizeof( vec3_t ) );
@@ -897,12 +897,12 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 			d /= plane[ axisNum ];
 			lm->vecs[ i ][ axisNum ] -= d;
 		}
-	}
-	else
-	{
-		/* lightmap vectors are useless on a non-planar surface */
-		lm->vecs = NULL;
-	}
+	//}
+	//else
+	//{
+	//	/* lightmap vectors are useless on a non-planar surface */
+	//	lm->vecs = NULL;
+	//}
 	
 	/* add to counts */
 	if( ds->surfaceType == MST_PATCH )
@@ -1131,7 +1131,7 @@ void SetupSurfaceLightmaps( void )
 			}
 			
 			/* determine if surface is planar */
-			if( VectorLength( ds->lightmapVecs[ 2 ] ) > 0.0f )
+			if( !VectorIsNull( ds->lightmapVecs[ 2 ] ) )
 			{
 				/* make a plane */
 				info->plane = (float *)safe_malloc( 4 * sizeof( float ) );
@@ -1295,11 +1295,14 @@ void AllocateSurfaceLightmaps(void)
 	for (i = 0; i < numRawLightmaps; i++)
 	{
 		/* print pacifier */
-		f = 10 * i / numBSPDrawSurfaces;
-		if( f != fOld )
+		if( numRawLightmaps >= 10 )
 		{
-			fOld = f;
-			Sys_FPrintf( SYS_VRB, "%d...", f );
+			f = 10 * i / numRawLightmaps;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf( SYS_VRB, "%d...", f );
+			}
 		}
 
 		/* allocate */
@@ -1307,7 +1310,8 @@ void AllocateSurfaceLightmaps(void)
 	}
 
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	if( numRawLightmaps >= 10 )
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* emit some stats */
 	Sys_FPrintf( SYS_VRB, "%9d surfaces\n", numBSPDrawSurfaces );
@@ -3464,7 +3468,7 @@ void StoreSurfaceLightmaps( void )
 				
 				/* write lightmap */
 				sprintf( filename, "%s/" EXTERNAL_LIGHTMAP, dirname, numExtLightmaps );
-				Sys_FPrintf( SYS_VRB, "\nwriting %s", filename );
+				//Sys_FPrintf( SYS_VRB, "\nwriting %s", filename );
 				WriteTGA24( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qtrue );
 				numExtLightmaps++;
 				
@@ -3472,7 +3476,7 @@ void StoreSurfaceLightmaps( void )
 				if( deluxemap )
 				{
 					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP, dirname, numExtLightmaps );
-					Sys_FPrintf( SYS_VRB, "\nwriting %s", filename );
+					//Sys_FPrintf( SYS_VRB, "\nwriting %s", filename );
 					WriteTGA24( filename, olm->bspDirBytes, olm->customWidth, olm->customHeight, qtrue );
 					numExtLightmaps++;
 					

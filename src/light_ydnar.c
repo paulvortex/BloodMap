@@ -143,8 +143,6 @@ smooths together coincident vertex normals across the bsp
 #define THETA_EPSILON			0.000001
 #define EQUAL_NORMAL_EPSILON	0.01
 
-extern qboolean VectorCompareExt( vec3_t n1, vec3_t n2, float epsilon );
-
 void SmoothNormals( void )
 {
 	int					i, j, k, f, cs, numVerts, numVotes, fOld, start;
@@ -1275,7 +1273,6 @@ void MapRawLightmap(int rawLightmapNum)
 				
 				/* average */
 				VectorDivide( fake.xyz, samples, fake.xyz );
-				//%	VectorDivide( fake.normal, samples, fake.normal );
 				if( VectorNormalize( fake.normal, fake.normal ) == 0.0f )
 					continue;
 				
@@ -4439,7 +4436,7 @@ void SetupFloodLight( void )
 		floodlightRGB[1]=v2;
 		floodlightRGB[2]=v3;
 		
-		if (VectorLength(floodlightRGB)==0)
+		if (VectorIsNull(floodlightRGB))
 		{
 			VectorSet(floodlightRGB,240,240,255);
 		}
@@ -4551,13 +4548,9 @@ float FloodLightForSample( trace_t *trace , float floodLightDistance, qboolean f
 			{
 				VectorSubtract( trace->hit, trace->origin, displacement );
 				d=VectorLength( displacement );
-
-				// d=trace->distance;            
-				//if (d>256) gatherDirt+=1;
 				contribution=d/dd;
-				if (contribution>1) contribution=1.0f; 
-	             
-				//gatherDirt += 1.0f - ooDepth * VectorLength( displacement );
+				if (contribution>1)
+					contribution=1.0f; 
 			}
 	         
 			gatherLight+=contribution;

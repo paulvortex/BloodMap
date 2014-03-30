@@ -751,7 +751,6 @@ float PointToPolygonFormFactor( const vec3_t point, const vec3_t normal, const w
 	}
 	
 	/* now in the range of 0 to 1 over the entire incoming hemisphere */
-	//%	total /= (2.0f * 3.141592657f);
 	total *= ONE_OVER_2PI;
 	return total;
 }
@@ -1531,7 +1530,6 @@ int LightContributionToPoint( trace_t *trace )
 }
 #endif
 
-
 /*
 TraceGrid()
 grid samples are for quickly determining the lighting
@@ -1934,7 +1932,7 @@ void LightWorld( void )
 	
 	/* find the optional minimum lighting values */
 	GetVectorForKey( &entities[ 0 ], "_color", color );
-	if( VectorLength( color ) == 0.0f )
+	if( VectorIsNull( color ) )
 		VectorSet( color, 1.0, 1.0, 1.0 );
 	
 	/* ambient */
@@ -2583,9 +2581,7 @@ int LightMain( int argc, char **argv )
 		{
 			broadMerge = qtrue;
 			Sys_Printf( "Reducing drawsurfaces count by extensive merging\n" );
-			
 		}
-		
 		else if( !strcmp( argv[ i ], "-debug" ) )
 		{
 			debug = qtrue;
@@ -2853,7 +2849,7 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "WARNING: Unknown argument \"%s\"\n", argv[ i ] );
 
 	}
-	
+
 	/* clean up map name */
 	strcpy( source, ExpandArg( argv[ i ] ) );
 	StripExtension( source );
@@ -2884,7 +2880,7 @@ int LightMain( int argc, char **argv )
 	/* load map file */
 	value = ValueForKey( &entities[ 0 ], "_keepLights" );
 	if( value[ 0 ] != '1' )
-		LoadMapFile( mapSource, qtrue );
+		LoadMapFile( mapSource, qtrue, qfalse );
 	
 	/* set the entity/model origins and init yDrawVerts */
 	SetEntityOrigins();
