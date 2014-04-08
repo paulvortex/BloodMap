@@ -1120,16 +1120,14 @@ PopulateWithPicoModel() - ydnar
 filters a picomodel's surfaces into the raytracing tree
 */
 
-static void PopulateWithPicoModel( char castShadows, picoModel_t *model, m4x4_t transform )
+static void PopulateWithPicoModel( char castShadows, picoModel_t *model, m4x4_t transform, int skin )
 {
 	int					i, j, k, numSurfaces, numIndexes;
 	picoSurface_t		*surface;
-	picoShader_t		*shader;
 	picoVec_t			*xyz, *st;
 	picoIndex_t			*indexes;
 	traceInfo_t			ti;
 	traceWinding_t		tw;
-	
 	
 	/* dummy check */
 	if( model == NULL || transform == NULL )
@@ -1151,10 +1149,8 @@ static void PopulateWithPicoModel( char castShadows, picoModel_t *model, m4x4_t 
 			continue;
 		
 		/* get shader (fixme: support shader remapping) */
-		shader = PicoGetSurfaceShader( surface );
-		if( shader == NULL )
-			continue;
-		ti.si = ShaderInfoForShader( PicoGetShaderName( shader ) );
+		/* vortex: support .skin files */
+		ti.si = ShaderInfoForShader( PicoGetSurfaceShaderNameForSkin( surface, skin ) );
 		if( ti.si == NULL )
 			continue;
 		
@@ -1204,7 +1200,7 @@ fills the raytracing tree with world and entity occluders
 
 static void PopulateTraceNodes( void )
 {
-	int				i, m, frame;
+	int				i, m, frame, skin;
 	char			castShadows;
 	float			temp;
 	entity_t		*e;
@@ -1280,11 +1276,22 @@ static void PopulateTraceNodes( void )
 			
 			/* external model */
 			default:
-				frame = IntForKey( e, "_frame" );
+				frame = 0;
+				if( KeyExists( e, "frame" ) )
+					frame = IntForKey( e, "frame" );
+				if( KeyExists( e, "_frame" ) )
+					frame = IntForKey( e, "_frame" );
+
+				skin = 0;
+				if( KeyExists( e, "skin" ) )
+					skin = IntForKey( e, "skin" );
+				if( KeyExists( e, "_skin" ) )
+					skin = IntForKey( e, "_skin" );
+
 				model = LoadModel( (char*) value, frame );
 				if( model == NULL )
 					continue;
-				PopulateWithPicoModel( castShadows, model, transform );
+				PopulateWithPicoModel( castShadows, model, transform, skin );
 				continue;
 		}
 		
@@ -1308,11 +1315,22 @@ static void PopulateTraceNodes( void )
 			
 			/* external model */
 			default:
-				frame = IntForKey( e, "_frame2" );
+				frame = 0;
+				if( KeyExists( e, "frame2" ) )
+					frame = IntForKey( e, "frame2" );
+				if( KeyExists( e, "_frame2" ) )
+					frame = IntForKey( e, "_frame2" );
+
+				skin = 0;
+				if( KeyExists( e, "skin2" ) )
+					skin = IntForKey( e, "skin2" );
+				if( KeyExists( e, "_skin2" ) )
+					skin = IntForKey( e, "_skin2" );
+
 				model = LoadModel( (char*) value, frame );
 				if( model == NULL )
 					continue;
-				PopulateWithPicoModel( castShadows, model, transform );
+				PopulateWithPicoModel( castShadows, model, transform, skin );
 				continue;
 		}
 	}

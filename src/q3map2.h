@@ -1348,6 +1348,10 @@ typedef struct
 	qboolean			passSolid;
 	qboolean			opaque;
 	shaderInfo_t        *skyLightShader;
+
+	/* working data */
+	int					numTestNodes;
+	int					testNodes[ MAX_TRACE_TEST_NODES ]; 
 }
 trace_t;
 
@@ -1653,9 +1657,9 @@ tree_t						*FaceBSP( face_t *list );
 void                        LoadTriangleModels( void );
 void						PicoPrintFunc( int level, const char *str );
 void						PicoLoadFileFunc( char *name, byte **buffer, int *bufSize );
-picoModel_t					*FindModel( char *name, int frame );
-picoModel_t					*LoadModel( char *name, int frame );
-void						InsertModel( char *name, int frame, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj, qboolean noAlphaFix );
+picoModel_t					*FindModel( const char *name, int frame );
+picoModel_t					*LoadModel( const char *name, int frame );
+void						InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes );
 void						AddTriangleModels( entity_t *e );
 
 
@@ -1683,6 +1687,7 @@ void						MakeFogHullSurfs( entity_t *e, tree_t *tree, char *shader );
 void						SubdivideFaceSurfaces( entity_t *e, tree_t *tree );
 void						AddEntitySurfaceModels( entity_t *e );
 int							AddSurfaceModels( mapDrawSurface_t *ds );
+void                        DeformVertexes( mapDrawSurface_t *ds, float pushVertexes );
 void						FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier );
 void                        EmitDrawsurfsStats( );
 void						EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds );

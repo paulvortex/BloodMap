@@ -567,7 +567,7 @@ handles creation of a bsp from a map file
 
 int BSPMain( int argc, char **argv )
 {
-	int			i;
+	int			i, j;
 	char		path[ 1024 ], tempSource[ 1024 ], foliageFile[ 1024 ];
 
 	/* note it */
@@ -885,23 +885,22 @@ int BSPMain( int argc, char **argv )
 	/* load shaders */
 	LoadShaderInfo();
 
-	/* check foliage file */
-	strcpy( foliageFile, source );
-	strcat( foliageFile, "_foliage.reg" );
-	if( FileExists( foliageFile ) == qtrue )
-		Sys_Printf( "Map has foliage file.\n " );
-	else
-		foliageFile[ 0 ] = 0;
-	
 	/* load original file from temp spot in case it was renamed by the editor on the way in */
 	if( strlen( tempSource ) > 0 )
 		LoadMapFile( tempSource, qfalse, qfalse );
 	else
 		LoadMapFile( name, qfalse, qfalse  );
 
-	/* load foliage file */
-	if( strlen( foliageFile ) > 0 && nofoliage == qfalse )
-		LoadMapFile( foliageFile, qfalse, qtrue );
+	/* load foliage files */
+	for (j = 1; j < 10 && nofoliage == qfalse; j++)
+	{
+		if (j < 2)
+			sprintf( foliageFile, "%s_foliage.reg", source );
+		else
+			sprintf( foliageFile, "%s_foliage%i.reg", source, j );
+		if( FileExists( foliageFile ) == qtrue ) 
+			LoadMapFile( foliageFile, qfalse, qtrue );
+	}
 
 	/* vortex: preload triangle models */
 	LoadTriangleModels();

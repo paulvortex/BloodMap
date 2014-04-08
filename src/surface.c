@@ -3156,7 +3156,7 @@ int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, surfaceModel_t *model, b
 			}
 			
 			/* insert the model */
-			InsertModel( (char *) model->model, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix );
+			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0 );
 			
 			/* return to sender */
 			return 1;
@@ -3416,6 +3416,30 @@ static void VolumeColorMods( entity_t *e, mapDrawSurface_t *ds )
 	}
 }
 
+/*
+DeformVertexes() - vortex
+part of FilterDrawsurfsIntoTree()
+performs deformations on surface verts
+*/
+
+void DeformVertexes( mapDrawSurface_t *ds, float pushVertexes )
+{
+	bspDrawVert_t *v;
+	int	i;
+
+	/* early out */
+	if (!pushVertexes)
+		return;
+
+	/* iterate verts */
+	for( i = 0; i < ds->numVerts; i++ )
+	{
+		v = &ds->verts[ i ];
+
+		/* push verts in direction of their normals (fatboy) */
+		VectorMA(v->xyz, pushVertexes, v->normal, v->xyz);
+	}
+}
 
 /*
 FixDrawsurfVertexAlpha() - vortex
@@ -3607,12 +3631,12 @@ void FixVertexAlpha(entity_t *e, qboolean showpacifier)
 }
 
 /*
-ApplyVolumeMods() - vortex
+ApplyVertexMods() - vortex
 part of FilterDrawsurfsIntoTree()
 apply shader abd brush colormods to surface vertexes
 */
 
-void ApplyVolumeMods(entity_t *e, qboolean showpacifier)
+void ApplyVertexMods(entity_t *e, qboolean showpacifier)
 {
 	int	i, j, f, fOld, start;
 	mapDrawSurface_t *ds;
@@ -3620,7 +3644,7 @@ void ApplyVolumeMods(entity_t *e, qboolean showpacifier)
 
 	/* note it */
 	if( showpacifier == qtrue )
-		Sys_Printf( "--- ApplyVolumeMods ---\n" );
+		Sys_Printf( "--- ApplyVertexMods ---\n" );
 
 	/* init pacifier */
 	start = I_FloatTime();
@@ -3659,6 +3683,9 @@ void ApplyVolumeMods(entity_t *e, qboolean showpacifier)
 			
 		/* ydnar: apply brush colormod */
 		VolumeColorMods( e, ds );
+
+		/* vortex: apply deformVertexes */
+		DeformVertexes( ds, 0 );
 			
 		/* ydnar: make fur surfaces */
 		if( si->furNumLayers > 0 )
@@ -3695,7 +3722,7 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier )
 	int	numSurfs, numRefs, numSkyboxSurfaces;
 	
 	/* apply mods */
-	ApplyVolumeMods( e, showpacifier );
+	ApplyVertexMods( e, showpacifier );
 
 	/* fix vertex alpha */
 	FixVertexAlpha( e, showpacifier );

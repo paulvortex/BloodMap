@@ -198,6 +198,16 @@ void ColorMod( mapDrawSurface_t *ds, colorMod_t *cm, brush_t *b, int startVert, 
 					mult[ 3 ] *= mult[ 3 ];
 					break;
 
+				case CM_COLOR_INVERT:
+					mult[ 0 ] = 255.0f - mult[ 0 ];
+					mult[ 1 ] = 255.0f - mult[ 1 ];
+					mult[ 2 ] = 255.0f - mult[ 2 ];
+					break;
+				
+				case CM_ALPHA_INVERT:
+					mult[ 3 ] = 255.0f - mult[ 3 ];
+					break;
+
 				case CM_ALPHA_RANDOM:
 					mult[ 3 ] = 0;
 					add[ 3 ] = (cm2->data[ 0 ] + ColorModRandom(dv->xyz, cm2->data[ 2 ]) * (cm2->data[ 1 ] - cm2->data[ 0 ])) * 255.0f;
@@ -2057,6 +2067,12 @@ static void ParseShaderFile( const char *filename )
 						cm->type = (colorModType_t)(CM_COLOR_DOT_PRODUCT_2 + alpha);
 						Parse1DMatrixAppend( shaderText, 3, cm->data );
 					}
+
+					/* inverse ( X Y Z ) */
+					else if( !Q_stricmp( token, "invert" ) )
+					{
+						cm->type = (colorModType_t)(CM_COLOR_INVERT + alpha);
+					}
 					
 					/* volume */
 					else if( !Q_stricmp( token, "volume" ) )
@@ -2065,7 +2081,6 @@ static void ParseShaderFile( const char *filename )
 						cm->type = CM_VOLUME;
 					}
 
-			
 					/* wateralpha A */
 					else if( !Q_stricmp( token, "wateralpha" ) )
 					{

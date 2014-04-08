@@ -324,8 +324,8 @@ free / cleanup entities array
 
 void EntityArrayFlush(decoreEnts_t *groupents)
 {
-	if( groupents->entities )
-		free( groupents->entities );
+	//if( groupents->entities )
+	//	free( groupents->entities );
 	memset( groupents, 0, sizeof( decoreEnts_t ) );
 }
 
@@ -1068,14 +1068,12 @@ randomizes test node entities so there will be several groupings possible
 */
 void ShuffleTestNode( decoreEnts_t *testnode )
 {
-	int	j;
+	entity_t *temp;
+	int index, j;
 
 	/* fisher-yates shuffle */
 	for( j = 0; j < testnode->numEntities; j++ )
 	{
-		entity_t *temp;
-		int index;
-
 		index = rand() % testnode->numEntities;
 		if( index != j )
 		{
@@ -1116,7 +1114,7 @@ void ProcessDecorationGroup(int groupNum)
 	if( group->mergeModels )
 	{
 		decoreNode_t *dst, *mergenode, *dstnodes, *testnode;
-		decoreEnts_t *src, basenode = { 0 }, shufflednode = { 0 };
+		decoreEnts_t *src, basenode, shufflednode;
 		int j, num, avgmin, avgmax, best, *stats;
 		const char *model, *value;
 		vec3_t delta, size, scale;
@@ -1126,6 +1124,8 @@ void ProcessDecorationGroup(int groupNum)
 		char str[512];
 
 		/* allocate nodes */
+		memset(&basenode, 0, sizeof(basenode));
+		memset(&shufflednode, 0, sizeof(shufflednode));
 		EntityArrayCopy(&group->entities, &basenode);
 		dstnodes = NewNodesArray( numDecoreTestNodes );
 
@@ -1150,6 +1150,8 @@ void ProcessDecorationGroup(int groupNum)
 
 				/* find model */
 				m = FindModel(model, IntForKey( e, "_frame" ));
+				if (m == NULL)
+					continue;
 
 				/* get scale */
 				scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = 1.0f;
@@ -1168,8 +1170,9 @@ void ProcessDecorationGroup(int groupNum)
 				/* push to world? */
 				if (size[ 0 ] > group->mergeMaxSize || size[ 1 ] > group->mergeMaxSize || size[ 2 ] > group->mergeMaxSize)
 				{
-					src->entities[ i ] = NULL;
 					numDecoreEntitiesPushedToWorldspawn++;
+					SetKeyValue( e, "_pv2", "-0.1" ); /* vortex: bias surfaces a bit so decore editor won't do zfighting */
+					src->entities[ i ] = NULL;
 				}
 			}
 		}
@@ -1223,10 +1226,12 @@ void ProcessDecorationGroup(int groupNum)
 		memset( stats, 0, sizeof(int) * numDecoreTestNodes * 2 );
 		for ( i = 0; i < numDecoreTestNodes; i++ )
 		{
+			if (dstnodes[i].next == NULL)
+				continue;
 			for (mergenode = (decoreNode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
 				stats[i*2]++;
-			avgmin = ( group->entities.numEntities / stats[i*2] ) * 0.75;
-			avgmax = ( group->entities.numEntities / stats[i*2] ) * 1.25;
+			avgmin = ( basenode.numEntities / stats[i*2] ) * 0.75;
+			avgmax = ( basenode.numEntities / stats[i*2] ) * 1.25;
 
 			/* cals unbalanced groups */
 			for (mergenode = (decoreNode_t *)dstnodes[i].next; mergenode != NULL; mergenode = (decoreNode_t *)mergenode->next)
@@ -1243,6 +1248,8 @@ void ProcessDecorationGroup(int groupNum)
 		best = 0;
 		for ( i = 0; i < numDecoreTestNodes; i++ )
 		{
+			if (dstnodes[i].next == NULL)
+				continue;
 			if ( stats[i*2 + 1] > stats[best*2 + 1] )
 				continue;
 			// prefere with lesser 'less groups' count
