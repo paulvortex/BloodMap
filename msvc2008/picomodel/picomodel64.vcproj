@@ -56,8 +56,8 @@
 				ProgramDataBaseFileName="..\build\debug\x64\picomodel\"
 				BrowseInformation="0"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
-				DebugInformationFormat="4"
+				Detect64BitPortabilityProblems="false"
+				DebugInformationFormat="3"
 				DisableSpecificWarnings="4996"
 			/>
 			<Tool

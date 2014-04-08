@@ -85,10 +85,10 @@ typedef struct dgroup_s
 	int			      mergeModels;
 	int			      mergeRadius;
 	char		      mergeClass[ 1024 ];
+	vec_t             mergeMaxSize;
 	mergeAxis_t       mergeAxis;
 	// entities
 	decoreEnts_t      entities;
-	decoreEnts_t      testnodes[ MAX_DECORE_TESTNODES ];
 	// system
 	ThreadMutex       mutex;
 }decoreGroup_t;
@@ -96,6 +96,7 @@ typedef struct dgroup_s
 decoreGroup_t *decoreGroups Q_ASSIGN( NULL );
 int            numDecoreGroups Q_ASSIGN ( 0 );
 int            numDecoreEntities Q_ASSIGN ( 0 );
+int            numDecoreEntitiesPushedToWorldspawn Q_ASSIGN ( 0 );
 int            numDecoreTestNodes Q_ASSIGN ( 0 );
 
 /* rtlights import */
@@ -436,12 +437,7 @@ free all allocated fiels on decoregroup struct
 
 void FreeDecoreGroup( decoreGroup_t *group )
 {
-	int i;
-
-	/* free entities arrays */
 	EntityArrayFlush( &group->entities );
-	for( i = 0; i < MAX_DECORE_TESTNODES; i++ )
-		EntityArrayFlush( &group->testnodes[ i ] );
 }
 
 /*
@@ -640,7 +636,7 @@ void LoadDecorationScript( void )
 					importRtlights = BooleanFromString( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "colorscale" ) )
+				if( !Q_stricmp( token, "colorScale" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsColorscale = atof( token );
@@ -652,7 +648,7 @@ void LoadDecorationScript( void )
 					importRtlightsSaturate = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "radiusmod" ) )
+				if( !Q_stricmp( token, "radiusMod" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsRadiusmod = atof( token );
@@ -664,43 +660,43 @@ void LoadDecorationScript( void )
 					importRtlightsSpawnflags = atoi( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "noshadowdeviance" ) )
+				if( !Q_stricmp( token, "noShadowDeviance" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsNoShadowDeviance = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "noshadowsamples" ) )
+				if( !Q_stricmp( token, "noShadowSamples" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsNoShadowSamples = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "noshadowmindist" ) )
+				if( !Q_stricmp( token, "noShadowMinDist" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsNoShadowMinDist = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "shadowdeviance" ) )
+				if( !Q_stricmp( token, "shadowDeviance" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsShadowDeviance = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "shadowsamples" ) )
+				if( !Q_stricmp( token, "shadowSamples" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsShadowSamples = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "shadowmindist" ) )
+				if( !Q_stricmp( token, "shadowMinDist" ) )
 				{
 					GetToken( qfalse );
 					importRtlightsShadowMinDist = atof( token );
 					continue;
 				}
-				if( !Q_stricmp( token, "skipcubemapped" ) )
+				if( !Q_stricmp( token, "skipCubemapped" ) )
 				{
 					GetToken( qfalse );
 					if ( atoi( token ) )
@@ -709,7 +705,7 @@ void LoadDecorationScript( void )
 						importRtlightsSkipCubemapped = qfalse;
 					continue;
 				}
-				if( !Q_stricmp( token, "skipstyle" ) )
+				if( !Q_stricmp( token, "skipStyle" ) )
 				{
 					GetToken( qfalse );
 					if (importRtlightsSkipStylesNum >= MAX_SKIPSTYLES)
@@ -725,18 +721,18 @@ void LoadDecorationScript( void )
 		if (group == NULL)
 			continue;
 
-		if( !Q_stricmp( token, "mergemodels" ) )
+		if( !Q_stricmp( token, "mergeModels" ) )
 		{
 			group->mergeModels = 1;
 			if ( GetToken( qfalse ) == qtrue )
 				strcpy( group->mergeClass , token );
 		}
-		else if( !Q_stricmp( token, "mergeradius" ) )
+		else if( !Q_stricmp( token, "mergeRadius" ) )
 		{
 			if ( GetToken( qfalse ) == qtrue )
 				group->mergeRadius = atoi (token);
 		}
-		else if( !Q_stricmp( token, "mergeaxis" ) )
+		else if( !Q_stricmp( token, "mergeAxis" ) )
 		{
 			if ( GetToken( qfalse ) == qtrue )
 			{
@@ -745,6 +741,11 @@ void LoadDecorationScript( void )
 				else if( !Q_stricmp( token, "xy" ) )
 					group->mergeAxis = MERGE_XY;
 			}
+		}
+		else if( !Q_stricmp( token, "mergeMaxSize" ) )
+		{
+			if ( GetToken( qfalse ) == qtrue )
+				group->mergeMaxSize = atof (token);
 		}
 		else if( !Q_stricmp( token, "entity" ) )
 		{
@@ -1065,38 +1066,22 @@ static int CompareRandom( const void *a, const void *b )
 ShuffleTestNode()
 randomizes test node entities so there will be several groupings possible
 */
-void ShuffleTestNode( int testNodeNum )
+void ShuffleTestNode( decoreEnts_t *testnode )
 {
-	decoreGroup_t *group;
-	decoreEnts_t *testnode;
-	int	i, j;
+	int	j;
 
-	/* walk groups */
-	for( i = 0; i < numDecoreGroups; i++ )
+	/* fisher-yates shuffle */
+	for( j = 0; j < testnode->numEntities; j++ )
 	{
-		group = &decoreGroups[ i ];
+		entity_t *temp;
+		int index;
 
-		/* early out */
-		if (!group->entities.numEntities || !group->mergeModels)
-			continue;
-
-		/* get test node */
-		testnode = &group->testnodes[ testNodeNum ];
-		EntityArrayCopy(&group->entities, testnode);
-
-		/* fisher-yates shuffle */
-		for( j = 0; j < testnode->numEntities; j++ )
+		index = rand() % testnode->numEntities;
+		if( index != j )
 		{
-			entity_t *temp;
-			int index;
-
-			index = rand() % testnode->numEntities;
-			if( index != j )
-			{
-				temp = testnode->entities[ index ];
-				testnode->entities[ index ] = testnode->entities[ j ];
-				testnode->entities[ j ] = temp;
-			}
+			temp = testnode->entities[ index ];
+			testnode->entities[ index ] = testnode->entities[ j ];
+			testnode->entities[ j ] = temp;
 		}
 	}
 }
@@ -1105,12 +1090,13 @@ void ShuffleTestNode( int testNodeNum )
 ProcessDecorationGroup()
 processes entities under decoration group
 */
+picoModel_t *FindModel( const char *name, int frame );
 void ProcessDecorationGroup(int groupNum)
 {
 	decoreGroup_t *group;
 	entity_t *e;
 	int i;
-
+	
 	/* get group */
 	group = &decoreGroups[ groupNum ];
 	if ( !group->entities.numEntities )
@@ -1129,20 +1115,74 @@ void ProcessDecorationGroup(int groupNum)
 	/* process merging */
 	if( group->mergeModels )
 	{
-		decoreNode_t *dst, *testnode, *mergenode, *dstnodes;
+		decoreNode_t *dst, *mergenode, *dstnodes, *testnode;
+		decoreEnts_t *src, basenode = { 0 }, shufflednode = { 0 };
 		int j, num, avgmin, avgmax, best, *stats;
-		decoreEnts_t *src;
+		const char *model, *value;
+		vec3_t delta, size, scale;
+		picoModel_t *m;
+		vec_t temp;
 		entity_t *e2;
-		vec3_t delta;
 		char str[512];
 
-		/* allocate destination nodes */
+		/* allocate nodes */
+		EntityArrayCopy(&group->entities, &basenode);
 		dstnodes = NewNodesArray( numDecoreTestNodes );
+
+		/* exclude large models from merging */
+		if( group->mergeMaxSize )
+		{
+			src = &basenode;
+			for ( i = 0; i < src->numEntities; i++ )
+			{
+				e = src->entities[ i ];
+
+				/* already excluded? */
+				if (e == NULL)
+					continue;
+
+				/* get model name */
+				model = ValueForKey( e, "_model" );	
+				if( model[ 0 ] == '\0' )
+					model = ValueForKey( e, "model" );
+				if( model[ 0 ] == '\0' )
+					continue;
+
+				/* find model */
+				m = FindModel(model, IntForKey( e, "_frame" ));
+
+				/* get scale */
+				scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = 1.0f;
+				temp = FloatForKey( e, "modelscale" );
+				if( temp != 0.0f )
+					scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = temp;
+				value = ValueForKey( e, "modelscale_vec" );
+				if( value[ 0 ] != '\0' )
+					sscanf( value, "%f %f %f", &scale[ 0 ], &scale[ 1 ], &scale[ 2 ] );
+
+				/* measure dest size */
+				VectorSubtract( m->maxs, m->mins, size );
+				for ( j = 0; j < 3; j++ )
+					size[ j ] = size[ j ] * scale[ j ];
+
+				/* push to world? */
+				if (size[ 0 ] > group->mergeMaxSize || size[ 1 ] > group->mergeMaxSize || size[ 2 ] > group->mergeMaxSize)
+				{
+					src->entities[ i ] = NULL;
+					numDecoreEntitiesPushedToWorldspawn++;
+				}
+			}
+		}
 
 		/* create merge candidates */
 		for ( i = 0; i < numDecoreTestNodes; i++ )
 		{
-			src = &group->testnodes[ i ];
+			/* create test node */
+			src = &shufflednode;
+			EntityArrayCopy(&basenode, src);
+			ShuffleTestNode(src);
+
+			/* get dst node */
 			dst = &dstnodes[ i ];
 
 			/* walk all entities for node */
@@ -1291,11 +1331,6 @@ void ProcessDecorations( void )
 			decoreGroups[ i ].mergeModels = 0;
 	}
 
-	/* prepare merge tests */
-	Sys_FPrintf (SYS_VRB, "--- GroupDecorations ---\n" );
-	RunThreadsOnIndividual(numDecoreTestNodes, verbose ? qtrue : qfalse, ShuffleTestNode);
-	Sys_FPrintf( SYS_VRB, "%9i tests performed\n", numDecoreTestNodes );
-
 	/* walk all groups and entities */
 	Sys_FPrintf (SYS_VRB, "--- ProcessDecorations ---\n" );
 	start = I_FloatTime();
@@ -1314,6 +1349,7 @@ void ProcessDecorations( void )
 		ProcessDecorationGroup( i );
 	}
 	Sys_FPrintf(SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	Sys_FPrintf( SYS_VRB, "%9i tests performed\n", numDecoreTestNodes );
 
 	/* emit stats */
 	for ( i = 0; i < numDecoreGroups; i++ )
@@ -1326,7 +1362,8 @@ void ProcessDecorations( void )
 	}
 	free( decoreGroups );
 	numDecoreGroups = 0;
-
+	Sys_FPrintf( SYS_VRB, "%9i large models pushed to worldspawn\n", numDecoreEntitiesPushedToWorldspawn );
+	
 	/* import rtlights */
 	if (importRtlights)
 		ImportRtlights();

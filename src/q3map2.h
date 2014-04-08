@@ -633,6 +633,8 @@ typedef enum
 	CM_ALPHA_DOT_PRODUCT,
 	CM_COLOR_DOT_PRODUCT_2,
 	CM_ALPHA_DOT_PRODUCT_2,
+	CM_COLOR_INVERT,
+	CM_ALPHA_INVERT,
 	CM_ALPHA_RANDOM,
 	CM_ALPHA_RANDOM_JITTER,
 	CM_ALPHA_RANDOM_SCALE,
@@ -1346,10 +1348,6 @@ typedef struct
 	qboolean			passSolid;
 	qboolean			opaque;
 	shaderInfo_t        *skyLightShader;
-	
-	/* working data */
-	int					numTestNodes;
-	int					testNodes[ MAX_TRACE_TEST_NODES ]; 
 }
 trace_t;
 
