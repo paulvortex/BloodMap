@@ -471,7 +471,7 @@ static int VectorCompareExtn( picoVec3_t n1, picoVec3_t n2, float epsilon )
 
 #define CrossProductTemp(a,b,c) ((c)[0]=(a)[1]*(b)[2]-(a)[2]*(b)[1],(c)[1]=(a)[2]*(b)[0]-(a)[0]*(b)[2],(c)[2]=(a)[0]*(b)[1]-(a)[1]*(b)[0])
 
-static void _ase_submit_triangles( picoModel_t* model , aseMaterial_t* materials , aseVertex_t* vertices, aseTexCoord_t* texcoords, aseColor_t* colors, aseFace_t* faces, int numFaces, int numVertices )
+static void _ase_submit_triangles( picoModel_t* model , aseMaterial_t* materials , aseVertex_t* vertices, aseTexCoord_t* texcoords, aseColor_t* colors, aseFace_t* faces, int numFaces, int numVertices, char *nodeName )
 {
 	picoVec3_t accum;
 	int j, index, counter;
@@ -621,7 +621,7 @@ static void _ase_submit_triangles( picoModel_t* model , aseMaterial_t* materials
 			smooth[j] = 0; // (vertices[(*i).indices[j]].id * (1 << 16)) + (*i).smoothingGroup; /* don't merge vertices */
 		}
 		/* submit the triangle to the model */
-		PicoAddTriangleToModel(model, xyz, normal, 1, st, 1, color, subMtl->shader, smooth);
+		PicoAddTriangleToModel(model, xyz, normal, 1, st, 1, color, subMtl->shader, smooth, nodeName);
 	}
 	/* free allocated data */
 	for (v = vertices; v != endv; ++v) 
@@ -725,7 +725,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 		else if (!_pico_stricmp(p->token, "*mesh"))
 		{
 			/* finish existing surface */
-			_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces, numVertices);
+			_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces, numVertices, lastNodeName);
 			_pico_free(faces);
 			_pico_free(vertices);
 			_pico_free(texcoords);
@@ -1321,7 +1321,7 @@ static picoModel_t *_ase_load( PM_PARAMS_LOAD )
 	}
 	
 	/* ydnar: finish existing surface */
-	_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces, numVertices);
+	_ase_submit_triangles(model, materials, vertices, texcoords, colors, faces, numFaces, numVertices, lastNodeName);
 	_pico_free(faces);
 	_pico_free(vertices);
 	_pico_free(texcoords);

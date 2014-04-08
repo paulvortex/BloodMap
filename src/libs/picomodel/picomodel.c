@@ -250,6 +250,10 @@ picoModel_t	*PicoLoadModel( char *fileName, int frameNum )
 			break;
 		}
 	}
+
+	/* vortex: load up skin files */
+	if(model != NULL)
+		PicoLoadSkinFiles( fileName, model );
 	
 	/* free memory used by file buffer */
 	if( buffer)
@@ -368,6 +372,11 @@ void PicoFreeModel( picoModel_t *model )
 	for( i = 0; i < model->numSurfaces; i++ )
 		PicoFreeSurface( model->surface[ i ] );
 	free( model->surface );
+
+	/* free skins */
+	for( i = 0; i < model->numSkins; i++ )
+		PicoFreeSkin( model->skin[ i ] );
+	free( model->skin );
 	
 	/* free the model */
 	_pico_free( model );
@@ -381,7 +390,7 @@ adjusts a models's memory allocations to handle the requested sizes.
 will always grow, never shrink
 */
 
-int PicoAdjustModel( picoModel_t *model, int numShaders, int numSurfaces )
+int PicoAdjustModel( picoModel_t *model, int numShaders, int numSurfaces, int numSkins )
 {
 	/* dummy check */
 	if( model == NULL )
@@ -393,6 +402,8 @@ int PicoAdjustModel( picoModel_t *model, int numShaders, int numSurfaces )
 		numShaders = 0;
 	if( numSurfaces < 0 )
 		numSurfaces = 0;
+	if( numSkins < 0 )
+		numSkins = 0;
 
 	/* additional shaders? */
 	while( numShaders > model->maxShaders )
@@ -413,10 +424,22 @@ int PicoAdjustModel( picoModel_t *model, int numShaders, int numSurfaces )
 		if( !_pico_realloc( (void *) &model->surface, model->numSurfaces * sizeof( *model->surface ), model->maxSurfaces * sizeof( *model->surface ) ) )
 			return 0;
 	}
-	
+
 	/* set shader count to higher */
 	if( numSurfaces > model->numSurfaces )
 		model->numSurfaces = numSurfaces;
+
+	/* additional skins? */
+	while( numSkins > model->maxSkins )
+	{
+		model->maxSkins += PICO_GROW_SKINS;
+		if( !_pico_realloc( (void *) &model->skin, model->numSkins * sizeof( *model->skin ), model->maxSkins * sizeof( *model->skin ) ) )
+			return 0;
+	}
+
+	/* set skin count to higher */
+	if( numSkins > model->numSkins )
+		model->numSkins = numSkins;
 	
 	/* return ok */
 	return 1;
@@ -448,7 +471,7 @@ picoShader_t *PicoNewShader( picoModel_t *model )
 	if( model != NULL )
 	{
 		/* adjust model */
-		if( !PicoAdjustModel( model, model->numShaders + 1, 0 ) )
+		if( !PicoAdjustModel( model, model->numShaders + 1, 0, 0 ) )
 		{
 			_pico_free( shader );
 			return NULL;
@@ -559,7 +582,7 @@ picoSurface_t *PicoNewSurface( picoModel_t *model )
 	if( model != NULL )
 	{
 		/* adjust model */
-		if( !PicoAdjustModel( model, 0, model->numSurfaces + 1 ) )
+		if( !PicoAdjustModel( model, 0, model->numSurfaces + 1, 0 ) )
 		{
 			_pico_free( surface );
 			return NULL;
@@ -755,6 +778,154 @@ picoSurface_t *PicoFindSurface(
 }
 
 
+/* ----------------------------------------------------------------------------
+skins
+---------------------------------------------------------------------------- */
+
+/*
+PicoNewSkin()
+creates a new pico shader and returns its index
+*/
+
+picoSkin_t *PicoNewSkin( picoModel_t *model )
+{
+	picoSkin_t	*skin;
+	
+	/* allocate and clear */
+	skin = _pico_alloc( sizeof(picoSkin_t) );
+	if( skin == NULL )
+		return NULL;
+	memset( skin, 0, sizeof(picoSkin_t) );
+
+	/* attach it to the model */
+	if( model != NULL )
+	{
+		/* adjust model */
+		if( !PicoAdjustModel( model, 0, 0, model->numSkins + 1 ) )
+		{
+			_pico_free( skin );
+			return NULL;
+		}
+		
+		/* attach */
+		model->skin[ model->numSkins - 1 ] = skin;
+		skin->model = model;
+	}
+
+	/* return the newly created skin */
+	return skin;
+}
+
+
+
+/*
+PicoFreeSkin()
+frees a skin and all associated data
+*/
+
+void PicoFreeSkin( picoSkin_t *skin )
+{
+	int i;
+
+	/* dummy check */
+	if( skin == NULL )
+		return;
+	
+	/* free bits */
+	for (i = 0; i < skin->numItems; i++)
+		PicoFreeSkinItem( skin->item[ i ] );
+
+	/* free the skin */
+	_pico_free( skin );
+}
+
+/*
+PicoAdjustSkin()
+adjusts a skin memory allocations to handle the requested sizes.
+will always grow, never shrink
+*/
+
+int PicoAdjustSkin( picoSkin_t *skin, int numItems )
+{
+	/* dummy check */
+	if( skin == NULL )
+		return 0;
+	
+	/* bare minimums */
+	if( numItems < 0 )
+		numItems = 0;
+	
+	/* additional vertexes? */
+	while( numItems > skin->maxItems )
+	{
+		skin->maxItems += PICO_GROW_SKINS;
+		if( !_pico_realloc( (void *) &skin->item, skin->numItems * sizeof( *skin->item ), skin->maxItems * sizeof( *skin->item ) ) )
+			return 0;
+	}
+	
+	/* set items count to higher */
+	if( numItems > skin->numItems )
+		skin->numItems = numItems;
+
+	/* return ok */
+	return 1;
+}
+
+/*
+PicoNewSkinItem()
+creates a new pico skin item and returns it
+*/
+
+picoSkinItem_t *PicoNewSkinItem( picoSkin_t *skin )
+{
+	picoSkinItem_t *skinItem;
+
+	/* allocate and clear */
+	skinItem = _pico_alloc( sizeof(picoSkinItem_t) );
+	if( skinItem == NULL )
+		return NULL;
+	memset( skinItem, 0, sizeof(picoSkinItem_t) );
+	
+	/* attach it to the skin */
+	if( skin != NULL )
+	{
+		/* adjust skin */
+		if( !PicoAdjustSkin( skin, skin->numItems + 1 ) )
+		{
+			_pico_free( skin );
+			return NULL;
+		}
+		
+		/* attach */
+		skin->item[ skin->numItems - 1 ] = skinItem;
+	}
+
+	/* return the newly created skin item */
+	return skinItem;
+}
+
+/*
+PicoFreeSkinItem()
+frees a skin item and all associated data
+*/
+
+void PicoFreeSkinItem( picoSkinItem_t *skinItem )
+{
+	/* dummy check */
+	if( skinItem == NULL )
+		return;
+	
+	/* free associated parms */
+	if( skinItem->object )
+		_pico_free( skinItem->object );
+	if( skinItem->replacement )
+		_pico_free( skinItem->replacement );
+
+	/* free the skin item */
+	_pico_free( skinItem );
+}
+
+
 
 /*----------------------------------------------------------------------------
   PicoSet*() Setter Functions
@@ -832,8 +1003,6 @@ void PicoSetShaderMapName( picoShader_t *shader, char *mapName )
 
 	shader->mapName = _pico_clone_alloc( mapName );
 }
-
-
 
 void PicoSetShaderAmbientColor( picoShader_t *shader, picoColor_t color )
 {
@@ -1039,7 +1208,30 @@ void PicoSetSurfaceSpecial( picoSurface_t *surface, int num, int special )
 	surface->special[ num ] = special;
 }
 
+void PicoSetSkinNum( picoSkin_t *skin, int num )
+{
+	if( skin == NULL )
+		return;
+	skin->num = num;
+}
 
+void PicoSetSkinItemObject( picoSkinItem_t *skinItem, char *object )
+{
+	if( skinItem == NULL || object == NULL )
+		return;
+	if ( skinItem->object )
+		_pico_free( skinItem->object );
+	skinItem->object = _pico_clone_alloc( object );
+}
+
+void PicoSetSkinItemReplacement( picoSkinItem_t *skinItem, char *replacement )
+{
+	if( skinItem == NULL || replacement == NULL )
+		return;
+	if ( skinItem->replacement )
+		_pico_free( skinItem->replacement );
+	skinItem->replacement = _pico_clone_alloc( replacement );
+}
 
 /*----------------------------------------------------------------------------
   PicoGet*() Getter Functions
@@ -1190,8 +1382,6 @@ char *PicoGetShaderName( picoShader_t *shader )
 		return (char*) "";
 	return shader->name;
 }
-
-
 
 char *PicoGetShaderMapName( picoShader_t *shader )
 {
@@ -1380,6 +1570,55 @@ int PicoGetSurfaceSpecial( picoSurface_t *surface, int num )
 	return surface->special[ num ];
 }
 
+
+char *PicoGetSurfaceShaderNameForSkin( picoSurface_t *surface, int skinnum )
+{
+	picoSkin_t *skin, *foundSkin;
+	picoSkinItem_t *skinItem;
+	picoShader_t *shader;
+	char *shaderName;
+	int i;
+
+	/* early out */
+	if ( !surface || !surface->model )
+		return (char*) "";
+
+	/* default shader name */
+	shader = surface->shader;
+	if ( shader->name == NULL)
+		shaderName = (char*) "";
+	else
+		shaderName = shader->name;
+
+	/* no skins? */
+	if ( !shader->model->numSkins )
+		return shaderName;
+
+	/* find a skin */
+	foundSkin = shader->model->skin[ 0 ];
+	for( i = 0; i < shader->model->numSkins; i++ )
+	{
+		skin = shader->model->skin[ i ];
+		if( skin->num == skinnum )
+		{
+			foundSkin = skin;
+			break;
+		}
+	}
+
+	/* apply skin */
+	for( i = 0; i < foundSkin->numItems; i++ )
+	{
+		skinItem = foundSkin->item[ i ];
+		if ( !skinItem->object || !skinItem->replacement )
+			continue;
+		if ( !strcmp( skinItem->object, surface->name ) )
+			shaderName = skinItem->replacement;
+	}
+
+	/* return it */
+	return shaderName;
+}
 
 
 /* ----------------------------------------------------------------------------
@@ -2221,20 +2460,23 @@ Chooses an appropriate surface based on the shader, or adds a new surface if nec
 
 void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** normals, 
 							int numSTs, picoVec2_t **st, int numColors, picoColor_t **colors,
-							picoShader_t* shader, picoIndex_t* smoothingGroup )
+							picoShader_t* shader, picoIndex_t* smoothingGroup, char *nodeName )
 {
 	int i,j;
 	int vertDataIndex;
 	picoSurface_t* workSurface = NULL;
 
-	/* see if a surface already has the shader */
+	/* default to shader name */
+	if ( !nodeName )
+		nodeName = shader->name;
+
+	/* see if a surface already has the shader and node name */
 	for ( i = 0 ; i < model->numSurfaces ; i++ )
 	{
 		workSurface = model->surface[i];
-		if ( workSurface->shader == shader )
-		{			
-			break;
-		}
+		if( workSurface->shader == shader )
+			if( !strcmp( workSurface->name, nodeName ) )
+				break;
 	}
 
 	/* no surface uses this shader yet, so create a new surface */
@@ -2250,7 +2492,7 @@ void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** 
 
 		/* do surface setup */
 		PicoSetSurfaceType( workSurface, PICO_TRIANGLES );
-		PicoSetSurfaceName( workSurface, shader->name );
+		PicoSetSurfaceName( workSurface, nodeName );
 		PicoSetSurfaceShader( workSurface, shader );
 	}
 
@@ -2289,4 +2531,245 @@ void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** 
 		/* add this vertex to the triangle */		
 		PicoSetSurfaceIndex ( workSurface , newVertIndex , vertDataIndex );
 	}
+}
+
+
+/*
+PicoParseToken - vortex
+ported from Darkplaces engine sourcecode
+*/
+#define ISWHITESPACE(ch) (!(ch) || (ch) == ' ' || (ch) == '\t' || (ch) == '\r' || (ch) == '\n')
+int PicoParseToken(const char **datapointer, int returnnewline, char *token, int maxtoken)
+{
+	const char *data = *datapointer;
+	int len, c;
+
+	len = 0;
+	token[0] = 0;
+	maxtoken = maxtoken - 1;
+	if (!data)
+	{
+		*datapointer = NULL;
+		return 0;
+	}
+
+// skip whitespace
+skipwhite:
+	// line endings:
+	// UNIX: \n
+	// Mac: \r
+	// Windows: \r\n
+	for (;ISWHITESPACE(*data) && ((*data != '\n' && *data != '\r') || !returnnewline);data++)
+	{
+		if (*data == 0)
+		{
+			// end of file
+			*datapointer = NULL;
+			return 0;
+		}
+	}
+
+	// handle Windows line ending
+	if (data[0] == '\r' && data[1] == '\n')
+		data++;
+	if (data[0] == '/' && data[1] == '/')
+	{
+		// comment
+		while (*data && *data != '\n' && *data != '\r')
+			data++;
+		goto skipwhite;
+	}
+	else if (data[0] == '/' && data[1] == '*')
+	{
+		// comment
+		data++;
+		while (*data && (data[0] != '*' || data[1] != '/'))
+			data++;
+		if (*data)
+			data++;
+		if (*data)
+			data++;
+		goto skipwhite;
+	}
+	else if (*data == '\"' || *data == '\'')
+	{
+		// quoted string
+		char quote = *data;
+		for (data++;*data && *data != quote;data++)
+		{
+			c = *data;
+			if (*data == '\\')
+			{
+				data++;
+				c = *data;
+				if (c == 'n')
+					c = '\n';
+				else if (c == 't')
+					c = '\t';
+			}
+			if (len < maxtoken)
+				token[len++] = c;
+		}
+		token[len] = 0;
+		if (*data == quote)
+			data++;
+		*datapointer = data;
+		return 1;
+	}
+	else if (*data == '\r')
+	{
+		// translate Mac line ending to UNIX
+		if (len < maxtoken)
+			token[len++] = '\n';data++;
+		token[len] = 0;
+		*datapointer = data;
+		return 1;
+	}
+	else if (*data == '\n' || *data == '{' || *data == '}' || *data == ')' || *data == '(' || *data == ']' || *data == '[' || *data == ':' || *data == ',' || *data == ';')
+	{
+		// single character
+		if (len < maxtoken)
+			token[len++] = *data++;
+		token[len] = 0;
+		*datapointer = data;
+		return 1;
+	}
+	else
+	{
+		// regular word
+		for (;!ISWHITESPACE(*data) && *data != '{' && *data != '}' && *data != ')' && *data != '(' && *data != ']' && *data != '[' && *data != ':' && *data != ',' && *data != ';';data++)
+			if (len < maxtoken)
+				token[len++] = *data;
+		token[len] = 0;
+		*datapointer = data;
+		return 1;
+	}
+}
+
+/*
+PicoLoadSkinFiles - vortex
+Loads up modelname_%skinnum%.skin skin files
+ported from Darkplaces engine sourcecode
+*/
+
+/*
+sample file:
+U_bodyBox,models/players/Legoman/BikerA2.tga
+U_RArm,models/players/Legoman/BikerA1.tga
+U_LArm,models/players/Legoman/BikerA1.tga
+U_armor,common/nodraw
+U_sword,common/nodraw
+U_shield,common/nodraw
+U_homb,common/nodraw
+U_backpack,common/nodraw
+U_colcha,common/nodraw
+tag_head,
+tag_weapon,
+tag_torso,
+*/
+
+void PicoLoadSkinFiles(char *fileName, picoModel_t *model)
+{
+	picoByte_t *buffer;
+	char *skinFileName, token[4096];
+	int i, line, words, wordsoverflow;
+	picoSkin_t *skin;
+	picoSkinItem_t *skinItem;
+	char word[10][4096];
+	const char *data;
+	int bufSize;
+	
+	skinFileName = (char *)_pico_alloc( strlen(fileName) + 15 ); // adds _%i.skin
+
+	/* max 256 skin files */
+	for (i = 0;i < 256; i++)
+	{
+		sprintf( skinFileName, "%s_%i.skin", fileName, i );
+
+		/* load file data */
+		_pico_load_file( skinFileName, &buffer, &bufSize );
+		if( bufSize < 0 )
+			break;
+
+		/* allocate the skin */
+		skin = PicoNewSkin( model );
+		PicoSetSkinNum( skin, i );
+
+		/* parse file */
+		data = buffer;
+		for(line = 0;;line++)
+		{
+			/* parse line */
+			if ( !PicoParseToken(&data, 1, token, sizeof(token)) )
+				break;
+			if ( !strcmp(token, "\n") )
+				continue;
+			words = 0;
+			wordsoverflow = 0;
+			do
+			{
+				if( words < 10 )
+					strcpy(word[words++], token);
+				else
+					wordsoverflow = 1;
+			}
+			while( PicoParseToken(&data, 1, token, sizeof(token)) && strcmp(token, "\n") );
+			if( wordsoverflow )
+			{
+				_pico_printf( PICO_ERROR, "PicoLoadSkinFiles: parsing error in file \"%s\" on line #%i: line with too many statements, skipping\n", skinFileName, line);
+				continue;
+			}
+
+			/* words is always >= 1 */
+			if (!strcmp(word[0], "replace"))
+			{
+				if (words == 3)
+				{
+					//_pico_printf( PICO_NORMAL, "PicoLoadSkinFiles: parsed %s %s %s\n", word[0], word[1], word[2]);
+					skinItem = PicoNewSkinItem( skin );
+					PicoSetSkinItemObject( skinItem, word[1] );
+					PicoSetSkinItemReplacement( skinItem, word[2] );
+				}
+				else
+					_pico_printf( PICO_ERROR, "PicoLoadSkinFiles: parsing error in file \"%s\" on line #%i: wrong number of parameters to command \"%s\"\n", skinFileName, line, word[0]);
+			}
+			else if (words >= 2 && !strncmp(word[0], "tag_", 4))
+			{
+				//_pico_printf( PICO_NORMAL, "PicoLoadSkinFiles: parsed tag_ (%s)\n", word[0]);
+				// tag name, like "tag_weapon,"
+				// not used for anything (not even in Quake3)
+			}
+			else if (words >= 2 && !strcmp(word[1], ","))
+			{
+				// mesh shader name, like "U_RArm,models/players/Legoman/BikerA1.tga"
+				//_pico_printf( PICO_NORMAL, "PicoLoadSkinFiles: parsed %s , %s\n", word[0], word[2]);
+				skinItem = PicoNewSkinItem( skin );
+				PicoSetSkinItemObject( skinItem, word[0] );
+				PicoSetSkinItemReplacement( skinItem, word[2] );
+			}
+			else
+				_pico_printf( PICO_ERROR, "PicoLoadSkinFiles: parsing error in file \"%s\" on line #%i: does not look like tag or mesh specification\n", skinFileName, line );
+		}
+
+		/* free file */
+		_pico_free_file( buffer );
+	}
+
+	/* free stuff */
+	_pico_free( skinFileName );
+
+	/* debug */
+	/*
+	_pico_printf( PICO_NORMAL, "Loaded %i skins for \"%s\"\n", model->numSkins, fileName );
+	for( i = 0; i < model->numSkins; i++)
+	{
+		skin = model->skin[ i ];
+		_pico_printf( PICO_NORMAL, "Skin #%i\n", skin->num);
+		for( line = 0; line < skin->numItems; line++)
+		{
+			skinItem = skin->item[ line ];
+			_pico_printf( PICO_NORMAL, " %s -> %s\n", skinItem->object, skinItem->replacement);
+		}
+	}
+	*/
 }

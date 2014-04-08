@@ -54,6 +54,7 @@ extern "C"
 /* constants */
 #define PICO_GROW_SHADERS		16
 #define PICO_GROW_SURFACES		16
+#define PICO_GROW_SKINS         16
 #define PICO_GROW_VERTEXES		1024
 #define PICO_GROW_INDEXES		1024
 #define PICO_GROW_ARRAYS		8
@@ -89,6 +90,8 @@ typedef enum
 }
 picoPrintLevel_t;
 
+typedef struct picoSkin_s	    picoSkin_t;
+typedef struct picoSkinItem_s	picoSkinItem_t;
 typedef struct picoSurface_s	picoSurface_t;
 typedef struct picoShader_s		picoShader_t;
 typedef struct picoModel_s		picoModel_t;
@@ -139,6 +142,23 @@ struct picoShader_s
 	float						shininess;		/* shininess (0..128; 128 = 100% shiny) */
 };
 
+/* vortex */
+struct picoSkinItem_s
+{
+	char                        *object;
+	char                        *replacement;
+};
+
+struct picoSkin_s
+{	
+	picoModel_t					*model;			/* owner model */
+	int                         num;			/* skin num */	
+
+	/* skin items */
+	int                         numItems, maxItems;
+	picoSkinItem_t              **item;
+};
+
 struct picoModel_s
 {
 	void						*data;
@@ -154,6 +174,9 @@ struct picoModel_s
 	
 	int							numSurfaces, maxSurfaces;
 	picoSurface_t				**surface;
+
+	int                         numSkins, maxSkins;
+	picoSkin_t                  **skin;
 	
 	const picoModule_t			*module;		/* sea */
 };
@@ -225,7 +248,7 @@ picoModel_t* PicoModuleLoadModelStream( const picoModule_t* module, void* inputS
 /* model functions */
 picoModel_t					*PicoNewModel( void );
 void						PicoFreeModel( picoModel_t *model );
-int							PicoAdjustModel( picoModel_t *model, int numShaders, int numSurfaces );
+int							PicoAdjustModel( picoModel_t *model, int numShaders, int numSurfaces, int numSkins );
 
 
 /* shader functions */
@@ -240,6 +263,12 @@ void						PicoFreeSurface( picoSurface_t *surface );
 picoSurface_t				*PicoFindSurface( picoModel_t *model, char *name, int caseSensitive );
 int							PicoAdjustSurface( picoSurface_t *surface, int numVertexes, int numSTArrays, int numColorArrays, int numIndexes, int numFaceNormals );
 
+/* skin functions */
+picoSkin_t	   			    *PicoNewSkin( picoModel_t *model );
+void						PicoFreeSkin( picoSkin_t *skin );
+int                         PicoAdjustSkin( picoSkin_t *skin, int numItems );
+picoSkinItem_t             *PicoNewSkinItem( picoSkin_t *skin );
+void                        PicoFreeSkinItem( picoSkinItem_t *skinItem );
 
 /* setter functions */
 void						PicoSetModelName( picoModel_t *model, char *name );
@@ -270,6 +299,9 @@ void						PicoSetFaceNormal( picoSurface_t *surface, int num, picoVec3_t normal 
 void						PicoSetSurfaceSpecial( picoSurface_t *surface, int num, int special );
 void						PicoSetSurfaceSmoothingGroup( picoSurface_t *surface, int num, picoIndex_t smoothingGroup );
 
+void                        PicoSetSkinNum( picoSkin_t *skin, int num );
+void                        PicoSetSkinItemObject( picoSkinItem_t *skinItem, char *object );
+void                        PicoSetSkinItemReplacement( picoSkinItem_t *skinItem, char *replacement );
 
 /* getter functions */
 char						*PicoGetModelName( picoModel_t *model );
@@ -297,6 +329,7 @@ char						*PicoGetSurfaceName( picoSurface_t *surface );		/* sea */
 picoSurfaceType_t			PicoGetSurfaceType( picoSurface_t *surface );
 char						*PicoGetSurfaceName( picoSurface_t *surface );
 picoShader_t				*PicoGetSurfaceShader( picoSurface_t *surface );	/* sea */
+picoShader_t				*PicoGetSurfaceShaderBySkinNum( picoSurface_t *surface, int SkinNum );	/* sea */
 
 int							PicoGetSurfaceNumVertexes( picoSurface_t *surface );
 picoVec_t					*PicoGetSurfaceXYZ( picoSurface_t *surface, int num );
@@ -308,6 +341,7 @@ picoIndex_t					PicoGetSurfaceIndex( picoSurface_t *surface, int num );
 picoIndex_t					*PicoGetSurfaceIndexes( picoSurface_t *surface, int num );
 picoVec_t					*PicoGetFaceNormal( picoSurface_t *surface, int num );
 int							PicoGetSurfaceSpecial( picoSurface_t *surface, int num );
+char                        *PicoGetSurfaceShaderNameForSkin( picoSurface_t *surface, int skinnum );
 
 
 /* hashtable related functions */
@@ -340,8 +374,10 @@ int							PicoFindSurfaceVertexNum( picoSurface_t *surface, picoVec3_t xyz, pico
 void						PicoFixSurfaceNormals( picoSurface_t *surface );
 int							PicoRemapModel( picoModel_t *model, char *remapFile );
 
+void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** normals, int numSTs, picoVec2_t **st, int numColors, picoColor_t **colors, picoShader_t* shader, picoIndex_t* smoothingGroup, char *nodeName);
 
-void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** normals, int numSTs, picoVec2_t **st, int numColors, picoColor_t **colors, picoShader_t* shader, picoIndex_t* smoothingGroup);
+int PicoParseToken(const char **datapointer, int returnnewline, char *token, int maxtoken);
+void PicoLoadSkinFiles(char *fileName, picoModel_t *model);
 
 /* end marker */
 #ifdef __cplusplus
