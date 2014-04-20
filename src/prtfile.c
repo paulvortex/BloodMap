@@ -268,7 +268,7 @@ WritePortalFile
 */
 void WritePortalFile (tree_t *tree)
 {
-	char	filename[1024];
+	char	filename[MAX_OS_PATH];
 
 	Sys_FPrintf (SYS_VRB,"--- WritePortalFile ---\n");
 	

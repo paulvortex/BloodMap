@@ -169,7 +169,7 @@ entities compile
 
 int PatchBSPMain( int argc, char **argv )
 {
-	char path[1024], out[1024];
+	char path[MAX_OS_PATH], out[MAX_OS_PATH];
 	qboolean patchentities;
 	int	i;
 

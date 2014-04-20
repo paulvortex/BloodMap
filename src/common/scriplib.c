@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 typedef struct
 {
-	char	filename[1024];
+	char	filename[MAX_OS_PATH];
 	char    *buffer,*script_p,*end_p;
 	int     line;
 } script_t;

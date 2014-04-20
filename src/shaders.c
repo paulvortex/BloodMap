@@ -450,7 +450,7 @@ erases and starts a new map shader script
 
 void BeginMapShaderFile( const char *mapFile )
 {
-	char	base[ 1024 ];
+	char	base[ MAX_OS_PATH ];
 	size_t	len;
 	
 
@@ -1107,7 +1107,7 @@ static void ParseShaderFile( const char *filename )
 {
 	int				i, val;
 	shaderInfo_t	*si;
-	char			*suffix, temp[ 1024 ];
+	char			*suffix, temp[ MAX_OS_PATH ];
 	char			shaderText[ 8192 ];	/* ydnar: fixme (make this bigger?) */
 	
 	
@@ -2180,7 +2180,11 @@ static void ParseShaderFile( const char *filename )
 				/* ydnar: gs mods: q3map_noclip (preserve original face winding, don't clip by bsp tree) */
 				else if( !Q_stricmp( token, "q3map_noclip" ) )
 					si->noClip = qtrue;
-				
+
+				/* vortex: prevent adding brush faces to BSP tree */
+				else if( !Q_stricmp( token, "q3map_nobsp" ) )
+					si->noBSP = qtrue;
+
 				/* q3map_notjunc */
 				else if( !Q_stricmp( token, "q3map_notjunc" ) )
 					si->notjunc = qtrue;
@@ -2366,7 +2370,7 @@ on linux there's an additional twist, we actually merge the stuff from ~/.q3a/ a
 void LoadShaderInfo( void )
 {
 	int				i, j, numShaderFiles, count;
-	char			filename[ 1024 ];
+	char			filename[ MAX_OS_PATH ];
 	char			*shaderFiles[ MAX_SHADER_FILES ];
 	
 	Sys_FPrintf(SYS_VRB, "--- LoadShaderInfo ---\n");

@@ -307,7 +307,7 @@ finds an existing rgba image and returns a pointer to the image_t struct or NULL
 image_t *ImageFind( const char *filename )
 {
 	int			i;
-	char		name[ 1024 ];
+	char		name[ MAX_OS_PATH ];
 	
 	
 	/* init */
@@ -343,7 +343,7 @@ image_t *ImageLoad( const char *filename )
 {
 	int			i;
 	image_t		*image;
-	char		name[ 1024 ];
+	char		name[ MAX_OS_PATH ];
 	int			size;
 	byte		*buffer = NULL;
 

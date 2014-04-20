@@ -95,7 +95,7 @@ int FixAAS( int argc, char **argv )
 	int			length, checksum;
 	void		*buffer;
 	FILE		*file;
-	char		aas[ 1024 ], **ext;
+	char		aas[ MAX_OS_PATH ], **ext;
 	char		*exts[] =
 				{
 					".aas",
@@ -326,7 +326,7 @@ emits statistics about the bsp file
 int BSPInfo( int count, char **fileNames )
 {
 	int			i;
-	char		source[ 1024 ], ext[ 64 ];
+	char		source[ MAX_OS_PATH ], ext[ 64 ];
 	int			size;
 	FILE		*f;
 	
@@ -391,7 +391,7 @@ int ScaleBSPMain( int argc, char **argv )
 	int			i;
 	float		f, scale;
 	vec3_t		vec;
-	char		str[ 1024 ];
+	char		str[ MAX_OS_PATH ];
 	
 	
 	/* arg checking */

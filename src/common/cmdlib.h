@@ -87,9 +87,9 @@ int	FileTime( const char *path );
 
 void	Q_mkdir( const char *path );
 
-extern	char		qdir[1024];
-extern	char		gamedir[1024];
-extern  char		writedir[1024];
+extern	char		qdir[MAX_OS_PATH];
+extern	char		gamedir[MAX_OS_PATH];
+extern  char		writedir[MAX_OS_PATH];
 extern  char    *moddirparam;
 void SetQdirFromPath( const char *path);
 char *ExpandArg( const char *path );	// from cmd line
@@ -150,7 +150,7 @@ void	CreatePath( const char *path );
 void	QCopyFile( const char *from, const char *to );
 
 extern	qboolean		archive;
-extern	char			archivedir[1024];
+extern	char			archivedir[MAX_OS_PATH];
 
 // sleep for the given amount of milliseconds
 void Sys_Sleep(int n);

@@ -484,9 +484,6 @@ static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t
 	origin = SUPER_ORIGIN( x, y );
 	normal = SUPER_NORMAL( x, y );
 	cluster = SUPER_CLUSTER( x, y );
-
-	/* vortex: init normal */
-	VectorCopy( dv->normal, normal );
 	
 	/* don't attempt to remap occluded luxels for planar surfaces */
 	if( (*cluster) == CLUSTER_OCCLUDED && lm->plane != NULL )
@@ -2622,7 +2619,10 @@ void IlluminateRawLightmap(int rawLightmapNum)
 				
 				/* blacken unmapped clusters */
 				if( *cluster < 0 )
+				{
 					VectorClear( luxel );
+					VectorClear( deluxel );
+				}
 				
 				/* set ambient */
 				else

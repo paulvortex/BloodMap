@@ -1401,7 +1401,7 @@ void SetupTraceNodes( void )
 	{
 		int				i, j;
 		FILE			*file;
-		char			filename[ 1024 ];
+		char			filename[ MAX_OS_PATH ];
 		traceWinding_t	*tw;
 		
 		

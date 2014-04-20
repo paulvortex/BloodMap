@@ -176,7 +176,6 @@ brush_t *CopyBrush( brush_t *brush )
 	int			size;
 	int			i;
 	
-	
 	/* copy brush */
 	size = (int) &(((brush_t*) 0)->sides[ brush->numsides ]);
 	newBrush = AllocBrush( brush->numsides );
@@ -598,7 +597,7 @@ void FilterDetailBrushesIntoTree( entity_t *e, tree_t *tree )
 	c_clusters = 0;
 	for( b = e->brushes; b; b = b->next )
 	{
-		if( b->detail == qfalse || b->detail_nonsolid == qtrue)
+		if( b->detail == qfalse || b->nonsolid == qtrue )
 			continue;
 		c_unique++;
 		newb = CopyBrush( b );
@@ -638,10 +637,10 @@ void FilterStructuralBrushesIntoTree( entity_t *e, tree_t *tree ) {
 
 	c_unique = 0;
 	c_clusters = 0;
-	for ( b = e->brushes ; b ; b = b->next ) {
-		if ( b->detail ) {
+	for ( b = e->brushes ; b ; b = b->next )
+	{
+		if ( b->detail == qtrue || b->nonsolid == qtrue)
 			continue;
-		}
 		c_unique++;
 		newb = CopyBrush( b );
 		r = FilterBrushIntoTree_r( newb, tree->headnode );

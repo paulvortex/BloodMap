@@ -70,7 +70,7 @@ void *safe_malloc_f( size_t size )
 #define MEM_MAXLOGS	1024
 typedef struct memlogr_s
 {
-	char file[1024];
+	char file[MAX_OS_PATH];
 	size_t bytes;
 }memlogr_t;
 memlogr_t memlogs[MEM_MAXLOGS];
@@ -91,7 +91,7 @@ void safe_malloc_logstart()
 void *safe_malloc_log(size_t size, const char *file, int line)
 {
 	int log;
-	char str[1024];
+	char str[MAX_OS_PATH];
 	void *p;
 
 	if (memlog) 
@@ -155,7 +155,7 @@ char		com_token[1024];
 qboolean	com_eof;
 
 qboolean		archive;
-char			archivedir[1024];
+char			archivedir[MAX_OS_PATH];
 
 
 /*
@@ -175,8 +175,8 @@ void ExpandWildcards( int *argc, char ***argv )
 	struct _finddata_t fileinfo;
 	int		handle;
 	int		i;
-	char	filename[1024];
-	char	filebase[1024];
+	char	filename[MAX_OS_PATH];
+	char	filebase[MAX_OS_PATH];
 	char	*path;
 
 	ex_argc = 0;
@@ -225,13 +225,13 @@ gamedir will hold qdir + the game directory (id1, id2, etc)
 
 */
 
-char		qdir[1024];
-char		gamedir[1024];
-char		writedir[1024];
+char		qdir[MAX_OS_PATH];
+char		gamedir[MAX_OS_PATH];
+char		writedir[MAX_OS_PATH];
 
 void SetQdirFromPath( const char *path )
 {
-	char	temp[1024];
+	char	temp[MAX_OS_PATH];
 	const char	*c;
 	const char *sep;
 	size_t len, count;
@@ -308,7 +308,7 @@ void SetQdirFromPath( const char *path )
 
 char *ExpandArg (const char *path)
 {
-	static char full[1024];
+	static char full[MAX_OS_PATH];
 
 	if (path[0] != '/' && path[0] != '\\' && path[1] != ':')
 	{
@@ -322,7 +322,7 @@ char *ExpandArg (const char *path)
 
 char *ExpandPath (const char *path)
 {
-	static char full[1024];
+	static char full[MAX_OS_PATH];
 	if (!qdir)
 		Error ("ExpandPath called without qdir set");
 	if (path[0] == '/' || path[0] == '\\' || path[1] == ':') {
@@ -335,7 +335,7 @@ char *ExpandPath (const char *path)
 
 char *ExpandGamePath (const char *path)
 {
-	static char full[1024];
+	static char full[MAX_OS_PATH];
 	if (!qdir)
 		Error ("ExpandGamePath called without qdir set");
 	if (path[0] == '/' || path[0] == '\\' || path[1] == ':') {
@@ -349,7 +349,7 @@ char *ExpandGamePath (const char *path)
 char *ExpandPathAndArchive (const char *path)
 {
 	char	*expanded;
-	char	archivename[1024];
+	char	archivename[MAX_OS_PATH];
 
 	expanded = ExpandPath (path);
 
@@ -1162,7 +1162,7 @@ void	CreatePath (const char *path)
 {
 	const char	*ofs;
 	char		c;
-	char		dir[1024];
+	char		dir[MAX_OS_PATH];
 
 #if defined(WIN32) || defined(WIN64)
 	int		olddrive = -1;

@@ -187,7 +187,7 @@ void ProcessWorldModel( void )
 	face_t		*faces;
 	qboolean	ignoreLeaks, leaked;
 	xmlNodePtr	polyline, leaknode;
-	char		level[ 2 ], shader[ 1024 ];
+	char		level[ 2 ], shader[ MAX_OS_PATH ];
 	const char	*value;
 
 	/* note it */
@@ -568,7 +568,7 @@ handles creation of a bsp from a map file
 int BSPMain( int argc, char **argv )
 {
 	int			i, j;
-	char		path[ 1024 ], tempSource[ 1024 ], foliageFile[ 1024 ];
+	char		path[ MAX_OS_PATH ], tempSource[ MAX_OS_PATH ], foliageFile[ MAX_OS_PATH ];
 
 	/* note it */
 	Sys_Printf( "--- BSP ---\n" );

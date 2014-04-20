@@ -366,7 +366,7 @@ int ConvertBSPToMap( char *bspName, int collapseByTexture )
 	entity_t		*e;
 	vec3_t			origin;
 	const char		*value;
-	char			name[ 1024 ], base[ 1024 ];
+	char			name[ MAX_OS_PATH ], base[ MAX_OS_PATH ];
 	
 	
 	/* note it */

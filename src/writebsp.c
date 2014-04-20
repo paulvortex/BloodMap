@@ -398,7 +398,7 @@ finishes a new bsp and writes to disk
 
 void EndBSPFile( void )
 {
-	char	path[ 1024 ];
+	char	path[ MAX_OS_PATH ];
 	
 
 	EmitPlanes();
@@ -439,6 +439,10 @@ void EmitBrushes( brush_t *brushes, int *firstBrush, int *numBrushes )
 	/* walk list of brushes */
 	for( b = brushes; b != NULL; b = b->next )
 	{
+		/* check nonsolid */
+		if ( b->nonsolid == qtrue )
+			continue;
+
 		/* check limits */
 		if( numBSPBrushes == MAX_MAP_BRUSHES )
 			Error( "MAX_MAP_BRUSHES (%d)", numBSPBrushes );

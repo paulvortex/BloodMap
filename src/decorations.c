@@ -893,7 +893,7 @@ import lights from .rtlights file
 void ImportRtlights( void )
 {
 	int		i, n, a, style, shadow, flags, size, intensity, numimported;
-	char	tempchar, *s, *t, cubemapname[1024], value[128];
+	char	tempchar, *s, *t, cubemapname[MAX_OS_PATH], value[128];
 	float	origin[3], radius, color[3], basecolor[3], angles[3], corona, coronasizescale, ambientscale, diffusescale, specularscale, d;
 	char	filename [MAX_QPATH];
 	char	*lightsstring;

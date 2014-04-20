@@ -115,7 +115,7 @@ exports the lightmaps as a list of numbered tga images
 void ExportLightmaps( void )
 {
 	int			i;
-	char		dirname[ 1024 ], filename[ 1024 ];
+	char		dirname[ MAX_OS_PATH ], filename[ MAX_OS_PATH ];
 	byte		*lightmap;
 	
 	
@@ -188,7 +188,7 @@ imports the lightmaps from a list of numbered tga images
 int ImportLightmapsMain( int argc, char **argv )
 {
 	int			i, x, y, len, width, height;
-	char		dirname[ 1024 ], filename[ 1024 ];
+	char		dirname[ MAX_OS_PATH ], filename[ MAX_OS_PATH ];
 	byte		*lightmap, *buffer, *pixels, *in, *out;
 	
 	
@@ -311,7 +311,7 @@ loads raw lightmap data from diskcache or just gets it from array
 
 diskPage_t *LoadRawLightmap( int num )
 {
-	int size, sizeLuxelsBSP, sizeRadLuxels, sizeLuxels, sizeOrigins, sizeNormals, sizeFloodlight, sizeCluster, sizeDeluxel, sizeDeluxelBSP;
+	int size, sizeLuxelsBSP, sizeRadLuxels, sizeLuxels, sizeOrigins, sizeNormals, sizeFloodlight, sizeCluster, sizeDeluxel, sizeDeluxelBSP, sizeNormalBSP;
 	rawLightmap_t *lm;
 	diskPage_t *dp;
 
@@ -344,6 +344,8 @@ diskPage_t *LoadRawLightmap( int num )
 			size += sizeDeluxel;
 			sizeDeluxelBSP = lm->w * lm->h * BSP_DELUXEL_SIZE * sizeof( float );
 			size += sizeDeluxelBSP;
+			sizeNormalBSP = lm->w * lm->h * BSP_NORMAL_SIZE * sizeof( float );
+			size += sizeNormalBSP;
 		}
 
 		/* load page */
@@ -375,6 +377,8 @@ diskPage_t *LoadRawLightmap( int num )
 			size += sizeDeluxel;
 			lm->bspDeluxels = (float *)(dp->data + size);
 			size += sizeDeluxelBSP;
+			lm->bspNormals = (float *)(dp->data + size);
+			size += sizeNormalBSP;
 		}
 		return dp;
 	}
@@ -527,6 +531,12 @@ void FinishRawLightmap( int num )
 		if( lm->bspDeluxels == NULL )
 			lm->bspDeluxels = (float *)safe_malloc( size );
 		memset( lm->bspDeluxels, 0, size );
+
+		/* allocate bsp normals storage */
+		size = lm->w * lm->h * BSP_NORMAL_SIZE * sizeof( float );
+		if( lm->bspNormals == NULL )
+			lm->bspNormals = (float *)safe_malloc( size );
+		memset( lm->bspNormals, 0, size );
 	}
 
 	/* save cache */
@@ -2372,11 +2382,11 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 	int i, j, k, lightmapNum, xMax, yMax, x = -1, y = -1, sx, sy, ox, oy, offset;
 	outLightmap_t       *olm;
 	surfaceInfo_t       *info;
-	float               *luxel, *deluxel;
+	float               *luxel, *deluxel, *normal;
 	vec3_t color, direction;
 	byte                *pixel;
 	qboolean ok;
-		int lightmapSearchBlockSize;
+	int lightmapSearchBlockSize;
 	
 	lightmapSearchBlockSize = 0;
 
@@ -2615,31 +2625,29 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 				/* get luxel */
 				luxel = BSP_LUXEL( lightmapNum, x, y );
 				deluxel = BSP_DELUXEL( x, y );
+				normal = BSP_NORMAL( x, y );
+
 				if ( luxel[ 0 ] < 0.0f && !lm->solid[ lightmapNum ] ) {
 					continue;
 				}
 
 				/* set minimum light */
-				if ( lm->solid[ lightmapNum ] ) {
-					if ( debug ) {
+				if ( lm->solid[ lightmapNum ] )
+				{
+					if ( debug )
 						VectorSet( color, 255.0f, 0.0f, 0.0f );
-					}
-					else{
+					else
 						VectorCopy( lm->solidColor[ lightmapNum ], color );
-					}
 				}
-				else{
+				else
 					VectorCopy( luxel, color );
-				}
 
 				/* styles are not affected by minlight */
-				if ( lightmapNum == 0 ) {
+				if ( lightmapNum == 0 )
+				{
 					for ( i = 0; i < 3; i++ )
-					{
-						if ( color[ i ] < minLight[ i ] ) {
+						if ( color[ i ] < minLight[ i ] )
 							color[ i ] = minLight[ i ];
-						}
-					}
 				}
 
 				/* get bsp lightmap coords  */
@@ -2656,14 +2664,20 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 				ColorToBytes( color, pixel, lm->brightness  );
 
 				/* store direction */
-				if ( deluxemap ) {
+				if ( deluxemap )
+				{
 					/* normalize average light direction */
 					pixel = olm->bspDirBytes + ( ( ( oy * olm->customWidth ) + ox ) * 3 );
-					VectorScale( deluxel, 1000.0f, direction );
-					VectorNormalize( direction, direction );
-					VectorScale( direction, 127.5f, direction );
-					for ( i = 0; i < 3; i++ )
-						pixel[ i ] = (byte)( 127.5f + direction[ i ] );
+
+					/* vortex: flood lightmaps - dont store null deluxels (they will be flooded by nearest ones) */
+					if ( deluxel[ 0 ] || deluxel[ 1 ] || deluxel[ 2 ] )
+					{
+						VectorScale( deluxel, 1000.0f, direction );
+						VectorNormalize( direction, direction );
+						VectorScale( direction, 127.5f, direction );
+						for ( i = 0; i < 3; i++ )
+							pixel[ i ] = (byte)( 127.5f + direction[ i ] );
+					}
 				}
 			}
 		}
@@ -2719,7 +2733,186 @@ static int CompareRawLightmap( const void *a, const void *b )
 	return 0;
 }
 
+/*
+FloodLightmapBorders()
+flood empty lightmap pixels with nearest ones 
+this fixes black seams on lightmap edges and also makes lightmaps
+more friendly to block compression techniques
+*/
 
+void FloodLightmapBorders( outLightmap_t *olm )
+{
+	byte *texLight, *texDir, *pixLight, *pixDir, *sampledLightTex, *sampledDirTex;
+	vec3_t lightSample, dirSample; 
+	int x, y, samples, pass, size;
+
+	/* we use deluxemap for coverage info */
+	if ( !olm->bspDirBytes )
+		return;
+
+	/* allocate sampled maps */
+	size = olm->customHeight * olm->customWidth * 3 * sizeof(byte);
+	sampledLightTex = (byte *)safe_malloc( size );
+	sampledDirTex = (byte *)safe_malloc( size );
+	
+	/* multiple passes cover most types of block compression */
+	texLight = olm->bspLightBytes;
+	texDir = olm->bspDirBytes;
+	for ( pass = 0; pass < 9; pass++ )
+	{
+		memcpy( sampledLightTex, texLight, size );
+		memcpy( sampledDirTex, texDir, size );
+
+		/* walk all pixels */
+		for( y = 0; y < olm->customHeight; y++ )
+		{
+			for( x = 0; x < olm->customWidth; x++ )
+			{
+				/* only process empty pixels */
+				pixDir = texDir + (y * olm->customWidth + x) * 3;
+				if (pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0)
+					continue;
+
+				/* gather samples from nearest pixels */
+				samples = 0;
+				VectorClear( lightSample );
+				VectorClear( dirSample );
+
+				/* sample top */
+				if ( y > 0 )
+				{
+					/* left top */
+					if ( x > 0 )
+					{
+						pixDir = texDir + ((y - 1) * olm->customWidth + x - 1) * 3;
+						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+						{
+							pixLight = texLight + ((y - 1) * olm->customWidth + x - 1) * 3;
+							VectorAdd( dirSample, pixDir, dirSample );
+							VectorAdd( lightSample, pixLight, lightSample );
+							samples++;
+						}
+					}
+
+					/* center top */
+					pixDir = texDir + ((y - 1) * olm->customWidth + x) * 3;
+					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+					{
+						pixLight = texLight + ((y - 1) * olm->customWidth + x) * 3;
+						VectorAdd( dirSample, pixDir, dirSample );
+						VectorAdd( lightSample, pixLight, lightSample );
+						samples++;
+					}
+
+					/* right top */
+					if ( (x + 1) < olm->customWidth )
+					{
+						pixDir = texDir + ((y - 1) * olm->customWidth + x + 1) * 3;
+						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+						{
+							pixLight = texLight + ((y - 1) * olm->customWidth + x + 1) * 3;
+							VectorAdd( dirSample, pixDir, dirSample );
+							VectorAdd( lightSample, pixLight, lightSample );
+							samples++;
+						}
+					}
+				}
+
+				/* sample left */
+				if ( x > 0 )
+				{
+					pixDir = texDir + (y * olm->customWidth + x - 1) * 3;
+					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+					{
+						pixLight = texLight + (y * olm->customWidth + x - 1) * 3;
+						VectorAdd( dirSample, pixDir, dirSample );
+						VectorAdd( lightSample, pixLight, lightSample );
+						samples++;
+					}
+				}
+
+				/* sample right */
+				if ( (x + 1) < olm->customWidth )
+				{
+					pixDir = texDir + (y * olm->customWidth + x + 1) * 3;
+					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+					{
+						pixLight = texLight + (y * olm->customWidth + x + 1) * 3;
+						VectorAdd( dirSample, pixDir, dirSample );
+						VectorAdd( lightSample, pixLight, lightSample );
+						samples++;
+					}
+				}
+
+				/* sample bottom */
+				if ( (y + 1) < olm->customHeight )
+				{
+					/* left top */
+					if ( x > 0 )
+					{
+						pixDir = texDir + ((y + 1) * olm->customWidth + x - 1) * 3;
+						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+						{
+							pixLight = texLight + ((y + 1) * olm->customWidth + x - 1) * 3;
+							VectorAdd( dirSample, pixDir, dirSample );
+							VectorAdd( lightSample, pixLight, lightSample );
+							samples++;
+						}
+					}
+
+					/* center top */
+					pixDir = texDir + ((y + 1) * olm->customWidth + x) * 3;
+					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+					{
+						pixLight = texLight + ((y + 1) * olm->customWidth + x) * 3;
+						VectorAdd( dirSample, pixDir, dirSample );
+						VectorAdd( lightSample, pixLight, lightSample );
+						samples++;
+					}
+
+					/* right top */
+					if ( (x + 1) < olm->customWidth )
+					{
+						pixDir = texDir + ((y + 1) * olm->customWidth + x + 1) * 3;
+						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+						{
+							pixLight = texLight + ((y + 1) * olm->customWidth + x + 1) * 3;
+							VectorAdd( dirSample, pixDir, dirSample );
+							VectorAdd( lightSample, pixLight, lightSample );
+							samples++;
+						}
+					}
+				}
+
+				/* subsample */
+				if ( !samples )
+					continue;
+
+				pixLight = sampledLightTex + (y * olm->customWidth + x) * 3;
+				pixDir = sampledDirTex + (y * olm->customWidth + x) * 3;
+				if ( samples > 1 )
+				{
+					VectorScale( dirSample, 1.0f / (float)samples, dirSample );
+					VectorScale( lightSample, 1.0f / (float)samples, lightSample );
+				}
+				pixLight[0] = min( 255, (byte)floor(lightSample[0] + 0.5f) );
+				pixLight[1] = min( 255, (byte)floor(lightSample[1] + 0.5f) );
+				pixLight[2] = min( 255, (byte)floor(lightSample[2] + 0.5f) );
+				pixDir[0] = min( 255, (byte)floor(dirSample[0] + 0.5f) );
+				pixDir[1] = min( 255, (byte)floor(dirSample[1] + 0.5f) );
+				pixDir[2] = min( 255, (byte)floor(dirSample[2] + 0.5f) );
+			}
+		}
+
+		/* store sampled */
+		memcpy( texLight, sampledLightTex, size );
+		memcpy( texDir, sampledDirTex, size );
+	}
+
+	/* clean up */
+	free( sampledLightTex );
+	free( sampledDirTex );
+}
 
 /*
 StoreSurfaceLightmaps()
@@ -2731,8 +2924,8 @@ void StoreSurfaceLightmaps( void )
 	int					i, j, k, x, y, lx, ly, sx, sy, *cluster, mappedSamples, f, fOld, start;
 	int					style, size, lightmapNum, lightmapNum2;
 	float				*normal, *luxel, *bspLuxel, *bspLuxel2, *radLuxel, samples, occludedSamples;
-	vec3_t				sample, occludedSample, dirSample, colorMins, colorMaxs;
-	float				*deluxel, *bspDeluxel, *bspDeluxel2;
+	vec3_t				sample, occludedSample, dirSample, nmSample, colorMins, colorMaxs;
+	float				*deluxel, *bspDeluxel, *bspDeluxel2, *bspNormal, *bspNormal2;
 	byte				*lb;
 	int					numUsed, numTwins, numTwinLuxels, numStored;
 	float				lmx, lmy, efficiency;
@@ -2743,7 +2936,7 @@ void StoreSurfaceLightmaps( void )
 	diskPage_t          *lmdk;
 	outLightmap_t		*olm;
 	bspDrawVert_t		*dv, *ydv, *dvParent;
-	char				dirname[ 1024 ], filename[ 1024 ];
+	char				dirname[ MAX_OS_PATH ], filename[ MAX_OS_PATH ], gamepath[ MAX_OS_PATH ], lmfile[ MAX_OS_PATH ];
 	shaderInfo_t		*csi;
 	char				lightmapName[ 128 ];
 	char				*rgbGenValues[ 256 ];
@@ -2774,11 +2967,14 @@ void StoreSurfaceLightmaps( void )
 	for( i = 0; i < numRawLightmaps; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numRawLightmaps;
-		if( f != fOld )
+		if (numRawLightmaps > 10)
 		{
-			fOld = f;
-			Sys_FPrintf( SYS_VRB, "%d...", f );
+			f = 10 * i / numRawLightmaps;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf( SYS_VRB, "%d...", f );
+			}
 		}
 
 		/* get lightmap */
@@ -2821,6 +3017,7 @@ void StoreSurfaceLightmaps( void )
 					VectorClear( sample );
 					VectorClear( occludedSample );
 					VectorClear( dirSample );
+					VectorClear( nmSample );
 					for( ly = 0; ly < superSample; ly++ )
 					{
 						for( lx = 0; lx < superSample; lx++ )
@@ -2835,8 +3032,11 @@ void StoreSurfaceLightmaps( void )
 							
 							/* sample deluxemap */
 							if( deluxemap && lightmapNum == 0 )
+							{
 								VectorAdd( dirSample, deluxel, dirSample );
-							
+								VectorAdd( nmSample, normal, nmSample );
+							}
+
 							/* keep track of used/occluded samples */
 							if( *cluster != CLUSTER_UNMAPPED )
 								mappedSamples++;
@@ -2898,10 +3098,14 @@ void StoreSurfaceLightmaps( void )
 					/* get luxels */
 					luxel = SUPER_LUXEL( lightmapNum, x, y );
 					deluxel = SUPER_DELUXEL( x, y );
+					normal = SUPER_NORMAL( x, y );
 					
 					/* store light direction */
 					if( deluxemap && lightmapNum == 0 )
+					{
 						VectorCopy( dirSample, deluxel );
+						VectorCopy( nmSample, normal );
+					}
 					
 					/* store the sample back in super luxels */
 					if( samples > 0.01f )
@@ -2945,7 +3149,10 @@ void StoreSurfaceLightmaps( void )
 
 					/* copy light direction */
 					if( deluxemap && lightmapNum == 0 )
+					{
 						VectorCopy( deluxel, dirSample );
+						VectorCopy( normal, nmSample );
+					}
 
 					/* is this a valid sample? */
 					if( luxel[ 3 ] > 0.0f )
@@ -2957,16 +3164,15 @@ void StoreSurfaceLightmaps( void )
 						
 						/* fix negative samples */
 						for( j = 0; j < 3; j++ )
-						{
 							if( sample[ j ] < 0.0f )
 								sample[ j ] = 0.0f;
-						}
 					}
 					else
 					{
 						/* nick an average value from the neighbors */
 						VectorClear( sample );
 						VectorClear( dirSample );
+						VectorClear( nmSample );
 						samples = 0.0f;
 						
 						/* fixme: why is this disabled?? */
@@ -3009,10 +3215,6 @@ void StoreSurfaceLightmaps( void )
 						}
 					}
 
-					/* vortex: fix unmapped light direction */
-					if (dirSample[0] == 0 && dirSample[1] == 0 && dirSample[2] == 0)
-						VectorCopy(normal, dirSample);
-					
 					/* scale the sample */
 					VectorScale( sample, (1.0f / samples), sample );
 					
@@ -3030,10 +3232,14 @@ void StoreSurfaceLightmaps( void )
 					/* store the sample in the bsp luxels */
 					bspLuxel = BSP_LUXEL( lightmapNum, x, y );
 					bspDeluxel = BSP_DELUXEL( x, y );
+					bspNormal  = BSP_NORMAL( x, y );
 
 					VectorAdd( bspLuxel, sample, bspLuxel );
 					if( deluxemap && lightmapNum == 0 )
+					{
 						VectorAdd( bspDeluxel, dirSample, bspDeluxel );
+						VectorAdd( bspNormal, nmSample, bspNormal );
+					}
 					
 					/* add color to bounds for solid checking */
 					if( samples > 0.0f )
@@ -3089,6 +3295,11 @@ void StoreSurfaceLightmaps( void )
 						VectorAdd( bspDeluxel, bspDeluxel2, bspDeluxel );
 						VectorScale( bspDeluxel, 0.5f, bspDeluxel );
 						VectorCopy( bspDeluxel, bspDeluxel2 );
+						bspNormal = BSP_NORMAL( 0, y );
+						bspNormal2 = BSP_NORMAL( lm->w - 1, y );
+						VectorAdd( bspNormal, bspNormal2, bspNormal );
+						VectorScale( bspNormal, 0.5f, bspNormal );
+						VectorCopy( bspNormal, bspNormal2 );
 					}
 				}
 			}
@@ -3108,6 +3319,11 @@ void StoreSurfaceLightmaps( void )
 						VectorAdd( bspDeluxel, bspDeluxel2, bspDeluxel );
 						VectorScale( bspDeluxel, 0.5f, bspDeluxel );
 						VectorCopy( bspDeluxel, bspDeluxel2 );
+						bspNormal = BSP_NORMAL( x, 0 );
+						bspNormal2 = BSP_NORMAL( x, lm->h - 1 );
+						VectorAdd( bspNormal, bspNormal2, bspNormal );
+						VectorScale( bspNormal, 0.5f, bspNormal );
+						VectorCopy( bspNormal, bspNormal2 );
 					}
 				}
 			}
@@ -3118,8 +3334,8 @@ void StoreSurfaceLightmaps( void )
 	}
 
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
-
+	if (numRawLightmaps > 10)
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* -----------------------------------------------------------------
 	   convert modelspace BSP deluxels to tangentspace
@@ -3142,11 +3358,14 @@ void StoreSurfaceLightmaps( void )
 			for( i = 0; i < numRawLightmaps; i++ )
 			{
 				/* print pacifier */
-				f = 10 * i / numRawLightmaps;
-				if( f != fOld )
+				if (numRawLightmaps > 10)
 				{
-					fOld = f;
-					Sys_FPrintf( SYS_VRB, "%d...", f );
+					f = 10 * i / numRawLightmaps;
+					if( f != fOld )
+					{
+						fOld = f;
+						Sys_FPrintf( SYS_VRB, "%d...", f );
+					}
 				}
 
 				/* get lightmap */
@@ -3159,11 +3378,17 @@ void StoreSurfaceLightmaps( void )
 					for( x = 0; x < lm->w; x++ )
 					{
 						/* get normal and deluxel */
-						normal = SUPER_NORMAL(x*superSample, y*superSample); // VorteX: quite grude, do subsampling?
 						bspDeluxel = BSP_DELUXEL(x, y);
-						/* get normal */
-						VectorSet( myNormal, normal[0], normal[1], normal[2] );
+						bspNormal = BSP_NORMAL(x, y);
+
+						/* early out */
+						if (bspDeluxel[0] == 0.0f && bspDeluxel[1] == 0.0f && bspDeluxel[2] == 0.0f)
+							continue;
+
+						/* renormalize */
+						VectorSet( myNormal, bspNormal[0], bspNormal[1], bspNormal[2] );
 						VectorNormalize(myNormal, myNormal);
+
 						/* get tangent vectors */
 						if( myNormal[ 0 ] == 0.0f && myNormal[ 1 ] == 0.0f )
 						{
@@ -3186,33 +3411,36 @@ void StoreSurfaceLightmaps( void )
 							CrossProduct( myTangent, myNormal, myBinormal );
 							VectorNormalize( myBinormal, myBinormal );
 						}
+
 						/* project onto plane */
 						dist = -DotProduct(myTangent, myNormal); 
 						VectorMA(myTangent, dist, myNormal, myTangent);
 						dist = -DotProduct(myBinormal, myNormal); 
 						VectorMA(myBinormal, dist, myNormal, myBinormal);
+
 						/* renormalize */
 						VectorNormalize( myTangent, myTangent );
 						VectorNormalize( myBinormal, myBinormal );
+
 						/* convert modelspace deluxel to tangentspace */
 						dirSample[0] = bspDeluxel[0];
 						dirSample[1] = bspDeluxel[1];
 						dirSample[2] = bspDeluxel[2];
 						VectorNormalize(dirSample, dirSample);
+
 						/* fix tangents to world matrix */
 						if (myNormal[0] > 0 || myNormal[1] < 0 || myNormal[2] < 0)
 							VectorNegate(myTangent, myTangent);
+
 						/* build tangentspace vectors */
 						bspDeluxel[0] = DotProduct(dirSample, myTangent);
 						bspDeluxel[1] = DotProduct(dirSample, myBinormal);
 						bspDeluxel[2] = DotProduct(dirSample, myNormal);
+
 						/* clamp deluxel z to 75 degrees to prevent strong exaggerations */
 						bspDeluxel[2] = bspDeluxel[2]*2 - 1;
 						bspDeluxel[2] = max(bspDeluxel[2], 0.25);
 						bspDeluxel[2] = (bspDeluxel[2] + 1)/2;
-						/*bspDeluxel[0] = myNormal[0];
-						bspDeluxel[1] = myNormal[1];
-						bspDeluxel[2] = myNormal[2];*/
 					}
 				}
 
@@ -3221,7 +3449,8 @@ void StoreSurfaceLightmaps( void )
 			}
 
 			/* print time */
-			Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+			if (numRawLightmaps > 10)
+				Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 		}
 	}
 
@@ -3252,11 +3481,14 @@ void StoreSurfaceLightmaps( void )
 		for( i = 0; i < numRawLightmaps; i++ )
 		{
 			/* print pacifier */
-			f = 10 * i / numRawLightmaps;
-			if( f != fOld )
+			if (numRawLightmaps > 10)
 			{
-				fOld = f;
-				Sys_FPrintf( SYS_VRB, "%d...", f );
+				f = 10 * i / numRawLightmaps;
+				if( f != fOld )
+				{
+					fOld = f;
+					Sys_FPrintf( SYS_VRB, "%d...", f );
+				}
 			}
 
 			/* get lightmap */
@@ -3310,7 +3542,8 @@ void StoreSurfaceLightmaps( void )
 		}
 
 		/* print time */
-		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+		if (numRawLightmaps > 10)
+			Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 	}
 
 	/* -----------------------------------------------------------------
@@ -3358,11 +3591,14 @@ void StoreSurfaceLightmaps( void )
 	for( i = 0; i < numRawLightmaps; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numRawLightmaps;
-		if( f != fOld )
+		if (numRawLightmaps > 10)
 		{
-			fOld = f;
-			Sys_FPrintf( SYS_VRB, "%d...", f );
+			f = 10 * i / numRawLightmaps;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf( SYS_VRB, "%d...", f );
+			}
 		}
 
 		/* find */
@@ -3397,7 +3633,8 @@ void StoreSurfaceLightmaps( void )
 	}
 
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	if (numRawLightmaps > 10)
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 	
 	/* -----------------------------------------------------------------
 	   store output lightmaps
@@ -3429,11 +3666,14 @@ void StoreSurfaceLightmaps( void )
 	for( i = 0; i < numOutLightmaps; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numOutLightmaps;
-		if( f != fOld )
+		if (numOutLightmaps > 10)
 		{
-			fOld = f;
-			Sys_FPrintf( SYS_VRB, "%d...", f );
+			f = 10 * i / numOutLightmaps;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf( SYS_VRB, "%d...", f );
+			}
 		}
 
 		/* get output lightmap */
@@ -3465,18 +3705,19 @@ void StoreSurfaceLightmaps( void )
 				
 				/* set external lightmap number */
 				olm->extLightmapNum = numExtLightmaps;
-				
+
+				/* vortex: flood empty lightmap pixels */
+				FloodLightmapBorders( olm );
+
 				/* write lightmap */
-				sprintf( filename, "%s/" EXTERNAL_LIGHTMAP, dirname, numExtLightmaps );
-				//Sys_FPrintf( SYS_VRB, "\nwriting %s", filename );
+				sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, numExtLightmaps );
 				WriteTGA24( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qtrue );
 				numExtLightmaps++;
 				
 				/* write deluxemap */
 				if( deluxemap )
 				{
-					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP, dirname, numExtLightmaps );
-					//Sys_FPrintf( SYS_VRB, "\nwriting %s", filename );
+					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, numExtLightmaps );
 					WriteTGA24( filename, olm->bspDirBytes, olm->customWidth, olm->customHeight, qtrue );
 					numExtLightmaps++;
 					
@@ -3488,25 +3729,45 @@ void StoreSurfaceLightmaps( void )
 	}
 
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
-	
-	if( numExtLightmaps > 0 )
-		Sys_FPrintf( SYS_VRB, "\n" );
+	if (numOutLightmaps > 10)
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* delete unused external lightmaps */
 	Sys_Printf( "--- CleanupExternalLightmaps ---\n");
 
+	/* delete primary .tga lightmaps */
 	for( i = numExtLightmaps; i; i++ )
 	{
 		/* determine if file exists */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP, dirname, i );
+		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
 		if( !FileExists( filename ) )
 			break;
 		
 		/* delete it */
 		remove( filename );
 	}
-	
+
+	/* delete unused compressed lightmaps */
+	Sys_Printf( "--- CleanupCompressedLightmaps ---\n");
+
+	/* todo: parametrize somehow with game definitions */
+	for( i = 0; 1; i++ )
+	{
+		/* get game path */
+		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".dds", dirname, i );
+		if ( !GetGamePath( filename, gamepath ) )
+			continue;
+
+		/* determine if file exists */
+		strcpy(lmfile, filename + strlen(gamepath));
+		sprintf( filename, "%sdds/%s", gamepath, lmfile );
+		if( !FileExists( filename ) )
+			break;
+
+		/* delete it */
+		remove( filename );
+	}
+
 	/* -----------------------------------------------------------------
 	   project the lightmaps onto the bsp surfaces
 	   ----------------------------------------------------------------- */
@@ -3522,11 +3783,14 @@ void StoreSurfaceLightmaps( void )
 	for( i = 0; i < numBSPDrawSurfaces; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numBSPDrawSurfaces;
-		if( f != fOld )
+		if (numBSPDrawSurfaces > 10)
 		{
-			fOld = f;
-			Sys_FPrintf( SYS_VRB, "%d...", f );
+			f = 10 * i / numBSPDrawSurfaces;
+			if( f != fOld )
+			{
+				fOld = f;
+				Sys_FPrintf( SYS_VRB, "%d...", f );
+			}
 		}
 
 		/* get the surface and info */
@@ -3686,7 +3950,7 @@ void StoreSurfaceLightmaps( void )
 				if( lm->outLightmapNums[ lightmapNum ] == lm->outLightmapNums[ 0 ] )
 					strcpy( lightmapName, "$lightmap" );
 				else
-					sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP, mapName, olm->extLightmapNum );
+					sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP ".tga", mapName, olm->extLightmapNum );
 				
 				/* get rgbgen string */
 				if( rgbGenValues[ style ] == NULL )
@@ -3779,7 +4043,7 @@ void StoreSurfaceLightmaps( void )
 			olm = &outLightmaps[ lm->outLightmapNums[ 0 ] ];
 			
 			/* do some name mangling */
-			sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP, mapName, olm->extLightmapNum );
+			sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP ".tga", mapName, olm->extLightmapNum );
 			
 			/* create custom shader */
 			csi = CustomShader( info->si, "$lightmap", lightmapName );
@@ -3796,7 +4060,8 @@ void StoreSurfaceLightmaps( void )
 	}
 	
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	if (numBSPDrawSurfaces > 10)
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 	
 	/* calc num stored */
 	numStored = numBSPLightBytes / 3;

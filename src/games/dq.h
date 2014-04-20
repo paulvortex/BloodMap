@@ -44,7 +44,7 @@ game_t struct
 	"dq",		        /* -game x */
 	"basedq",			/* default base game data dir */
 	".dq ",		        /* unix home sub-dir */
-	"dq",		       /* magic path word */
+	"dq",		        /* magic path word */
 	"scripts",			/* shader directory */
 	32786,				/* max lightmapped surface verts */
 	32786,				/* max surface verts */

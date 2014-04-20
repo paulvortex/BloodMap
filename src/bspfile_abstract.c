@@ -362,7 +362,7 @@ writes a bsp file
 
 void WriteBSPFile( const char *filename )
 {
-	char	tempname[ 1024 ];
+	char	tempname[ MAX_OS_PATH ];
 	time_t	tm;
 	
 	

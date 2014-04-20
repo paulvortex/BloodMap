@@ -1019,7 +1019,7 @@ VisMain
 */
 int VisMain (int argc, char **argv)
 {
-	char		portalfile[1024];
+	char		portalfile[MAX_OS_PATH];
 	int			i;
 	
 	

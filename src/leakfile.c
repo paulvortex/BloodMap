@@ -63,7 +63,7 @@ xmlNodePtr LeakFile (tree_t *tree)
 {
 	vec3_t	mid;
 	FILE	*linefile;
-	char	filename[1024];
+	char	filename[MAX_OS_PATH];
 	node_t	*node;
 	int		count;
 	xmlNodePtr xml_node, point;

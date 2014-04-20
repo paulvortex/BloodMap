@@ -13,6 +13,7 @@ qboolean      tidyEntities       = qtrue;
 vec3_t        mergeBlock         = {96.0f, 96.0f, 1024.0f};
 qboolean      mergeDrawSurfaces  = qtrue;
 qboolean      mergeDrawVerts     = qtrue;
+qboolean      makeResMap         = qtrue;
 
 /*
 TidyShaders
@@ -23,7 +24,7 @@ typedef struct bspShaderMeta_s
 {
 	int          index;
 	int          newIndex;
-	char         name[1024];
+	char         name[MAX_OS_PATH];
 	void        *mergedto; // metasurface to merge drawsurface to
 	bspShader_t *sh;
 }
@@ -631,7 +632,7 @@ bspDrawVertMeta_t;
 
 #define VERTMERGE_ORIGIN_EPSILON  0.05
 #define VERTMERGE_NORMAL_EPSILON  0.2
-#define VERTMERGE_TC_EPSILON      0.091
+#define VERTMERGE_TC_EPSILON      0.005
 #define VERTMERGE_LMTC_EPSILON    0.0005
 #define VERTMERGE_COLOR_EPSILON   32
 #define VERTMERGE_ALPHA_EPSILON   32
@@ -897,12 +898,709 @@ void MergeDrawVerts(void)
 }
 
 /*
+PrintBSP()
+test stuff
+*/
+
+void PrintBSP()
+{
+	int i, j;
+
+	Sys_Printf("bspModel_t *m;\n" );
+	Sys_Printf("bspShader_t *sh;\n" );
+	Sys_Printf("bspBrush_t *b;\n" );
+	Sys_Printf("bspBrushSide_t *bs;\n" );
+	Sys_Printf("bspPlane_t *p;\n" );
+	Sys_Printf("bspNode_t *n;\n" );
+	Sys_Printf("bspLeaf_t *lf;\n" );
+	Sys_Printf("bspDrawSurface_t *ds;\n" );
+	Sys_Printf("bspDrawVert_t *dv;\n" );
+	Sys_Printf("\n" );
+
+	/* models */
+	Sys_Printf("/* models */\n" );
+	Sys_Printf("numBSPModels = %i;\n", numBSPModels);
+	for (i = 0; i < numBSPModels; i++)
+	{
+		Sys_Printf( "m = &bspModels[ %i ];\n", i );
+		Sys_Printf( "	VectorSet( m->mins, %f, %f, %f );\n", bspModels[ i ].mins[ 0 ],  bspModels[ i ].mins[ 1 ], bspModels[ i ].mins[ 2 ] );
+		Sys_Printf( "	VectorSet( m->maxs, %f, %f, %f );\n", bspModels[ i ].maxs[ 0 ],  bspModels[ i ].maxs[ 1 ], bspModels[ i ].maxs[ 2 ] );
+		Sys_Printf( "	m->firstBSPSurface = %i;\n", bspModels[ i ].firstBSPSurface );
+		Sys_Printf( "	m->numBSPSurfaces = %i;\n", bspModels[ i ].numBSPSurfaces );
+		Sys_Printf( "	m->firstBSPBrush = %i;\n;", bspModels[ i ].firstBSPBrush );
+		Sys_Printf( "	m->numBSPBrushes = %i;\n", bspModels[ i ].numBSPBrushes );
+	}
+	Sys_Printf( "\n" );
+
+	/* shaders */
+	Sys_Printf("/* shaders */\n" );
+	Sys_Printf("numBSPShaders = %i;\n", numBSPShaders);
+	for (i = 0; i < numBSPShaders; i++)
+	{
+		Sys_Printf( "sh = &bspShaders[ %i ]; ", i );
+		Sys_Printf( "strcpy( sh->shader, \"%s\" ); ", bspShaders[ i ].shader );
+		Sys_Printf( "sh->surfaceFlags = %i; ", bspShaders[ i ].surfaceFlags );
+		Sys_Printf( "sh->contentFlags = %i;\n", bspShaders[ i ].contentFlags );
+	}
+	Sys_Printf( "\n" );
+
+	/* brushes */
+	Sys_Printf("/* brushes */\n" );
+	Sys_Printf("numBSPBrushes = %i;\n", numBSPBrushes);
+	for (i = 0; i < numBSPBrushes; i++)
+	{
+		Sys_Printf( "b = &bspBrushes[ %i ]; ", i );
+		Sys_Printf( "b->firstSide = %i; ", bspBrushes[ i ].firstSide );
+		Sys_Printf( "b->numSides = %i; ", bspBrushes[ i ].numSides );
+		Sys_Printf( "b->shaderNum = %i;\n", bspBrushes[ i ].shaderNum );
+	}
+	Sys_Printf( "\n" );
+
+	/* brushsides */
+	Sys_Printf("/* brush sides */\n" );
+	Sys_Printf("numBSPBrushSides = %i;\n", numBSPBrushSides);
+	for (i = 0; i < numBSPBrushSides; i++)
+	{
+		Sys_Printf( "bs = &bspBrushSides[ %i ]; ", i );
+		Sys_Printf( "bs->planeNum = %i; ", bspBrushSides[ i ].planeNum );
+		Sys_Printf( "bs->shaderNum = %i; ", bspBrushSides[ i ].shaderNum );
+		Sys_Printf( "bs->surfaceNum = %i;\n", bspBrushSides[ i ].surfaceNum );
+	}
+	Sys_Printf( "\n" );
+
+	/* planes */
+	Sys_Printf("/* planes */\n" );
+	Sys_Printf("numBSPPlanes = %i;\n", numBSPPlanes);
+	for (i = 0; i < numBSPPlanes; i++)
+	{
+		Sys_Printf( "p = &bspPlanes[ %i ]; ", i );
+		Sys_Printf( "VectorSet( p->normal, %f, %f, %f ); ", bspPlanes[ i ].normal[ 0 ], bspPlanes[ i ].normal[ 1 ], bspPlanes[ i ].normal[ 2 ] );
+		Sys_Printf( "p->dist = %i;\n", bspPlanes[ i ].dist );
+	}
+	Sys_Printf( "\n" );
+
+	/* nodes */
+	Sys_Printf("/* nodes */\n" );
+	Sys_Printf("numBSPNodes = %i;\n", numBSPNodes);
+	for (i = 0; i < numBSPNodes; i++)
+	{
+		Sys_Printf( "n = &bspNodes[ %i ]; ", i );
+		Sys_Printf( "n->planeNum = %i; ", bspNodes[ i ].planeNum );
+		Sys_Printf( "n->children[ 0 ] = %i; ", bspNodes[ i ].children[ 0 ] );
+		Sys_Printf( "n->children[ 1 ] = %i; ", bspNodes[ i ].children[ 1 ] );
+		Sys_Printf( "VectorSet( n->mins, %f, %f, %f ); ", bspNodes[ i ].mins[ 0 ], bspNodes[ i ].mins[ 1 ], bspNodes[ i ].mins[ 2 ] );
+		Sys_Printf( "VectorSet( n->maxs, %f, %f, %f );\n", bspNodes[ i ].maxs[ 0 ], bspNodes[ i ].maxs[ 1 ], bspNodes[ i ].maxs[ 2 ] );
+	}
+	Sys_Printf( "\n" );
+
+	/* leafs */
+	Sys_Printf("/* leafs */\n" );
+	Sys_Printf("numBSPLeafs = %i;\n", numBSPLeafs);
+	for (i = 0; i < numBSPLeafs; i++)
+	{
+		Sys_Printf( "lf = &bspLeafs[ %i ]; ", i );
+		Sys_Printf( "lf->cluster = %i; ", bspLeafs[ i ].cluster );
+		Sys_Printf( "lf->area = %i; ", bspLeafs[ i ].area );
+		Sys_Printf( "VectorSet( lf->mins, %f, %f, %f ); ", bspLeafs[ i ].mins[ 0 ],  bspLeafs[ i ].mins[ 1 ], bspLeafs[ i ].mins[ 2 ] );
+		Sys_Printf( "VectorSet( lf->maxs, %f, %f, %f ); ", bspLeafs[ i ].maxs[ 0 ],  bspLeafs[ i ].maxs[ 1 ], bspLeafs[ i ].maxs[ 2 ] );
+		Sys_Printf( "lf->firstBSPLeafSurface = %i; ", bspLeafs[ i ].firstBSPLeafSurface );
+		Sys_Printf( "lf->numBSPLeafSurfaces = %i; ", bspLeafs[ i ].numBSPLeafSurfaces );
+		Sys_Printf( "lf->firstBSPLeafBrush = %i; ", bspLeafs[ i ].firstBSPLeafBrush );
+		Sys_Printf( "lf->numBSPLeafBrushes = %i;\n", bspLeafs[ i ].numBSPLeafBrushes );
+	}
+	Sys_Printf( "\n" );
+
+	/* leafsurfaces */
+	Sys_Printf("/* leafsurfaces */\n" );
+	Sys_Printf("numBSPLeafSurfaces = %i;\n", numBSPLeafSurfaces);
+	for (i = 0; i < numBSPLeafSurfaces; i++)
+		Sys_Printf( "bspLeafSurfaces[ %i ] = %i;\n", i, bspLeafSurfaces[ i ] );
+	Sys_Printf( "\n" );
+
+	/* leafs */
+	Sys_Printf("/* leafbrushes */\n" );
+	Sys_Printf("numBSPLeafBrushes = %i;\n", numBSPLeafBrushes);
+	for (i = 0; i < numBSPLeafBrushes; i++)
+		Sys_Printf( "bspLeafBrushes[ %i ] = %i;\n", i, bspLeafBrushes[ i ] );
+	Sys_Printf( "\n" );
+
+	/* drawsurfaces */
+	Sys_Printf("/* drawsurfaces */\n" );
+	Sys_Printf("numBSPDrawSurfaces = %i;\n", numBSPDrawSurfaces);
+	for (i = 0; i < numBSPDrawSurfaces; i++)
+	{
+		Sys_Printf( "ds = &bspDrawSurfaces[ %i ];\n", i );
+		Sys_Printf( "ds->shaderNum = %i;\n", bspDrawSurfaces[ i ].shaderNum );
+		Sys_Printf( "ds->fogNum = %i;\n", bspDrawSurfaces[ i ].fogNum );
+		Sys_Printf( "ds->surfaceType = %i;\n", bspDrawSurfaces[ i ].surfaceType );
+		Sys_Printf( "ds->firstVert = %i; ", bspDrawSurfaces[ i ].firstVert );
+		Sys_Printf( "ds->numVerts = %i;\n", bspDrawSurfaces[ i ].numVerts );
+		Sys_Printf( "ds->firstIndex = %i; ", bspDrawSurfaces[ i ].firstIndex );
+		Sys_Printf( "ds->numIndexes = %i;\n", bspDrawSurfaces[ i ].numIndexes );
+		for (j = 0; j < MAX_LIGHTMAPS; j++)
+		{
+			Sys_Printf( "ds->lightmapStyles[ %i ] = %i; ", j, bspDrawSurfaces[ i ].lightmapStyles[ j ] );
+			Sys_Printf( "ds->vertexStyles[ %i ] = %i; ", j, bspDrawSurfaces[ i ].vertexStyles[ j ] );
+			Sys_Printf( "ds->lightmapNum[ %i ] = %i; ", j, bspDrawSurfaces[ i ].lightmapNum[ j ] );
+			Sys_Printf( "ds->lightmapX[ %i ] = %i; ", j, bspDrawSurfaces[ i ].lightmapX[ j ] );
+			Sys_Printf( "ds->lightmapY[ %i ] = %i;\n", j, bspDrawSurfaces[ i ].lightmapY[ j ] );
+		}
+		Sys_Printf( "ds->lightmapWidth = %i; ", bspDrawSurfaces[ i ].lightmapWidth );
+		Sys_Printf( "ds->lightmapHeight = %i;\n", bspDrawSurfaces[ i ].lightmapHeight );
+		Sys_Printf( "VectorSet( ds->lightmapOrigin, %f, %f, %f );\n", bspDrawSurfaces[ i ].lightmapOrigin[ 0 ], bspDrawSurfaces[ i ].lightmapOrigin[ 1 ], bspDrawSurfaces[ i ].lightmapOrigin[ 2 ] );
+		Sys_Printf( "VectorSet( ds->lightmapVecs[ 0 ], %f, %f, %f );\n", bspDrawSurfaces[ i ].lightmapVecs[ 0 ][ 0 ], bspDrawSurfaces[ i ].lightmapVecs[ 0 ][ 1 ], bspDrawSurfaces[ i ].lightmapVecs[ 0 ][ 2 ] );
+		Sys_Printf( "VectorSet( ds->lightmapVecs[ 1 ], %f, %f, %f );\n", bspDrawSurfaces[ i ].lightmapVecs[ 1 ][ 0 ], bspDrawSurfaces[ i ].lightmapVecs[ 1 ][ 1 ], bspDrawSurfaces[ i ].lightmapVecs[ 1 ][ 2 ] );
+		Sys_Printf( "VectorSet( ds->lightmapVecs[ 2 ], %f, %f, %f );\n", bspDrawSurfaces[ i ].lightmapVecs[ 2 ][ 0 ], bspDrawSurfaces[ i ].lightmapVecs[ 2 ][ 1 ], bspDrawSurfaces[ i ].lightmapVecs[ 2 ][ 2 ] );
+		Sys_Printf( "ds->patchWidth = %i; ", bspDrawSurfaces[ i ].patchWidth );
+		Sys_Printf( "ds->patchHeight = %i;\n", bspDrawSurfaces[ i ].patchHeight );
+	}
+	Sys_Printf( "\n" );
+
+	/* drawverts */
+	Sys_Printf("/* drawverts */\n" );
+	Sys_Printf("numBSPDrawVerts = %i;\n", numBSPDrawVerts);
+	for (i = 0; i < numBSPDrawVerts; i++)
+	{
+		Sys_Printf( "dv = &bspDrawVerts[ %i ]; ", i );
+		Sys_Printf( "VectorSet( dv->xyz, %f, %f, %f ); ", bspDrawVerts[ i ].xyz[ 0 ], bspDrawVerts[ i ].xyz[ 1 ], bspDrawVerts[ i ].xyz[ 2 ] );
+		Sys_Printf( "VectorSet( dv->normal, %f, %f, %f ); ", bspDrawVerts[ i ].normal[ 0 ], bspDrawVerts[ i ].normal[ 1 ], bspDrawVerts[ i ].normal[ 2 ] );
+		Sys_Printf( "dv->st[ 0 ] = %f; ", bspDrawVerts[ i ].st[ 0 ] );
+		Sys_Printf( "dv->st[ 1 ] = %f;\n", bspDrawVerts[ i ].st[ 1 ] );
+		for (j = 0; j < MAX_LIGHTMAPS; j++)
+		{
+			Sys_Printf( "	dv->lightmap[ %i ][ 0 ] = %f; ", j, bspDrawVerts[ i ].lightmap[ j ][ 0 ] );
+			Sys_Printf( "	dv->lightmap[ %i ][ 1 ] = %f; ", j, bspDrawVerts[ i ].lightmap[ j ][ 1 ] );
+			Sys_Printf( "	dv->color[ %i ][ 0 ] = %i; ", j, bspDrawVerts[ i ].color[ j ][ 0 ] );
+			Sys_Printf( "	dv->color[ %i ][ 1 ] = %i; ", j, bspDrawVerts[ i ].color[ j ][ 1 ] );
+			Sys_Printf( "	dv->color[ %i ][ 2 ] = %i; ", j, bspDrawVerts[ i ].color[ j ][ 2 ] );
+			Sys_Printf( "	dv->color[ %i ][ 3 ] = %i;\n", j, bspDrawVerts[ i ].color[ j ][ 3 ] );
+		}
+	}
+	Sys_Printf( "\n" );
+
+	/* drawindexes */
+	Sys_Printf("/* drawindexes */\n" );
+	Sys_Printf("numBSPDrawIndexes = %i;\n", numBSPDrawIndexes);
+	for (i = 0; i < numBSPDrawIndexes; i++)
+		Sys_Printf( "bspDrawIndexes[ %i ] = %i;\n", i, bspDrawIndexes[ i ] );
+	Sys_Printf( "\n" );
+
+	/* visibility */
+	Sys_Printf("/* visibility */\n" );
+	Sys_Printf("numBSPVisBytes = %i;\n", numBSPVisBytes);
+	for (i = 0; i < numBSPVisBytes; i++)
+		Sys_Printf( "bspVisBytes[ %i ] = %i;\n", i, bspVisBytes[ i ] );
+	Sys_Printf( "\n" );
+}
+
+
+/*
+WriteResourceBSPFile()
+generate fake bsp file with only shaders, to load up a resources map is using with precahce_model()
+*/
+
+void WriteResourceBSPFile( const char *filename )
+{
+	bspModel_t *m;
+	bspBrush_t *b;
+	bspBrushSide_t *bs;
+	bspPlane_t *p;
+	bspNode_t *n;
+	bspLeaf_t *lf;
+	bspDrawSurface_t *ds;
+	bspDrawVert_t *dv;
+	int i;
+
+	/* empty data */
+	numBSPLightBytes = 0;
+	numBSPGridPoints = 0;
+	bspEntDataSize = 0;
+	numBSPFogs = 0;
+	numBSPVisBytes = 0;
+
+	/* models */
+	numBSPModels = 1;
+	m = &bspModels[ 0 ]; 
+	VectorSet( m->mins, -8.000000, -8.000000, -8.000000 ); 
+	VectorSet( m->maxs, 8.000000, 8.000000, 8.000000 ); 
+	m->firstBSPSurface = 0; 
+	m->numBSPSurfaces = numBSPShaders; 
+	m->firstBSPBrush = 0; 
+	m->numBSPBrushes = 1;
+
+	/* brushes */
+	numBSPBrushes = 1;
+	b = &bspBrushes[ 0 ]; b->firstSide = 0; b->numSides = 6; b->shaderNum = 0;
+
+	/* brush sides */
+	numBSPBrushSides = 6;
+	bs = &bspBrushSides[ 0 ]; bs->planeNum = 11; bs->shaderNum = 0; bs->surfaceNum = -1;
+	bs = &bspBrushSides[ 1 ]; bs->planeNum = 4; bs->shaderNum = 0; bs->surfaceNum = -1;
+	bs = &bspBrushSides[ 2 ]; bs->planeNum = 9; bs->shaderNum = 0; bs->surfaceNum = -1;
+	bs = &bspBrushSides[ 3 ]; bs->planeNum = 2; bs->shaderNum = 0; bs->surfaceNum = -1;
+	bs = &bspBrushSides[ 4 ]; bs->planeNum = 7; bs->shaderNum = 0; bs->surfaceNum = -1;
+	bs = &bspBrushSides[ 5 ]; bs->planeNum = 0; bs->shaderNum = 0; bs->surfaceNum = -1;
+
+	/* planes */
+	numBSPPlanes = 18;
+	p = &bspPlanes[ 0 ]; VectorSet( p->normal, 0.000000, 0.000000, 1.000000 ); p->dist = 0;
+	p = &bspPlanes[ 1 ]; VectorSet( p->normal, -0.000000, -0.000000, -1.000000 ); p->dist = 0;
+	p = &bspPlanes[ 2 ]; VectorSet( p->normal, 0.000000, 1.000000, 0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 3 ]; VectorSet( p->normal, -0.000000, -1.000000, -0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 4 ]; VectorSet( p->normal, 1.000000, 0.000000, 0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 5 ]; VectorSet( p->normal, -1.000000, -0.000000, -0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 6 ]; VectorSet( p->normal, -0.000000, -0.000000, 1.000000 ); p->dist = 0;
+	p = &bspPlanes[ 7 ]; VectorSet( p->normal, 0.000000, 0.000000, -1.000000 ); p->dist = 0;
+	p = &bspPlanes[ 8 ]; VectorSet( p->normal, -0.000000, 1.000000, -0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 9 ]; VectorSet( p->normal, 0.000000, -1.000000, 0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 10 ]; VectorSet( p->normal, 1.000000, -0.000000, -0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 11 ]; VectorSet( p->normal, -1.000000, 0.000000, 0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 12 ]; VectorSet( p->normal, 1.000000, 0.000000, 0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 13 ]; VectorSet( p->normal, -1.000000, -0.000000, -0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 14 ]; VectorSet( p->normal, 0.000000, 1.000000, 0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 15 ]; VectorSet( p->normal, -0.000000, -1.000000, -0.000000 ); p->dist = 0;
+	p = &bspPlanes[ 16 ]; VectorSet( p->normal, 0.000000, 0.000000, 1.000000 ); p->dist = 0;
+	p = &bspPlanes[ 17 ]; VectorSet( p->normal, -0.000000, -0.000000, -1.000000 ); p->dist = 0;
+
+	/* nodes */
+	numBSPNodes = 31;
+	n = &bspNodes[ 0 ]; n->planeNum = 12; n->children[ 0 ] = 1; n->children[ 1 ] = 16; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 1 ]; n->planeNum = 14; n->children[ 0 ] = 2; n->children[ 1 ] = 9; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 2 ]; n->planeNum = 16; n->children[ 0 ] = 3; n->children[ 1 ] = 6; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 3 ]; n->planeNum = 4; n->children[ 0 ] = -2; n->children[ 1 ] = 4; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 4 ]; n->planeNum = 0; n->children[ 0 ] = -3; n->children[ 1 ] = 5; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 5 ]; n->planeNum = 2; n->children[ 0 ] = -4; n->children[ 1 ] = -5; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 6 ]; n->planeNum = 4; n->children[ 0 ] = -6; n->children[ 1 ] = 7; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 7 ]; n->planeNum = 6; n->children[ 0 ] = 8; n->children[ 1 ] = -9; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 8 ]; n->planeNum = 2; n->children[ 0 ] = -7; n->children[ 1 ] = -8; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 9 ]; n->planeNum = 16; n->children[ 0 ] = 10; n->children[ 1 ] = 13; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 10 ]; n->planeNum = 4; n->children[ 0 ] = -10; n->children[ 1 ] = 11; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 11 ]; n->planeNum = 0; n->children[ 0 ] = -11; n->children[ 1 ] = 12; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 12 ]; n->planeNum = 8; n->children[ 0 ] = -12; n->children[ 1 ] = -13; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 13 ]; n->planeNum = 4; n->children[ 0 ] = -14; n->children[ 1 ] = 14; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 14 ]; n->planeNum = 6; n->children[ 0 ] = 15; n->children[ 1 ] = -17; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 15 ]; n->planeNum = 8; n->children[ 0 ] = -15; n->children[ 1 ] = -16; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 16 ]; n->planeNum = 14; n->children[ 0 ] = 17; n->children[ 1 ] = 24; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 17 ]; n->planeNum = 16; n->children[ 0 ] = 18; n->children[ 1 ] = 21; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 18 ]; n->planeNum = 10; n->children[ 0 ] = 19; n->children[ 1 ] = -21; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 19 ]; n->planeNum = 0; n->children[ 0 ] = -18; n->children[ 1 ] = 20; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 20 ]; n->planeNum = 2; n->children[ 0 ] = -19; n->children[ 1 ] = -20; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 21 ]; n->planeNum = 10; n->children[ 0 ] = 22; n->children[ 1 ] = -25; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 22 ]; n->planeNum = 6; n->children[ 0 ] = 23; n->children[ 1 ] = -24; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 23 ]; n->planeNum = 2; n->children[ 0 ] = -22; n->children[ 1 ] = -23; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 24 ]; n->planeNum = 16; n->children[ 0 ] = 25; n->children[ 1 ] = 28; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 25 ]; n->planeNum = 10; n->children[ 0 ] = 26; n->children[ 1 ] = -29; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 26 ]; n->planeNum = 0; n->children[ 0 ] = -26; n->children[ 1 ] = 27; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 27 ]; n->planeNum = 8; n->children[ 0 ] = -27; n->children[ 1 ] = -28; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 28 ]; n->planeNum = 10; n->children[ 0 ] = 29; n->children[ 1 ] = -33; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 29 ]; n->planeNum = 6; n->children[ 0 ] = 30; n->children[ 1 ] = -32; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+	n = &bspNodes[ 30 ]; n->planeNum = 8; n->children[ 0 ] = -30; n->children[ 1 ] = -31; VectorSet( n->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( n->maxs, 0.000000, 0.000000, 0.000000 );
+
+	/* leafs */
+	numBSPLeafs = 33;
+	lf = &bspLeafs[ 0 ]; lf->cluster = 0; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 0; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 1 ]; lf->cluster = 0; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 0; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 2 ]; lf->cluster = 1; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 3; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 0; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 3 ]; lf->cluster = 2; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 6; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 0; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 4 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 0; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 5 ]; lf->cluster = 3; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 9; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 1; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 6 ]; lf->cluster = 4; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 12; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 1; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 7 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 1; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 8 ]; lf->cluster = 5; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 15; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 2; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 9 ]; lf->cluster = 6; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 18; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 2; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 10 ]; lf->cluster = 7; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 21; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 2; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 11 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 2; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 12 ]; lf->cluster = 8; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 24; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 3; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 13 ]; lf->cluster = 9; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 27; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 3; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 14 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 3; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 15 ]; lf->cluster = 10; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 30; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 4; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 16 ]; lf->cluster = 11; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 33; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 4; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 17 ]; lf->cluster = 12; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 36; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 4; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 18 ]; lf->cluster = 13; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 39; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 4; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 19 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 4; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 20 ]; lf->cluster = 14; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 42; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 5; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 21 ]; lf->cluster = 15; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 45; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 5; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 22 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 5; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 23 ]; lf->cluster = 16; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 48; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 6; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 24 ]; lf->cluster = 17; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 51; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 6; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 25 ]; lf->cluster = 18; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 54; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 6; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 26 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 6; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 27 ]; lf->cluster = 19; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 57; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 7; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 28 ]; lf->cluster = 20; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 60; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 7; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 29 ]; lf->cluster = -1; lf->area = -1; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 0; lf->numBSPLeafSurfaces = 0; lf->firstBSPLeafBrush = 7; lf->numBSPLeafBrushes = 1;
+	lf = &bspLeafs[ 30 ]; lf->cluster = 21; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 63; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 8; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 31 ]; lf->cluster = 22; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 66; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 8; lf->numBSPLeafBrushes = 0;
+	lf = &bspLeafs[ 32 ]; lf->cluster = 23; lf->area = 0; VectorSet( lf->mins, 0.000000, 0.000000, 0.000000 ); VectorSet( lf->maxs, 0.000000, 0.000000, 0.000000 ); lf->firstBSPLeafSurface = 69; lf->numBSPLeafSurfaces = 3; lf->firstBSPLeafBrush = 8; lf->numBSPLeafBrushes = 0;
+
+	/* leafsurfaces */
+	numBSPLeafSurfaces = 72;
+	bspLeafSurfaces[ 0 ] = 0;
+	bspLeafSurfaces[ 1 ] = 0;
+	bspLeafSurfaces[ 2 ] = 0;
+	bspLeafSurfaces[ 3 ] = 0;
+	bspLeafSurfaces[ 4 ] = 0;
+	bspLeafSurfaces[ 5 ] = 0;
+	bspLeafSurfaces[ 6 ] = 0;
+	bspLeafSurfaces[ 7 ] = 0;
+	bspLeafSurfaces[ 8 ] = 0;
+	bspLeafSurfaces[ 9 ] = 0;
+	bspLeafSurfaces[ 10 ] = 0;
+	bspLeafSurfaces[ 11 ] = 0;
+	bspLeafSurfaces[ 12 ] = 0;
+	bspLeafSurfaces[ 13 ] = 0;
+	bspLeafSurfaces[ 14 ] = 0;
+	bspLeafSurfaces[ 15 ] = 0;
+	bspLeafSurfaces[ 16 ] = 0;
+	bspLeafSurfaces[ 17 ] = 0;
+	bspLeafSurfaces[ 18 ] = 0;
+	bspLeafSurfaces[ 19 ] = 0;
+	bspLeafSurfaces[ 20 ] = 0;
+	bspLeafSurfaces[ 21 ] = 0;
+	bspLeafSurfaces[ 22 ] = 0;
+	bspLeafSurfaces[ 23 ] = 0;
+	bspLeafSurfaces[ 24 ] = 0;
+	bspLeafSurfaces[ 25 ] = 0;
+	bspLeafSurfaces[ 26 ] = 0;
+	bspLeafSurfaces[ 27 ] = 0;
+	bspLeafSurfaces[ 28 ] = 0;
+	bspLeafSurfaces[ 29 ] = 0;
+	bspLeafSurfaces[ 30 ] = 0;
+	bspLeafSurfaces[ 31 ] = 0;
+	bspLeafSurfaces[ 32 ] = 0;
+	bspLeafSurfaces[ 33 ] = 0;
+	bspLeafSurfaces[ 34 ] = 0;
+	bspLeafSurfaces[ 35 ] = 0;
+	bspLeafSurfaces[ 36 ] = 0;
+	bspLeafSurfaces[ 37 ] = 0;
+	bspLeafSurfaces[ 38 ] = 0;
+	bspLeafSurfaces[ 39 ] = 0;
+	bspLeafSurfaces[ 40 ] = 0;
+	bspLeafSurfaces[ 41 ] = 0;
+	bspLeafSurfaces[ 42 ] = 0;
+	bspLeafSurfaces[ 43 ] = 0;
+	bspLeafSurfaces[ 44 ] = 0;
+	bspLeafSurfaces[ 45 ] = 0;
+	bspLeafSurfaces[ 46 ] = 0;
+	bspLeafSurfaces[ 47 ] = 0;
+	bspLeafSurfaces[ 48 ] = 0;
+	bspLeafSurfaces[ 49 ] = 0;
+	bspLeafSurfaces[ 50 ] = 0;
+	bspLeafSurfaces[ 51 ] = 0;
+	bspLeafSurfaces[ 52 ] = 0;
+	bspLeafSurfaces[ 53 ] = 0;
+	bspLeafSurfaces[ 54 ] = 0;
+	bspLeafSurfaces[ 55 ] = 0;
+	bspLeafSurfaces[ 56 ] = 0;
+	bspLeafSurfaces[ 57 ] = 0;
+	bspLeafSurfaces[ 58 ] = 0;
+	bspLeafSurfaces[ 59 ] = 0;
+	bspLeafSurfaces[ 60 ] = 0;
+	bspLeafSurfaces[ 61 ] = 0;
+	bspLeafSurfaces[ 62 ] = 0;
+	bspLeafSurfaces[ 63 ] = 0;
+	bspLeafSurfaces[ 64 ] = 0;
+	bspLeafSurfaces[ 65 ] = 0;
+	bspLeafSurfaces[ 66 ] = 0;
+	bspLeafSurfaces[ 67 ] = 0;
+	bspLeafSurfaces[ 68 ] = 0;
+	bspLeafSurfaces[ 69 ] = 0;
+	bspLeafSurfaces[ 70 ] = 0;
+	bspLeafSurfaces[ 71 ] = 0;
+
+	/* leafbrushes */
+	numBSPLeafBrushes = 8;
+	bspLeafBrushes[ 0 ] = 0;
+	bspLeafBrushes[ 1 ] = 0;
+	bspLeafBrushes[ 2 ] = 0;
+	bspLeafBrushes[ 3 ] = 0;
+	bspLeafBrushes[ 4 ] = 0;
+	bspLeafBrushes[ 5 ] = 0;
+	bspLeafBrushes[ 6 ] = 0;
+	bspLeafBrushes[ 7 ] = 0;
+
+	/* drawsurfaces */
+	numBSPDrawSurfaces = numBSPShaders;
+	for (i = 0; i < numBSPShaders; i++)
+	{
+		ds = &bspDrawSurfaces[ i ];
+		ds->shaderNum = i;
+		ds->fogNum = -1;
+		ds->surfaceType = 1;
+		ds->firstVert = 0; ds->numVerts = 24;
+		ds->firstIndex = 0; ds->numIndexes = 36;
+		ds->lightmapStyles[ 0 ] = 0; ds->vertexStyles[ 0 ] = 0; ds->lightmapNum[ 0 ] = -3; ds->lightmapX[ 0 ] = 0; ds->lightmapY[ 0 ] = 0;
+		ds->lightmapStyles[ 1 ] = 255; ds->vertexStyles[ 1 ] = 255; ds->lightmapNum[ 1 ] = -3; ds->lightmapX[ 1 ] = 0; ds->lightmapY[ 1 ] = 0;
+		ds->lightmapWidth = 0; ds->lightmapHeight = 0;
+		VectorSet( ds->lightmapOrigin, 0.000000, 0.000000, 0.000000 );
+		VectorSet( ds->lightmapVecs[ 0 ], 0.000000, 0.000000, 0.000000 );
+		VectorSet( ds->lightmapVecs[ 1 ], 0.000000, 0.000000, 0.000000 );
+		VectorSet( ds->lightmapVecs[ 2 ], 1.000000, 0.000000, 0.000000 );
+		ds->patchWidth = 0; ds->patchHeight = 0;
+	}
+
+	/* drawverts */
+	numBSPDrawVerts = 24;
+	dv = &bspDrawVerts[ 0 ];
+	VectorSet( dv->xyz, 8.000000, 8.000000, -8.000000 ); VectorSet( dv->normal, 1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 1 ];
+	VectorSet( dv->xyz, 8.000000, -8.000000, -8.000000 ); VectorSet( dv->normal, 1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 2 ];
+	VectorSet( dv->xyz, 8.000000, 8.000000, 8.000000 ); VectorSet( dv->normal, 1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 3 ];
+	VectorSet( dv->xyz, 8.000000, -8.000000, 8.000000 ); VectorSet( dv->normal, 1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 4 ];
+	VectorSet( dv->xyz, 8.000000, 8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, 1.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 5 ];
+	VectorSet( dv->xyz, -8.000000, 8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, 1.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 6 ];
+	VectorSet( dv->xyz, 8.000000, 8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, 1.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 7 ];
+	VectorSet( dv->xyz, -8.000000, 8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, 1.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 8 ];
+	VectorSet( dv->xyz, 8.000000, -8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, 1.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 9 ];
+	VectorSet( dv->xyz, -8.000000, -8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, 1.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 10 ];
+	VectorSet( dv->xyz, 8.000000, 8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, 1.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 11 ];
+	VectorSet( dv->xyz, -8.000000, 8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, 1.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 12 ];
+	VectorSet( dv->xyz, 8.000000, -8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, -1.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 13 ];
+	VectorSet( dv->xyz, -8.000000, -8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, -1.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 14 ];
+	VectorSet( dv->xyz, 8.000000, -8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, -1.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 15 ];
+	VectorSet( dv->xyz, -8.000000, -8.000000, 8.000000 ); VectorSet( dv->normal, 0.000000, -1.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 16 ];
+	VectorSet( dv->xyz, -8.000000, 8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, -1.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 17 ];
+	VectorSet( dv->xyz, -8.000000, -8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, -1.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 18 ];
+	VectorSet( dv->xyz, 8.000000, 8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, -1.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 19 ];
+	VectorSet( dv->xyz, 8.000000, -8.000000, -8.000000 ); VectorSet( dv->normal, 0.000000, 0.000000, -1.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 20 ];
+	VectorSet( dv->xyz, -8.000000, 8.000000, 8.000000 ); VectorSet( dv->normal, -1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 21 ];
+	VectorSet( dv->xyz, -8.000000, -8.000000, -8.000000 ); VectorSet( dv->normal, -1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 22 ];
+	VectorSet( dv->xyz, -8.000000, 8.000000, -8.000000 ); VectorSet( dv->normal, -1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 1.000000; dv->st[ 1 ] = 1.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+	dv = &bspDrawVerts[ 23 ];
+	VectorSet( dv->xyz, -8.000000, -8.000000, 8.000000 ); VectorSet( dv->normal, -1.000000, 0.000000, 0.000000 ); dv->st[ 0 ] = 0.000000; dv->st[ 1 ] = 0.000000;
+	dv->lightmap[ 0 ][ 0 ] = -1; dv->lightmap[ 0 ][ 1 ] = -1; dv->color[ 0 ][ 0 ] = 255; dv->color[ 0 ][ 1 ] = 255; dv->color[ 0 ][ 2 ] = 255; dv->color[ 0 ][ 3 ] = 255;
+	dv->lightmap[ 1 ][ 0 ] = -1; dv->lightmap[ 1 ][ 1 ] = -1; dv->color[ 1 ][ 0 ] = 0; dv->color[ 1 ][ 1 ] = 0; dv->color[ 1 ][ 2 ] = 0; dv->color[ 1 ][ 3 ] = 0;
+
+	/* drawindexes */
+	numBSPDrawIndexes = 36;
+	bspDrawIndexes[ 0 ] = 0;
+	bspDrawIndexes[ 1 ] = 1;
+	bspDrawIndexes[ 2 ] = 2;
+	bspDrawIndexes[ 3 ] = 2;
+	bspDrawIndexes[ 4 ] = 1;
+	bspDrawIndexes[ 5 ] = 3;
+	bspDrawIndexes[ 6 ] = 4;
+	bspDrawIndexes[ 7 ] = 5;
+	bspDrawIndexes[ 8 ] = 6;
+	bspDrawIndexes[ 9 ] = 7;
+	bspDrawIndexes[ 10 ] = 5;
+	bspDrawIndexes[ 11 ] = 4;
+	bspDrawIndexes[ 12 ] = 8;
+	bspDrawIndexes[ 13 ] = 9;
+	bspDrawIndexes[ 14 ] = 10;
+	bspDrawIndexes[ 15 ] = 10;
+	bspDrawIndexes[ 16 ] = 9;
+	bspDrawIndexes[ 17 ] = 11;
+	bspDrawIndexes[ 18 ] = 12;
+	bspDrawIndexes[ 19 ] = 13;
+	bspDrawIndexes[ 20 ] = 14;
+	bspDrawIndexes[ 21 ] = 14;
+	bspDrawIndexes[ 22 ] = 13;
+	bspDrawIndexes[ 23 ] = 15;
+	bspDrawIndexes[ 24 ] = 16;
+	bspDrawIndexes[ 25 ] = 17;
+	bspDrawIndexes[ 26 ] = 18;
+	bspDrawIndexes[ 27 ] = 18;
+	bspDrawIndexes[ 28 ] = 17;
+	bspDrawIndexes[ 29 ] = 19;
+	bspDrawIndexes[ 30 ] = 20;
+	bspDrawIndexes[ 31 ] = 21;
+	bspDrawIndexes[ 32 ] = 22;
+	bspDrawIndexes[ 33 ] = 23;
+	bspDrawIndexes[ 34 ] = 21;
+	bspDrawIndexes[ 35 ] = 20;
+
+	/* write out */
+	Sys_Printf( "Writing resource map %s\n", source );
+	WriteBSPFile( source );
+}
+
+/*
+WriteResourceOBJFile()
+generate fake obj file with only shaders, to load up a resources map is using with precahce_model()
+*/
+
+typedef struct ReferencedModel_s
+{
+	char model[MAX_OS_PATH];
+	int spawnflags;
+}ReferencedModel_t;
+ReferencedModel_t ReferencedModels[2048];
+
+void WriteResourceOBJFile( const char *filename )
+{
+	FILE *f;
+	bspShader_t *shader;
+	entity_t *entity;
+	const char *classname, *model;
+	char dirname[MAX_OS_PATH], lightmapfile[MAX_OS_PATH], mapname[MAX_OS_PATH];
+	int i, j, spawnflags;
+	int numModels;
+
+	strcpy( dirname, source );
+	StripExtension( dirname );
+	ExtractFileBase( dirname, mapname );
+
+	f = SafeOpenWrite( filename );
+	ParseEntities();
+	fprintf(f, "# Wavefront Objectfile containing all resourced map is using\n");
+	fprintf(f, "# Resource listing:\n");
+
+	/* write materials listing */
+	for (i = 0; i < numBSPShaders; i++)
+		fprintf(f, "# material \"%s\"\n", bspShaders[ i ].shader );
+
+	/* write external lightmaps */
+	i = 0;
+	while(1)
+	{
+		sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
+		if( !FileExists( lightmapfile ) )
+			break;
+		fprintf(f, "# lightmap \"maps/%s/" EXTERNAL_LIGHTMAP "\"\n", mapname, i );
+		i++;
+	}
+
+	/* write models in resource listing */
+	numModels = 0;
+	for (i = 0; i < numEntities; i++)
+	{
+		entity = &entities[ i ];
+
+		/* get class */
+		classname = ValueForKey(entity, "classname");
+		if (strcmp(classname, "misc_gamemodel"))
+			continue;
+
+		/* get model and */
+		model = ValueForKey(entity, "model");
+		spawnflags = IntForKey(entity, "spawnflags");
+		if (!strncmp(model, "*", 1))
+			continue;
+
+		/* register */
+		for (j = 0; j < numModels; j++)
+			if (!strcmp(ReferencedModels[ j ].model, model) && ReferencedModels[ j ].spawnflags == spawnflags )
+				break;
+		if (j >= numModels)
+		{
+			strcpy(ReferencedModels[ numModels ].model, model);
+			ReferencedModels[ numModels ].spawnflags = spawnflags;
+			numModels++;
+			if (numModels >= 2048)
+				break; // too much models
+		}
+	}
+	for (i = 0; i < numModels; i++)
+		fprintf(f, "# model \"%s\" \"%i\"\n", ReferencedModels[ i ].model, ReferencedModels[ i ].spawnflags );
+
+	/* write loadable geometry */
+	fprintf(f, "# Loadable geometry (material references):\n");
+	fprintf(f, "g base\n" );
+	fprintf(f, "v -0.000000 0.000000 7.000000\n" );
+	fprintf(f, "v -7.000000 0.000000 -4.000000\n" );
+	fprintf(f, "v 7.000000 0.000000 -4.000000\n" );
+	fprintf(f, "vn 0 0 1\n" );
+	fprintf(f, "vn 0 0 1\n" );
+	fprintf(f, "vn 0 0 1\n" );
+	fprintf(f, "vt -0.000000 -0.218750\n" );
+	fprintf(f, "vt -0.218750 0.125000\n" );
+	fprintf(f, "vt 0.218750 0.125000\n" );
+	for (i = 0; i < numBSPShaders; i++)
+	{
+		shader = &bspShaders[ i ];
+		fprintf(f, "usemtl %s\n", shader->shader );
+		fprintf(f, "f 3/3 2/2 1/1\n" );
+	}
+	i = 0;
+	while(1)
+	{
+		sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
+		if( !FileExists( lightmapfile ) )
+			break;
+		fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+		fprintf(f, "f 3/3 2/2 1/1\n" );
+		i++;
+	}
+	fclose(f);
+	numBSPEntities = numEntities;
+	UnparseEntities(qfalse);
+}
+
+/*
 OptimizeBSPMain()
 main routine for bsp optimizer processing
 */
 
 int OptimizeBSPMain( int argc, char **argv )
 {
+	char mapname[MAX_OS_PATH];
 	int	i;
 
 	/* arg checking */
@@ -995,12 +1693,19 @@ int OptimizeBSPMain( int argc, char **argv )
 			tidyEntities = qfalse;
 			Sys_Printf( "Disabled optimisation of entity data lump\n" );
 		}
+		/* -resmap */
+		else if( !strcmp( argv[ i ],  "-resmap") )
+		{
+			makeResMap = qtrue;
+			Sys_Printf( "Generating resource map\n" );
+		}
 		/* -custinfoparms */
 		else if( !strcmp( argv[ i ],  "-custinfoparms") )
 		{
 			useCustomInfoParms = qtrue;
 			Sys_Printf( "Custom info parms enabled\n" );
 		}
+
 		else
 			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
 	}
@@ -1032,6 +1737,17 @@ int OptimizeBSPMain( int argc, char **argv )
 	/* write back */
 	Sys_Printf( "Writing %s\n", source );
 	WriteBSPFile( source );
+
+	/* transform and write a resource map */
+	if ( makeResMap )
+	{
+		/* resources bsp file */
+		strcpy( source, ExpandArg( argv[ i ] ) );
+		strcpy( mapname, source );
+		StripExtension( mapname );
+		DefaultExtension( mapname, ".res.obj" );
+		WriteResourceOBJFile( mapname );
+	}
 
 	/* return to sender */
 	return 0;

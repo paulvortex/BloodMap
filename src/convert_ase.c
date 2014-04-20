@@ -255,7 +255,7 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
 	int				i, v, face, a, b, c;
 	bspDrawVert_t	*dv;
 	vec3_t			normal;
-	char			name[ 1024 ];
+	char			name[ MAX_OS_PATH ];
 	
 	/* ignore patches for now */
 	if( ds->surfaceType != MST_PLANAR && ds->surfaceType != MST_TRIANGLE_SOUP )
@@ -463,7 +463,7 @@ exports a bsp shader to an ase chunk
 static void ConvertShader( FILE *f, bspShader_t *shader, int shaderNum )
 {
 	shaderInfo_t	*si;
-	char			*c, filename[ 1024 ];
+	char			*c, filename[ MAX_OS_PATH ];
 	
 	
 	/* get shader */
@@ -520,7 +520,7 @@ int ConvertBSPToASE( char *bspName, int collapseByTexture )
 	entity_t		*e;
 	vec3_t			origin;
 	const char		*key;
-	char			name[ 1024 ], base[ 1024 ];
+	char			name[ MAX_OS_PATH ], base[ MAX_OS_PATH ];
 	
 	
 	/* note it */

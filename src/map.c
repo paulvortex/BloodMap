@@ -42,7 +42,7 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 
 /* undefine to make plane finding use linear sort (note: really slow) */
 #define	USE_HASHING
-#define	PLANE_HASHES	8192
+#define	PLANE_HASHES	65536 /* vortex: was 8192 */
 
 plane_t					*planehash[ PLANE_HASHES ];
 
@@ -182,23 +182,19 @@ void SnapNormal( vec3_t normal )
 /*
 SnapPlane()
 snaps a plane to normal/distance epsilons
+// SnapPlane disabled by LordHavoc because it often messes up collision
+// brushes made from triangles of embedded models, and it has little effect
+// on anything else (axial planes are usually derived from snapped points)
+// SnapPlane reenabled by namespace because of multiple reports of
+// q3map2-crashes which were triggered by this patch.
 */
 
 void SnapPlane( vec3_t normal, vec_t *dist )
 {
-// SnapPlane disabled by LordHavoc because it often messes up collision
-// brushes made from triangles of embedded models, and it has little effect
-// on anything else (axial planes are usually derived from snapped points)
-/*
-  SnapPlane reenabled by namespace because of multiple reports of
-  q3map2-crashes which were triggered by this patch.
-*/
 	SnapNormal( normal );
-
 	if( fabs( *dist - Q_rint( *dist ) ) < distanceEpsilon )
 		*dist = Q_rint( *dist );
 }
-
 
 
 /*
@@ -309,7 +305,7 @@ void SetBrushContents( brush_t *b )
 	int			contentFlags, compileFlags;
 	side_t		*s;
 	int			i;
-	qboolean	mixed;
+	qboolean	mixed, nobsp;
 	
 	/* get initial compile flags from first side */
 	s = &b->sides[ 0 ];
@@ -319,13 +315,19 @@ void SetBrushContents( brush_t *b )
 	mixed = qfalse;
 	
 	/* get the content/compile flags for every side in the brush */
+	nobsp = qtrue;
 	for( i = 1; i < b->numsides; i++, s++ )
 	{
 		s = &b->sides[ i ];
 		if( s->shaderInfo == NULL )
+		{
+			nobsp = qfalse;
 			continue;
+		}
 		if( s->contentFlags != contentFlags || s->compileFlags != compileFlags )
 			mixed = qtrue;
+		if( s->shaderInfo->noBSP == qfalse )
+			nobsp = qfalse;
 	}
 
 	/* ydnar: getting rid of this stupid warning */
@@ -344,9 +346,9 @@ void SetBrushContents( brush_t *b )
 		compileFlags &= ~C_DETAIL;
 
 	/* VorteX: for non solid detail all pure detail brushes will be non solid */
-	b->detail_nonsolid = qfalse;
+	b->nonsolid = nobsp;
 	if( (compileFlags & C_DETAIL) && nodetailcollision == qtrue)
-		b->detail_nonsolid = qtrue;
+		b->nonsolid = qtrue;
 
 	/* all translucent brushes that aren't specifically made structural will be detail */
 	if( (compileFlags & C_TRANSLUCENT) && !(compileFlags & C_STRUCTURAL) )
@@ -655,6 +657,7 @@ brush_t *FinishBrush( void )
 		mapEnt->lastBrush->next = b;
 		mapEnt->lastBrush = b;
 	}
+
 	
 	/* link colorMod volume brushes to the entity directly */
 	if( b->contentShader != NULL &&
@@ -1590,7 +1593,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 		if (forceNonSolid == qtrue)
 		{
 			brush->detail = qtrue;
-			brush->detail_nonsolid = qtrue;
+			brush->nonsolid = qtrue;
 		}
 	}
 	

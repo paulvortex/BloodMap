@@ -2150,7 +2150,7 @@ int LightMain( int argc, char **argv )
 {
 	int			i;
 	float		f;
-	char		mapSource[ 1024 ];
+	char		mapSource[ MAX_OS_PATH ];
 	const char	*value;
 	
 	

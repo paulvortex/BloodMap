@@ -136,7 +136,6 @@ constants
 
 #define MAX_JITTERS				256
 
-
 /* epair parsing (note case-sensitivity directive) */
 #define CASE_INSENSITIVE_EPAIRS	1
 
@@ -264,6 +263,7 @@ constants
 #define SUPER_NORMAL_SIZE		4
 #define SUPER_DELUXEL_SIZE		3
 #define BSP_DELUXEL_SIZE		3
+#define BSP_NORMAL_SIZE         3
 #define SUPER_FLOODLIGHT_SIZE	4
 
 #define VERTEX_LUXEL( s, v )	(vertexLuxels[ s ] + ((v) * VERTEX_LUXEL_SIZE))
@@ -273,6 +273,7 @@ constants
 #define SUPER_LUXEL( s, x, y )	(lm->superLuxels[ s ] + ((((y) * lm->sw) + (x)) * SUPER_LUXEL_SIZE))
 #define SUPER_DELUXEL( x, y )	(lm->superDeluxels + ((((y) * lm->sw) + (x)) * SUPER_DELUXEL_SIZE))
 #define BSP_DELUXEL( x, y )		(lm->bspDeluxels + ((((y) * lm->w) + (x)) * BSP_DELUXEL_SIZE))
+#define BSP_NORMAL( x, y )		(lm->bspNormals + ((((y) * lm->w) + (x)) * BSP_NORMAL_SIZE))
 #define SUPER_CLUSTER( x, y )	(lm->superClusters + (((y) * lm->sw) + (x)))
 #define SUPER_ORIGIN( x, y )	(lm->superOrigins + ((((y) * lm->sw) + (x)) * SUPER_ORIGIN_SIZE))
 #define SUPER_NORMAL( x, y )	(lm->superNormals + ((((y) * lm->sw) + (x)) * SUPER_NORMAL_SIZE))
@@ -285,7 +286,7 @@ abstracted bsp file
 
 ------------------------------------------------------------------------------- */
 
-#define EXTERNAL_LIGHTMAP		"lm_%04d.tga"
+#define EXTERNAL_LIGHTMAP		"lm_%04d"
 
 #define MAX_LIGHTMAPS			2			/* RBSP */ /* VorteX: disable lightstyles */
 #define MAX_LIGHT_STYLES		64
@@ -612,7 +613,7 @@ foliageInstance_t;
 typedef struct remap_s
 {
 	struct remap_s		*next;
-	char				from[ 1024 ];
+	char				from[ MAX_OS_PATH ];
 	char				to[ MAX_QPATH ];
 }
 remap_t;
@@ -704,6 +705,7 @@ typedef struct shaderInfo_s
 	qb_t				forceMeta;						/* ydnar: force metasurface path */
 	qb_t				noMeta;							/* vortex: disable metasurface path */
 	qb_t				noClip;							/* ydnar: don't clip into bsp, preserve original face winding */
+	qb_t                noBSP;                          /* vortex: prevent adding brush faces to BSP tree */
 	qb_t				noFast;							/* ydnar: supress fast lighting for surfaces with this shader */
 	qb_t				invert;							/* ydnar: reverse facing */
 	qb_t				nonplanar;						/* ydnar: for nonplanar meta surface merging */
@@ -886,9 +888,9 @@ typedef struct brush_s
 	indexMap_t			*im;
 
 	int					contentFlags;
-	int					compileFlags;		/* ydnar */
+	int					compileFlags; /* ydnar */
 	qboolean			detail;
-	qboolean			detail_nonsolid;	/* vortex: not solid detail */
+	qboolean			nonsolid; /* vortex: render-only brush */
 	qboolean			opaque;
 
 	int					portalareas[ 2 ];
@@ -1447,6 +1449,7 @@ typedef struct rawLightmap_s
 	int						*superClusters;
 	float					*superDeluxels;	/* average light direction */
 	float					*bspDeluxels;
+	float					*bspNormals;
 	float					*superFloodLight; /* floodlight color */
 }
 rawLightmap_t;
@@ -1495,6 +1498,7 @@ int							ConvertMain( int argc, char **argv );
 /* path_init.c */
 game_t						*GetGame( char *arg );
 void						InitPaths( int *argc, char **argv );
+qboolean                    GetGamePath(char *fileFullPath, char *outGamePath);
 
 
 /* bsp.c */
@@ -1539,7 +1543,7 @@ int							CountBrushList( brush_t *brushes );
 brush_t						*AllocBrush( int numsides );
 void						FreeBrush( brush_t *brushes );
 void						FreeBrushList( brush_t *brushes );
-brush_t						*CopyBrush( brush_t *brush );
+brush_t                     *CopyBrush( brush_t *brush );
 qboolean					BoundBrush( brush_t *brush );
 qboolean					CreateBrushWindings( brush_t *brush );
 brush_t						*BrushFromBounds( vec3_t mins, vec3_t maxs );
@@ -1913,6 +1917,16 @@ bsp/general global variables
 
 ------------------------------------------------------------------------------- */
 
+/* path support */
+#define MAX_BASE_PATHS	10
+#define MAX_GAME_PATHS	10
+Q_EXTERN char					*homePath;
+Q_EXTERN char					installPath[ MAX_OS_PATH ];
+Q_EXTERN int					numBasePaths;
+Q_EXTERN char					*basePaths[ MAX_BASE_PATHS ];
+Q_EXTERN int					numGamePaths;
+Q_EXTERN char					*gamePaths[ MAX_GAME_PATHS ];
+
 /* game support */
 Q_EXTERN game_t				games[]
 #ifndef MAIN_C
@@ -1969,7 +1983,7 @@ Q_EXTERN surfaceParm_t		custSurfaceParms[ MAX_CUST_SURFACEPARMS ];
 Q_EXTERN int				numCustSurfaceParms Q_ASSIGN( 0 );
 
 Q_EXTERN char				mapName[ MAX_QPATH ];	/* ydnar: per-map custom shaders for larger lightmaps */
-Q_EXTERN char				mapShaderFile[ 1024 ];
+Q_EXTERN char				mapShaderFile[ MAX_OS_PATH ];
 Q_EXTERN qboolean			warnImage Q_ASSIGN( qtrue );
 
 /* ydnar: sinusoid samples */
@@ -2030,8 +2044,8 @@ Q_EXTERN int				blockSize[ 3 ]					/* should be the same as in radiant */
 							= { 1024, 1024, 1024 };
 #endif
 
-Q_EXTERN char				name[ 1024 ];
-Q_EXTERN char				source[ 1024 ];
+Q_EXTERN char				name[ MAX_OS_PATH ];
+Q_EXTERN char				source[ MAX_OS_PATH ];
 Q_EXTERN char				outbase[ 32 ];
 
 Q_EXTERN float				sampleScale;					/* vortex: lightmap sample scale (ie quality)*/

@@ -902,7 +902,7 @@ void RadCreateDiffuseLights( void )
 	/* dump the lights generated to a file */
 	if( dump )
 	{
-		char	dumpName[ 1024 ], ext[ 64 ];
+		char	dumpName[ MAX_OS_PATH ], ext[ 64 ];
 		FILE	*file;
 		light_t	*light;
 		

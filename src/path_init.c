@@ -36,22 +36,6 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 /* dependencies */
 #include "q3map2.h"
 
-
-
-/* path support */
-#define MAX_BASE_PATHS	10
-#define MAX_GAME_PATHS	10
-
-char					*homePath;
-char					installPath[ MAX_OS_PATH ];
-
-int						numBasePaths;
-char					*basePaths[ MAX_BASE_PATHS ];
-int						numGamePaths;
-char					*gamePaths[ MAX_GAME_PATHS ];
-
-
-
 /*
 some of this code is based off the original q3map port from loki
 and finds various paths. moved here from bsp.c for clarity.
@@ -458,6 +442,62 @@ void InitPaths( int *argc, char **argv )
 	Sys_Printf( "\n" );
 }
 
+/*
+SanitizePath()
+clean up a path
+*/
 
+void SanitizePath(char *path, char *out)
+{
+	char *c, *end, *w;
 
+	// replace \ with /
+	for( c = path,w = out,end = path + strlen(path);c < end; c++ )
+	{
+		if (*c == '\\')
+			*w++ = '/';
+		else
+			*w++ = *c;
+	}
+	*w = 0;
 
+	// replace // with /
+	for( w = c = out,end = out + strlen(out);c < end;c++ )
+		if (c[0] != '/' || c[1] != '/')
+			*w++ = *c;
+	*w = 0;
+}
+
+/*
+GetGamePath()
+finds out game path for a given full path
+for example for c:\Games\Quake\id1\maps\e1m1.map
+it sould return:
+	c:\Games\Quake\id1
+*/
+qboolean GetGamePath(char *fileFullPath, char *outGamePath)
+{
+	int i, j;
+	char fullpath[ MAX_OS_PATH ], temp[ MAX_OS_PATH ], *gamePath;
+
+	SanitizePath( fileFullPath, fullpath );
+
+	/* walk the list of game paths */
+	gamePath = NULL;
+	for( j = 0; j < numGamePaths && !gamePath; j++ )
+	{
+		/* walk the list of base paths */
+		for( i = 0; i < numBasePaths && !gamePath; i++ )
+		{
+			sprintf( temp, "%s/%s/", basePaths[ i ], gamePaths[ j ] );
+			SanitizePath( temp, temp );
+			if ( !strncmp( fullpath, temp, strlen( temp ) ) )
+				gamePath = temp;
+		}
+	}
+	if (!gamePath)
+		return qfalse;
+
+	strcpy( outGamePath, gamePath );
+	return qtrue;
+}

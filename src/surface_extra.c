@@ -232,7 +232,7 @@ writes out a surface info file (<map>.srf)
 
 void WriteSurfaceExtraFile( const char *path )
 {
-	char			srfPath[ 1024 ];
+	char			srfPath[ MAX_OS_PATH ];
 	FILE			*sf;
 	surfaceExtra_t	*se;
 	int				i;
@@ -334,7 +334,7 @@ reads a surface info file (<map>.srf)
 
 void LoadSurfaceExtraFile( const char *path )
 {
-	char			srfPath[ 1024 ];
+	char			srfPath[ MAX_OS_PATH ];
 	surfaceExtra_t	*se;
 	int				surfaceNum, size;
 	byte			*buffer;
