@@ -1486,22 +1486,34 @@ WriteResourceOBJFile()
 generate fake obj file with only shaders, to load up a resources map is using with precahce_model()
 */
 
-typedef struct ReferencedModel_s
+typedef struct
 {
-	char model[MAX_OS_PATH];
-	int spawnflags;
-}ReferencedModel_t;
-ReferencedModel_t ReferencedModels[2048];
+	union
+	{
+		char classname[64];
+		char shadername[128];
+		char model[MAX_OS_PATH];
+		char sound[MAX_OS_PATH];
+		char entryname[MAX_OS_PATH];
+	};
+}RefEntry_t;
+
+static int CompareRefEntry( const void *a, const void *b ) { return strcmp(((RefEntry_t *)a)->entryname, ((RefEntry_t *)b)->entryname); }
+
+#define MAX_REFERENCED 512
 
 void WriteResourceOBJFile( const char *filename )
 {
 	FILE *f;
-	bspShader_t *shader;
 	entity_t *entity;
-	const char *classname, *model;
+	const char *classname, *model, *noise, *shadername;
 	char dirname[MAX_OS_PATH], lightmapfile[MAX_OS_PATH], mapname[MAX_OS_PATH];
-	int i, j, spawnflags;
-	int numModels;
+	static RefEntry_t RefShaders[MAX_REFERENCED] = { 0 };
+	static RefEntry_t RefModels[MAX_REFERENCED] = { 0 };
+	static RefEntry_t RefSounds[MAX_REFERENCED] = { 0 };
+	static RefEntry_t RefClasses[MAX_REFERENCED] = { 0 };
+	int numShaders, numModels, numSounds, numClasses;
+	int i, j, k, spawnflags;
 
 	strcpy( dirname, source );
 	StripExtension( dirname );
@@ -1512,56 +1524,111 @@ void WriteResourceOBJFile( const char *filename )
 	fprintf(f, "# Wavefront Objectfile containing all resourced map is using\n");
 	fprintf(f, "# Resource listing:\n");
 
-	/* write materials listing */
-	for (i = 0; i < numBSPShaders; i++)
-		fprintf(f, "# material \"%s\"\n", bspShaders[ i ].shader );
-
 	/* write external lightmaps */
-	i = 0;
-	while(1)
+	//i = 0;
+	//while(1)
+	//{
+	//	sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
+	//	if( !FileExists( lightmapfile ) )
+	//		break;
+	//	fprintf(f, "# lm \"maps/%s/" EXTERNAL_LIGHTMAP "\"\n", mapname, i );
+	//	i++;
+	//}
+	
+	/* get materials listing */
+	numShaders = 0;
+	for (i = 0; i < numBSPShaders; i++)
 	{
-		sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
-		if( !FileExists( lightmapfile ) )
-			break;
-		fprintf(f, "# lightmap \"maps/%s/" EXTERNAL_LIGHTMAP "\"\n", mapname, i );
-		i++;
+		/* register material */
+		shadername = bspShaders[ i ].shader;
+		for (j = 0; j < numShaders; j++)
+			if (!strncmp(RefShaders[ j ].shadername, shadername, 128) )
+				break;
+		if (j >= numShaders && numShaders < MAX_REFERENCED)
+		{
+			strncpy(RefShaders[ numShaders ].shadername, shadername, 128);
+			numShaders++;
+		}
 	}
 
-	/* write models in resource listing */
+	/* get models, classes, sounds in resource listing */
 	numModels = 0;
+	numSounds = 0;
+	numClasses = 0;
 	for (i = 0; i < numEntities; i++)
 	{
 		entity = &entities[ i ];
 
-		/* get class */
+		/* register class */
 		classname = ValueForKey(entity, "classname");
-		if (strcmp(classname, "misc_gamemodel"))
-			continue;
-
-		/* get model and */
-		model = ValueForKey(entity, "model");
-		spawnflags = IntForKey(entity, "spawnflags");
-		if (!strncmp(model, "*", 1))
-			continue;
-
-		/* register */
-		for (j = 0; j < numModels; j++)
-			if (!strcmp(ReferencedModels[ j ].model, model) && ReferencedModels[ j ].spawnflags == spawnflags )
-				break;
-		if (j >= numModels)
+		if( strcmp( classname, "worldspawn" ) && strcmp( classname, "misc_model" ) &&
+			strcmp( classname, "_decal" ) && strcmp( classname, "misc_decal" ) &&
+			strcmp( classname, "_skybox" ) && strcmp( classname, "misc_skybox" ) &&
+			strncmp( classname, "info_", 5 ) ) // info_ classes does not not include any precaches
 		{
-			strcpy(ReferencedModels[ numModels ].model, model);
-			ReferencedModels[ numModels ].spawnflags = spawnflags;
-			numModels++;
-			if (numModels >= 2048)
-				break; // too much models
+			for (j = 0; j < numClasses; j++)
+				if (!strncmp(RefClasses[ j ].classname, classname, 64) )
+					break;
+			if (j >= numClasses && numClasses < MAX_REFERENCED)
+			{
+				strncpy(RefClasses[ numClasses ].classname, classname, 64);
+				numClasses++;
+			}
+		}
+
+		/* register sound */
+		static char *soundkeys[4] = { "noise", "noise2", "noise3", "noise4" };
+		for (k = 0; k < 4; k++)
+		{
+			noise = ValueForKey(entity, soundkeys[k]);
+			if (noise && noise[0])
+			{
+				/* register sound */
+				for (j = 0; j < numSounds; j++)
+					if (!strcmp(RefSounds[ j ].sound, noise) )
+						break;
+				if (j >= numSounds && numSounds < MAX_REFERENCED)
+				{
+					strcpy(RefSounds[ numSounds ].sound, noise);
+					numSounds++;
+				}
+			}
+		}
+
+		/* register model */
+		if (!strcmp(classname, "misc_gamemodel"))
+		{
+			/* get model and spawnflags */
+			model = ValueForKey(entity, "model");
+			spawnflags = IntForKey(entity, "spawnflags");
+			if (strncmp(model, "*", 1))
+			{
+				/* register model */
+				for (j = 0; j < numModels; j++)
+					if (!strcmp(RefModels[ j ].model, model) )
+						break;
+				if (j >= numModels && numModels < MAX_REFERENCED)
+				{
+					strcpy(RefModels[ numModels ].model, model);
+					numModels++;
+				}
+			}
 		}
 	}
-	for (i = 0; i < numModels; i++)
-		fprintf(f, "# model \"%s\" \"%i\"\n", ReferencedModels[ i ].model, ReferencedModels[ i ].spawnflags );
 
-	/* write loadable geometry */
-	fprintf(f, "# Loadable geometry (material references):\n");
+	/* write models, sounds and classes */
+	qsort(RefModels, numModels, sizeof(RefEntry_t), CompareRefEntry);
+	for (i = 0; i < numModels; i++)
+		fprintf(f, "# m \"%s\"\n", RefModels[ i ].model );
+	qsort(RefSounds, numSounds, sizeof(RefEntry_t), CompareRefEntry);
+	for (i = 0; i < numSounds; i++)
+		fprintf(f, "# s \"%s\"\n", RefSounds[ i ].sound );
+	qsort(RefClasses, numClasses, sizeof(RefEntry_t), CompareRefEntry);
+	for (i = 0; i < numClasses; i++)
+		fprintf(f, "# c \"%s\"\n", RefClasses[ i ].classname );
+
+	/* write loadable geometry containing shaders */
+	fprintf(f, "# Loadable geometry (texture references):\n");
 	fprintf(f, "g base\n" );
 	fprintf(f, "v -0.000000 0.000000 7.000000\n" );
 	fprintf(f, "v -7.000000 0.000000 -4.000000\n" );
@@ -1572,10 +1639,10 @@ void WriteResourceOBJFile( const char *filename )
 	fprintf(f, "vt -0.000000 -0.218750\n" );
 	fprintf(f, "vt -0.218750 0.125000\n" );
 	fprintf(f, "vt 0.218750 0.125000\n" );
-	for (i = 0; i < numBSPShaders; i++)
+	qsort(RefShaders, numShaders, sizeof(RefEntry_t), CompareRefEntry);
+	for (i = 0; i < numShaders; i++)
 	{
-		shader = &bspShaders[ i ];
-		fprintf(f, "usemtl %s\n", shader->shader );
+		fprintf(f, "usemtl %s\n", RefShaders[ i ].shadername  );
 		fprintf(f, "f 3/3 2/2 1/1\n" );
 	}
 	i = 0;
