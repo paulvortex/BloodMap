@@ -1230,6 +1230,8 @@ void SetupSurfaceLightmaps( void )
 		lm->entityNum = info->entityNum;
 		lm->recvShadows = info->recvShadows;
 		lm->brightness = info->si->lmBrightness;
+		if (lm->brightness <= 0.0)
+			lm->brightness = 1.0;
 		lm->filterRadius = info->si->lmFilterRadius;
 		VectorCopy(info->si->floodlightRGB, lm->floodlightRGB);
 		lm->floodlightDistance = info->si->floodlightDistance;
@@ -1738,8 +1740,8 @@ static qboolean ApproximateLuxel( rawLightmap_t *lm, bspDrawVert_t *dv )
 		}
 		
 		/* set to bytes */
-		ColorToBytes( color, cb, 1.0f );
-		ColorToBytes( vertexColor, vcb, 1.0f );
+		ColorToBytes( color, cb, 1.0f, qfalse );
+		ColorToBytes( vertexColor, vcb, 1.0f, qfalse );
 		
 		/* compare */
 		for( i = 0; i < 3; i++ )
@@ -2341,7 +2343,7 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 				
 				/* store color */
 				pixel = olm->bspLightBytes + (((oy * olm->customWidth) + ox) * 3);
-				ColorToBytes( color, pixel, lm->brightness );
+				ColorToBytes( color, pixel, lm->brightness, lightmapsRGB );
 				
 				/* store direction */
 				if( deluxemap )
@@ -2661,7 +2663,7 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 
 				/* store color */
 				pixel = olm->bspLightBytes + ( ( ( oy * olm->customWidth ) + ox ) * 3 );
-				ColorToBytes( color, pixel, lm->brightness  );
+				ColorToBytes( color, pixel, lm->brightness, lightmapsRGB  );
 
 				/* store direction */
 				if ( deluxemap )
@@ -2941,7 +2943,8 @@ void StoreSurfaceLightmaps( void )
 	char				lightmapName[ 128 ];
 	char				*rgbGenValues[ 256 ];
 	char				*alphaGenValues[ 256 ];
-	
+	qboolean            any_deleted;
+
 	/* setup */
 	strcpy( dirname, source );
 	StripExtension( dirname );
@@ -3635,6 +3638,68 @@ void StoreSurfaceLightmaps( void )
 	/* print time */
 	if (numRawLightmaps > 10)
 		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+
+	/* -----------------------------------------------------------------
+	cleanup external lightmaps
+	----------------------------------------------------------------- */
+	
+	/* delete unused external lightmaps */
+	Sys_Printf( "--- CleanupExternalLightmaps ---\n");
+
+	/* delete uncompressed lightmaps */
+	for( i = 0; 1; i++ )
+	{
+		any_deleted = qfalse;
+
+		/* delete .tga */
+		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
+		if( FileExists( filename ) == qtrue )
+		{
+			remove( filename );
+			any_deleted = qtrue;
+		}
+
+		/* delete .png */
+		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, i );
+		if( FileExists( filename ) == qtrue )
+		{
+			remove( filename );
+			any_deleted = qtrue;
+		}
+
+		/* delete .jpg */
+		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".jpg", dirname, i );
+		if( FileExists( filename ) == qtrue )
+		{
+			remove( filename );
+			any_deleted = qtrue;
+		}
+
+		if (!any_deleted)
+			break;
+	}
+
+	/* delete compressed lightmaps */
+	Sys_Printf( "--- CleanupCompressedLightmaps ---\n");
+
+	/* todo: parametrize somehow with game definitions */
+	for( i = 0; 1; i++ )
+	{
+		/* get game path */
+		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".dds", dirname, i );
+		if ( !GetGamePath( filename, gamepath ) )
+			continue;
+
+		/* determine if file exists */
+		strcpy(lmfile, filename + strlen(gamepath));
+		sprintf( filename, "%sdds/%s", gamepath, lmfile );
+		if( !FileExists( filename ) )
+			break;
+
+		/* delete it */
+		remove( filename );
+	}
+
 	
 	/* -----------------------------------------------------------------
 	   store output lightmaps
@@ -3710,9 +3775,18 @@ void StoreSurfaceLightmaps( void )
 				FloodLightmapBorders( olm );
 
 				/* write lightmap */
-				sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, numExtLightmaps );
-				WriteTGA24( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qtrue );
-				numExtLightmaps++;
+				if (lightmapsRGB)
+				{
+					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, numExtLightmaps );
+					WritePNG( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qfalse, qtrue );
+					numExtLightmaps++;
+				}
+				else
+				{
+					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, numExtLightmaps );
+					WriteTGA24( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qtrue );
+					numExtLightmaps++;
+				}
 				
 				/* write deluxemap */
 				if( deluxemap )
@@ -3731,42 +3805,6 @@ void StoreSurfaceLightmaps( void )
 	/* print time */
 	if (numOutLightmaps > 10)
 		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
-
-	/* delete unused external lightmaps */
-	Sys_Printf( "--- CleanupExternalLightmaps ---\n");
-
-	/* delete primary .tga lightmaps */
-	for( i = numExtLightmaps; i; i++ )
-	{
-		/* determine if file exists */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
-		if( !FileExists( filename ) )
-			break;
-		
-		/* delete it */
-		remove( filename );
-	}
-
-	/* delete unused compressed lightmaps */
-	Sys_Printf( "--- CleanupCompressedLightmaps ---\n");
-
-	/* todo: parametrize somehow with game definitions */
-	for( i = 0; 1; i++ )
-	{
-		/* get game path */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".dds", dirname, i );
-		if ( !GetGamePath( filename, gamepath ) )
-			continue;
-
-		/* determine if file exists */
-		strcpy(lmfile, filename + strlen(gamepath));
-		sprintf( filename, "%sdds/%s", gamepath, lmfile );
-		if( !FileExists( filename ) )
-			break;
-
-		/* delete it */
-		remove( filename );
-	}
 
 	/* -----------------------------------------------------------------
 	   project the lightmaps onto the bsp surfaces
@@ -3914,7 +3952,7 @@ void StoreSurfaceLightmaps( void )
 				
 				/* store to bytes */
 				if( !info->si->noVertexLight )
-					ColorToBytes( color, dv[ j ].color[ lightmapNum ], info->si->vertexScale * vertexScale );
+					ColorToBytes( color, dv[ j ].color[ lightmapNum ], info->si->vertexScale * vertexScale, qfalse );
 			}
 		}
 		

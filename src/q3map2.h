@@ -1305,6 +1305,10 @@ typedef struct light_s
 	
 	winding_t			*w;
 	vec3_t				emitColor;		/* full out-of-gamut value */
+
+	int                 devianceRadius;  /* radius of light-casting zone  */
+	int                 devianceSamples; /* number of deviance samples    */
+	vec3_t			   *devianceOrigins; /* deviance origins for penumbra */
 	
 	float				falloffTolerance;	/* ydnar: minimum attenuation threshold */
 	float				filterRadius;	/* ydnar: lightmap filter radius in world units, 0 == default */
@@ -1785,7 +1789,6 @@ void						RadFreeLights();
 
 
 /* light_ydnar.c */
-void						ColorToBytes( const float *color, byte *colorBytes, float scale );
 void						SmoothNormals( void );
 
 void						MapRawLightmap(int num);
@@ -2220,7 +2223,7 @@ Q_EXTERN qboolean			noCollapse Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			exportLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			externalLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN int				lmCustomSize Q_ASSIGN( LIGHTMAP_WIDTH );
-
+Q_EXTERN qboolean			lightmapsRGB Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dirty Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dirtDebug Q_ASSIGN( qfalse );
 Q_EXTERN int				dirtMode Q_ASSIGN( 0 );
@@ -2261,6 +2264,9 @@ Q_EXTERN dirtSettings_t dirtSettings[MAX_MAP_ENTITIES];
 Q_EXTERN qboolean			noDeviance Q_ASSIGN( qfalse );
 Q_EXTERN float			    devianceJitter Q_ASSIGN( 0.0f );
 Q_EXTERN int			    devianceSamples Q_ASSIGN( 0 );
+Q_EXTERN float			    devianceSamplesScale Q_ASSIGN( 1.0f );
+Q_EXTERN int			    devianceAtten Q_ASSIGN( 0 );
+Q_EXTERN int			    devianceForm Q_ASSIGN( 0 );
 
 /* 27: floodlighting */
 Q_EXTERN qboolean					debugnormals Q_ASSIGN( qfalse );
@@ -2295,9 +2301,22 @@ Q_EXTERN float				gridMix Q_ASSIGN( 0.0f );
 
 /* ydnar: lightmap gamma/compensation */
 Q_EXTERN float				lightmapGamma Q_ASSIGN( 1.0f );
+Q_EXTERN double				lightmapInvGamma Q_ASSIGN( 1.0f );
 Q_EXTERN float				lightmapCompensate Q_ASSIGN( 1.0f );
+Q_EXTERN double				lightmapInvCompensate Q_ASSIGN( 1.0f );			
 Q_EXTERN float				lightmapExposure Q_ASSIGN( 1.0f );
+Q_EXTERN double				lightmapInvExposure Q_ASSIGN( 1.0f );
 Q_EXTERN float				lightmapBrightness Q_ASSIGN( 1.0f );
+Q_EXTERN void (*ColorToBytes)(const float *, byte *, float, qboolean);
+		 void ColorToBytesLinear( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesLinearExposure( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesLinearCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesLinearExposureCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesGamma( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesGammaExposure( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesGammaCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesGammaExposureCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB );
+		 void ColorToBytesUnified( const float *color, byte *colorBytes, float scale, qboolean sRGB );
 
 /* ydnar: for runtime tweaking of falloff tolerance */
 Q_EXTERN float				falloffTolerance Q_ASSIGN( 1.0f );
@@ -2509,6 +2528,10 @@ Q_EXTERN bspDrawSurface_t	*bspDrawSurfaces Q_ASSIGN( NULL );
 
 Q_EXTERN int				numBSPFogs Q_ASSIGN( 0 );
 Q_EXTERN bspFog_t			bspFogs[ MAX_MAP_FOGS ];
+
+// sRGB colorspace
+#define linear_to_srgb(c) (((c) < 0.0031308) ? (c) * 12.92 : 1.055 * pow((c), 1.0/2.4) - 0.055)
+#define srgb_to_linear(c) (((c) <= 0.04045) ? (c) * (1.0 / 12.92) : pow(((c) + 0.055f)*(1.0/1.055), 2.4))
 
 /* end marker */
 #endif

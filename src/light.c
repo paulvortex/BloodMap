@@ -398,6 +398,9 @@ void CreateEntityLights( void )
 			if (deviance > 0.0f)
 				if (numSamples <= 0.0f)
 					numSamples = 8; // default samples if no deviance is set
+			numSamples *= devianceSamplesScale;
+			if (numSamples < 1)
+				numSamples = 1;
 		}
 		intensity /= numSamples;
 		
@@ -429,7 +432,7 @@ void CreateEntityLights( void )
 		light->type = EMIT_POINT;
 		
 		/* set falloff threshold */
-		light->falloffTolerance = falloffTolerance / numSamples;
+		light->falloffTolerance = falloffTolerance/ numSamples;
 		
 		/* lights with a target will be spotlights */
 		target = ValueForKey( e, "target" );
@@ -517,11 +520,40 @@ void CreateEntityLights( void )
 				numSpotLights++;
 			else
 				numPointLights++;
-			
+
+			/* apply deviance */
+			if (devianceForm == 1)
+			{
+				/* spherical jitter */
+				scale = Random();
+				dest[0] = Random() * 2.0f - 1.0;
+				dest[1] = Random() * 2.0f - 1.0;
+
+				dest[2] = Random() * 2.0f - 1.0;
+				VectorNormalize(dest, dest);
+				VectorScale(dest, scale, dest);
+			}
+			else
+			{
+				/* box jitter */
+				dest[0] = Random() * 2.0f - 1.0;
+				dest[1] = Random() * 2.0f - 1.0;
+				dest[2] = Random() * 2.0f - 1.0;
+				scale = min(1.0, VectorLength(dest) / 1.43f);
+				scale = sqrt(deviance * deviance);
+			}
+
+			/* soft light emitting zone falloff */
+			if (devianceAtten)
+			{
+				scale = sqrt(1.0f - scale);
+				VectorScale(light2->color, scale, light2->color);
+			}
+
 			/* jitter it */
-			light2->origin[ 0 ] = light->origin[ 0 ] + (Random() * 2.0f - 1.0f) * deviance;
-			light2->origin[ 1 ] = light->origin[ 1 ] + (Random() * 2.0f - 1.0f) * deviance;
-			light2->origin[ 2 ] = light->origin[ 2 ] + (Random() * 2.0f - 1.0f) * deviance;
+			light2->origin[ 0 ] = light->origin[ 0 ] + dest[ 0 ] * deviance;
+			light2->origin[ 1 ] = light->origin[ 1 ] + dest[ 1 ] * deviance;
+			light2->origin[ 2 ] = light->origin[ 2 ] + dest[ 2 ] * deviance;
 		}
 	}
 }
@@ -998,7 +1030,7 @@ int LightContributionToSample( trace_t *trace )
 #endif
 
 /*
-LightContributionTosample()
+LightContribution()
 determines the amount of light reaching a sample (luxel or vertex) from a given light
 */
 
@@ -1008,7 +1040,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 	float			angle;
 	float			add;
 	float			dist;
-	
+
 	/* get light */
 	light = trace->light;
 	
@@ -1221,7 +1253,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 		/* trace to point */
 		if( trace->testOcclusion && !trace->forceSunlight )
 		{
-			/* trace */
+			/* raytrace */
 			TraceLine( trace );
 			if( !(trace->compileFlags & C_SKY) || trace->opaque )
 			{
@@ -1264,8 +1296,7 @@ determines the amount of light reaching a sample (luxel or vertex)
 
 void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], vec3_t colors[ MAX_LIGHTMAPS ], int lightflags, qboolean noSurfaceNormal )
 {
-	int				i, lightmapNum;
-	
+	int i, lightmapNum;
 	
 	/* clear colors */
 	for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
@@ -1287,9 +1318,9 @@ void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], v
 	/* ydnar: trace to all the list of lights pre-stored in tw */
 	for( i = 0; i < trace->numLights && trace->lights[ i ] != NULL; i++ )
 	{
-		/* set light */
+		/* setup trace */
 		trace->light = trace->lights[ i ];
-		
+
 		/* style check */
 		for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
 		{
@@ -1640,9 +1671,8 @@ void TraceGrid(int num)
 	   total light between that along the direction and the remaining in the ambient */
 	for( trace.light = lights; trace.light != NULL; trace.light = trace.light->next )
 	{
-		float		addSize;
-		
-		
+		float addSize;
+
 		/* sample light */
 		if( !LightContribution( &trace, LIGHT_GRID, qtrue ) )
 			continue;
@@ -1795,8 +1825,8 @@ void TraceGrid(int num)
 		gp->directed[ i ][ 2 ] *= (1 - gridMix);
 
 		/* vortex: apply gridscale and gridambientscale here */
-		ColorToBytes( color, bgp->ambient[ i ], gridScale*gridAmbientScale );
-		ColorToBytes( gp->directed[ i ], bgp->directed[ i ], gridScale );
+		ColorToBytes( color, bgp->ambient[ i ], gridScale*gridAmbientScale, qfalse );
+		ColorToBytes( gp->directed[ i ], bgp->directed[ i ], gridScale, qfalse );
 	}
 	
 	/* debug code */
@@ -2303,6 +2333,8 @@ int LightMain( int argc, char **argv )
 		{
 			f = atof( argv[ i + 1 ] );
 			lightmapExposure = f;
+			if (lightmapExposure <= 0)
+				lightmapExposure = 1;
 			Sys_Printf( "Lighting exposure set to %f\n", lightmapExposure );
 			i++;
 		}
@@ -2355,7 +2387,7 @@ int LightMain( int argc, char **argv )
 				Sys_Printf( "Adaptive supersampling enabled with %d sample(s) per lightmap texel\n", lightSamples );
 			i++;
 		}
-		
+
 		else if( !strcmp( argv[ i ], "-filter" ) )
 		{
 			filter = qtrue;
@@ -2445,6 +2477,20 @@ int LightMain( int argc, char **argv )
 				externalLightmaps = qtrue;
 				Sys_Printf( "Storing all lightmaps externally\n" );
 			}
+		}
+
+		/* -lightmapsrgb: generate lightmap in sRGB colorspace */
+		else if( !strcmp( argv[ i ], "-lightmapsrgb" ) )
+		{
+			lightmapsRGB = qtrue;
+			Sys_Printf( "Generating lightmaps in sRGB colorspace\n" );
+		}
+
+		/* -nosrgb: disable sRGB (force all textues linear) */
+		else if( !strcmp( argv[ i ], "-nosrgb" ) )
+		{
+			lightmapsRGB = qfalse;
+			Sys_Printf( "Generating lightmaps in linear RGB colorspace\n" );
 		}
 		
 		/* ydnar: add this to suppress warnings */
@@ -2821,6 +2867,7 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Dirtmapping gain mask set to %1.1f %1.1f %1.1f\n", dirtGainMask[0], dirtGainMask[1], dirtGainMask[2]);
 			i++;
 		}
+
 		/* vortex: global deviance */
 		else if( !strcmp( argv[ i ], "-nodeviance" ) )
 		{
@@ -2843,11 +2890,89 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Default deviance samples set to %i\n", devianceSamples );
 			i++;
 		}
+		else if( !strcmp( argv[ i ], "-deviancesamplesscale" ) )
+		{
+			devianceSamplesScale = atof( argv[ i + 1 ] );
+			if( devianceSamplesScale <= 0 )
+				devianceSamplesScale = 0;
+			Sys_Printf( "Deviance samples scale set to %i\n", devianceSamplesScale );
+			i++;
+		}
+		else if( !strcmp( argv[ i ], "-devianceform" ) )
+		{
+			devianceForm = atoi( argv[ i + 1 ] );
+			if (devianceForm == 0)
+				Sys_Printf( "Deviance form set to box\n" );
+			else if (devianceForm == 1)
+				Sys_Printf( "Deviance form set to sphere\n" );
+			else
+			{
+				devianceForm = 0;
+				Sys_Printf( "Deviance form set to box\n" );
+			}
+			i++;
+		}
+		else if( !strcmp( argv[ i ], "-devianceatten" ) )
+		{
+			devianceAtten = atoi( argv[ i + 1 ] );
+			if (devianceAtten == 0)
+				Sys_Printf( "Deviance using no attenuation for light emitting zone\n" );
+			else if (devianceAtten == 1)
+				Sys_Printf( "Deviance using inverse square attenuation for light emitting zone\n" );
+			else
+			{
+				devianceAtten = 0;
+				Sys_Printf( "Deviance using no attenuation for light emitting zone\n" );
+			}
+			i++;
+		}
 
 		/* unhandled args */
 		else
 			Sys_Printf( "WARNING: Unknown argument \"%s\"\n", argv[ i ] );
 
+	}
+
+	/* calculate static parms gamma/exposure/compensate */
+	lightmapInvGamma = 1.0f / lightmapGamma;
+	lightmapInvExposure = 1.0f / lightmapExposure;
+	lightmapInvCompensate = 1.0f / lightmapCompensate;
+
+	/* select optimal */
+	ColorToBytes = ColorToBytesUnified;
+	if ( lightmapInvGamma == 1 )
+	{
+		if ( lightmapInvExposure == 1 )
+		{
+			if ( lightmapInvCompensate == 1 )
+				ColorToBytes = ColorToBytesLinear;
+			else
+				ColorToBytes = ColorToBytesLinearCompensate;
+		}
+		else
+		{
+			if ( lightmapInvCompensate == 1 )
+				ColorToBytes = ColorToBytesLinearExposureCompensate;
+			else
+				ColorToBytes = ColorToBytesLinearExposure;
+		}
+	}
+	else
+	{
+		if ( lightmapInvExposure == 1 )
+		{
+			if ( lightmapInvCompensate == 1 )
+				ColorToBytes = ColorToBytesGamma;
+			else
+				ColorToBytes = ColorToBytesGammaCompensate;
+		}
+		else
+		{
+			if ( lightmapInvCompensate == 1 )
+				ColorToBytes = ColorToBytesGammaExposure;
+			else
+				ColorToBytes = ColorToBytesGammaExposureCompensate;
+		}
 	}
 
 	/* clean up map name */
@@ -2903,7 +3028,7 @@ int LightMain( int argc, char **argv )
 	/* ydnar: store off lightmaps */
 	StoreSurfaceLightmaps();
 
-	/* vortex: set deluxemode key */
+	/* vortex: set deluxeMaps key */
 	if (deluxemap)
 	{
 		if (deluxemode)
@@ -2913,6 +3038,12 @@ int LightMain( int argc, char **argv )
 	}
 	else
 		SetKeyValue(&entities[0], "deluxeMaps", "0");
+
+	/* vortex: set lightmapsRGB key */
+	if (lightmapsRGB)
+		SetKeyValue(&entities[0], "lightmapsRGB", "1");
+	else
+		SetKeyValue(&entities[0], "lightmapsRGB", "0");
 
 	/* write out the bsp */
 	UnparseEntities(qfalse);

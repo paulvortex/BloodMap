@@ -1651,9 +1651,6 @@ qboolean TraceWinding( traceWinding_t *tw, trace_t *trace )
 	return qfalse;
 }
 
-
-
-
 /*
 TraceLine_r()
 returns qtrue if something is hit and tracing can stop
@@ -1779,7 +1776,7 @@ void TraceLine( trace_t *trace )
 	/* early outs */
 	if( !trace->recvShadows || !trace->testOcclusion || trace->distance <= 0.00001f )
 		return;
-	
+
 	/* trace through nodes */
 	TraceLine_r( headNodeNum, trace->origin, trace->end, trace );
 	if( trace->passSolid && !trace->testAll )
@@ -1794,11 +1791,8 @@ void TraceLine( trace_t *trace )
 	
 	/* testall means trace through sky */	
 	if (trace->testAll && trace->numTestNodes < MAX_TRACE_TEST_NODES && trace->compileFlags & C_SKY && (trace->numSurfaces == 0 || surfaceInfos[ trace->surfaces[ 0 ] ].childSurfaceNum < 0) )
-	{
-		//%	trace->testNodes[ trace->numTestNodes++ ] = skyboxNodeNum;
 		TraceLine_r( skyboxNodeNum, trace->origin, trace->end, trace );
-	}
-	
+
 	/* walk node list */
 	for( i = 0; i < trace->numTestNodes; i++ )
 	{

@@ -26,107 +26,174 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 
 ------------------------------------------------------------------------------- */
 
-
-
 /* marker */
 #define LIGHT_YDNAR_C
-
-
 
 /* dependencies */
 #include "q3map2.h"
 
-
-
-
 /*
-ColorToBytes()
-ydnar: moved to here 2001-02-04
+ColorToBytesLinear()
+ColorToBytesLinearExposure
+ColorToBytesLinearCompensate
+ColorToBytesLinearExposureCompensate
+ColorToBytesGamma
+ColorToBytesGammaExposure
+ColorToBytesGammaCompensate
+ColorToBytesGammaExposureCompensate
+ColorToBytesUnified
 */
 
-void ColorToBytes( const float *color, byte *colorBytes, float scale )
+#define _ColorToBytesStart	double r, g, b, dif, m; \
+							r = color[ 0 ] * scale * lightmapBrightness; \
+							g = color[ 1 ] * scale * lightmapBrightness; \
+							b = color[ 2 ] * scale * lightmapBrightness;
+
+#define _ColorToBytesGamma	if( r < 0 ) r = 0; else r = pow( r / 255.0f, lightmapInvGamma ) * 255.0f; \
+								if( g < 0 ) g = 0; else g = pow( g / 255.0f, lightmapInvGamma ) * 255.0f; \
+								if( b < 0 ) b = 0; else b = pow( b / 255.0f, lightmapInvGamma ) * 255.0f;
+
+#define _ColorToBytesClampWithNormalization	m = max(r, g); \
+											m = max(m, b); \
+											if( m > 255 ) \
+											{ \
+												dif = 255.0f / m; \
+												r *= dif;\
+												g *= dif; \
+												b *= dif; \
+											}
+
+#define _ColorToBytesExposure		m = max(r, g); \
+									m = max(m, b); \
+										dif = (1 - exp(-m * lightmapInvExposure) ) * 255.0f; \
+										if (m > 0) \
+											dif = dif / m; \
+										else \
+											dif = 0; \
+										r *= dif; \
+										g *= dif; \
+										b *= dif;
+
+#define _ColorToBytesCompensate	r *= lightmapInvCompensate; \
+								g *= lightmapInvCompensate; \
+								b *= lightmapInvCompensate;
+
+#define _ColorToBytesStore  if (sRGB) \
+							{ \
+								r *= ( 1.0f / 255.0f ); \
+								g *= ( 1.0f / 255.0f ); \
+								b *= ( 1.0f / 255.0f ); \
+								r = floor( linear_to_srgb( r ) * 255 + 0.5 ) ; \
+								g = floor( linear_to_srgb( g ) * 255 + 0.5 ) ; \
+								b = floor( linear_to_srgb( b ) * 255 + 0.5 ) ; \
+								colorBytes[ 0 ] = r; \
+								colorBytes[ 1 ] = g; \
+								colorBytes[ 2 ] = b; \
+								return; \
+							} \
+							colorBytes[ 0 ] = r; \
+							colorBytes[ 1 ] = g; \
+							colorBytes[ 2 ] = b;
+
+// default
+void ColorToBytesLinear( const float *color, byte *colorBytes, float scale, qboolean sRGB )
 {
-	int		i;
-	float	max, gamma;
-	vec3_t	sample;
-	float 	inv, dif;
-	
-	
-	/* ydnar: scaling necessary for simulating r_overbrightBits on external lightmaps */
-	if( scale <= 0.0f )
-		scale = 1.0f;
+	_ColorToBytesStart
+	_ColorToBytesClampWithNormalization
+	_ColorToBytesStore
+}
 
-	/* make a local copy */
-	VectorScale( color, scale * lightmapBrightness, sample );
-	
-	/* muck with it */
-	gamma = 1.0f / lightmapGamma;
-	for( i = 0; i < 3; i++ )
-	{
-		/* handle negative light */
-		if( sample[ i ] < 0.0f )
-		{
-			sample[ i ] = 0.0f;
-			continue;
-		}
-		
-		/* gamma */
-		sample[ i ] = pow( sample[ i ] / 255.0f, gamma ) * 255.0f;
-	}
+// gamma
+void ColorToBytesGamma( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesGamma
+	_ColorToBytesClampWithNormalization
+	_ColorToBytesStore
+}
 
+// exposure
+void ColorToBytesLinearExposure( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesExposure
+	_ColorToBytesStore
+}
+
+// gamma + exposure
+void ColorToBytesGammaExposure( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesGamma
+	_ColorToBytesExposure
+	_ColorToBytesStore
+}
+
+// compensate
+void ColorToBytesLinearCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesClampWithNormalization
+	_ColorToBytesCompensate
+	_ColorToBytesStore
+}
+
+// gamma + compensate
+void ColorToBytesGammaCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesGamma
+	_ColorToBytesClampWithNormalization
+	_ColorToBytesCompensate
+	_ColorToBytesStore
+}
+
+// exposure + compensate
+void ColorToBytesLinearExposureCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesExposure
+	_ColorToBytesCompensate
+	_ColorToBytesStore
+}
+
+// gamma + exposure + compensate
+void ColorToBytesGammaExposureCompensate( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+	_ColorToBytesGamma
+	_ColorToBytesExposure
+	_ColorToBytesCompensate
+	_ColorToBytesStore
+}
+
+// unified
+void ColorToBytesUnified( const float *color, byte *colorBytes, float scale, qboolean sRGB )
+{
+	_ColorToBytesStart
+
+	/* gamma */
+	_ColorToBytesGamma
+	
+	/* clamp with color normalization */
 	if (lightmapExposure == 1)
 	{
-		/* clamp with color normalization */
-		max = sample[ 0 ];
-		if( sample[ 1 ] > max )
-			max = sample[ 1 ];
-		if( sample[ 2 ] > max )
-			max = sample[ 2 ];
-		if( max > 255.0f )
-			VectorScale( sample, (255.0f / max), sample );
+		_ColorToBytesClampWithNormalization
 	}
 	else
 	{
-		if (lightmapExposure==0)
-		{
-			lightmapExposure=1.0f;
-		}
-		inv=1.f/lightmapExposure;
-		//Exposure
-    	
-		max = sample[ 0 ];
-		if( sample[ 1 ] > max )
-			max = sample[ 1 ];
-		if( sample[ 2 ] > max )
-			max = sample[ 2 ];  
-      
-		dif = (1-  exp(-max * inv) )  *  255;
-		if (max >0) 
-		{
-			dif = dif / max;
-		}
-		else
-		{
-			dif = 0;
-		}
-
-		for (i=0;i<3;i++)
-		{
-			sample[i]*=dif;
-		}
+		_ColorToBytesExposure
 	}
 
-	
 	/* compensate for ingame overbrighting/bitshifting */
-	VectorScale( sample, (1.0f / lightmapCompensate), sample );
-	
-	/* store it off */
-	colorBytes[ 0 ] = sample[ 0 ];
-	colorBytes[ 1 ] = sample[ 1 ];
-	colorBytes[ 2 ] = sample[ 2 ];
+	if (lightmapInvCompensate != 1)
+	{
+		_ColorToBytesCompensate
+	}
+
+	/* store in RGB / sRGB */
+	_ColorToBytesStore
 }
-
-
 
 /* -------------------------------------------------------------------------------
 
@@ -3368,7 +3435,7 @@ void IlluminateVertexes(int num)
 				if( bouncing || bounce == 0 || !bounceOnly )
 					VectorAdd( vertLuxel, radVertLuxel, vertLuxel );
 				if( !info->si->noVertexLight )
-					ColorToBytes( vertLuxel, verts[ i ].color[ lightmapNum ], info->si->vertexScale * vertexScale );
+					ColorToBytes( vertLuxel, verts[ i ].color[ lightmapNum ], info->si->vertexScale * vertexScale, qfalse );
 			}
 		}
 		
@@ -3479,7 +3546,7 @@ void IlluminateVertexes(int num)
 			
 			/* store into bytes (for vertex approximation) */
 			if( !info->si->noVertexLight )
-				ColorToBytes( vertLuxel, verts[ i ].color[ lightmapNum ], 1.0f );
+				ColorToBytes( vertLuxel, verts[ i ].color[ lightmapNum ], 1.0f, qfalse );
 		}
 	}
 }

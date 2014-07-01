@@ -1514,6 +1514,7 @@ void WriteResourceOBJFile( const char *filename )
 	static RefEntry_t RefClasses[MAX_REFERENCED] = { 0 };
 	int numShaders, numModels, numSounds, numClasses;
 	int i, j, k, spawnflags;
+	qboolean any_found;
 
 	strcpy( dirname, source );
 	StripExtension( dirname );
@@ -1523,17 +1524,6 @@ void WriteResourceOBJFile( const char *filename )
 	ParseEntities();
 	fprintf(f, "# Wavefront Objectfile containing all resourced map is using\n");
 	fprintf(f, "# Resource listing:\n");
-
-	/* write external lightmaps */
-	//i = 0;
-	//while(1)
-	//{
-	//	sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
-	//	if( !FileExists( lightmapfile ) )
-	//		break;
-	//	fprintf(f, "# lm \"maps/%s/" EXTERNAL_LIGHTMAP "\"\n", mapname, i );
-	//	i++;
-	//}
 	
 	/* get materials listing */
 	numShaders = 0;
@@ -1541,6 +1531,9 @@ void WriteResourceOBJFile( const char *filename )
 	{
 		/* register material */
 		shadername = bspShaders[ i ].shader;
+		
+
+
 		for (j = 0; j < numShaders; j++)
 			if (!strncmp(RefShaders[ j ].shadername, shadername, 128) )
 				break;
@@ -1581,8 +1574,9 @@ void WriteResourceOBJFile( const char *filename )
 		for (k = 0; k < 4; k++)
 		{
 			noise = ValueForKey(entity, soundkeys[k]);
-			if (noise && noise[0])
+			if (noise && noise[0] && !strncmp(noise, "sound/", 6))
 			{
+				noise += 6;
 				/* register sound */
 				for (j = 0; j < numSounds; j++)
 					if (!strcmp(RefSounds[ j ].sound, noise) )
@@ -1645,15 +1639,45 @@ void WriteResourceOBJFile( const char *filename )
 		fprintf(f, "usemtl %s\n", RefShaders[ i ].shadername  );
 		fprintf(f, "f 3/3 2/2 1/1\n" );
 	}
-	i = 0;
-	while(1)
+	for( i = 0; i; i++ )
 	{
+		any_found = qfalse;
+
+		/* check .tga */
 		sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
-		if( !FileExists( lightmapfile ) )
+		if( FileExists( lightmapfile ) )
+		{
+			fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+			fprintf(f, "f 3/3 2/2 1/1\n" );
+			any_found = qtrue;
+		}
+
+		/* check .png */
+		if (!any_found)
+		{
+			sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, i );
+			if( FileExists( lightmapfile ) )
+			{
+				fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+				fprintf(f, "f 3/3 2/2 1/1\n" );
+				any_found = qtrue;
+			}
+		}
+
+		/* check .jpg */
+		if (!any_found)
+		{
+			sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".jpg", dirname, i );
+			if( FileExists( lightmapfile ) )
+			{
+				fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+				fprintf(f, "f 3/3 2/2 1/1\n" );
+				any_found = qtrue;
+			}
+		}
+
+		if (!any_found)
 			break;
-		fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
-		fprintf(f, "f 3/3 2/2 1/1\n" );
-		i++;
 	}
 	fclose(f);
 	numBSPEntities = numEntities;
@@ -1813,6 +1837,7 @@ int OptimizeBSPMain( int argc, char **argv )
 		strcpy( mapname, source );
 		StripExtension( mapname );
 		DefaultExtension( mapname, ".res.obj" );
+		Sys_Printf( "Writing resmap %s\n", mapname );
 		WriteResourceOBJFile( mapname );
 	}
 
