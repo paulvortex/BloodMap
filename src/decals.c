@@ -51,6 +51,7 @@ typedef struct decalProjector_s
 	vec4_t					texMat[ 2 ];
 	float					backfacecull;
 	float                   lightmapScale;
+	float                   lightmapStitch;
 	int                     smoothNormals;
 }
 decalProjector_t;
@@ -64,29 +65,6 @@ static vec3_t				entityOrigin;
 DVectorNormalize()
 normalizes a vector, returns the length, operates using doubles
 */
-
-typedef double	dvec_t;
-typedef dvec_t	dvec3_t[ 3 ];
-
-dvec_t DVectorNormalize( dvec3_t in, dvec3_t out )
-{
-	dvec_t	len, ilen;
-	
-	
-	len = (dvec_t) sqrt( in[ 0 ] * in[ 0 ] + in[ 1 ] * in[ 1 ] + in[ 2 ] * in[ 2 ] );
-	if( len == 0.0 )
-	{
-		VectorClear( out );
-		return 0.0;
-	}
-	
-	ilen = 1.0 / len;
-	out[ 0 ] = in[ 0 ] * ilen;
-	out[ 1 ] = in[ 1 ] * ilen;
-	out[ 2 ] = in[ 2 ] * ilen;
-	
-	return len;
-}
 
 /*
 MakeTextureMatrix()
@@ -303,12 +281,12 @@ MakeDecalProjector()
 creates a new decal projector from a triangle
 */
 
-static int MakeDecalProjector( shaderInfo_t *si, vec4_t projection, float distance, int numVerts, bspDrawVert_t **dv, float backface_dot, float lightmapScale, int smoothNormals )
+static int MakeDecalProjector( shaderInfo_t *si, vec4_t projection, float distance, int numVerts, bspDrawVert_t **dv, float backfacecull, float lightmapScale, float lightmapStitch, int smoothNormals )
 {
 	int					i, j;
 	decalProjector_t	*dp;
 	vec3_t				xyz;
-	
+
 	/* dummy check */
 	if( numVerts != 3 && numVerts != 4 )
 		return -1;
@@ -327,8 +305,9 @@ static int MakeDecalProjector( shaderInfo_t *si, vec4_t projection, float distan
 	/* basic setup */
 	dp->si = si;
 	dp->numPlanes = numVerts + 2;
-	dp->backfacecull = 0.0;
+	dp->backfacecull = backfacecull;
 	dp->lightmapScale = lightmapScale;
+	dp->lightmapStitch = lightmapStitch;
 	dp->smoothNormals = smoothNormals;
 	
 	/* make texture matrix */
@@ -386,7 +365,7 @@ finds all decal entities and creates decal projectors
 void ProcessDecals( void )
 {
 	int					i, j, x, y, pw[ 5 ], r, iterations, smoothNormals;
-	float				distance, lightmapScale;
+	float				distance, lightmapScale, lightmapStitch, backfaceAngle;
 	vec4_t				projection, plane;
 	vec3_t				origin, target, delta;
 	entity_t			*e, *e2;
@@ -398,6 +377,23 @@ void ProcessDecals( void )
 	
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- ProcessDecals ---\n" );
+
+	/* no decals */
+	if (nodecals)
+	{
+		for( i = 0; i < numEntities; i++ )
+		{	
+			/* get entity */
+			e = &entities[ i ];
+			value = ValueForKey( e, "classname" );
+			if( Q_stricmp( value, "_decal" ) && Q_stricmp( value, "misc_decal" ) )
+				continue;
+
+			/* clear entity patches */
+			e->patches = NULL; // fixme: LEAK!
+		}
+		return;
+	}
 	
 	/* walk entity list */
 	for( i = 0; i < numEntities; i++ )
@@ -428,28 +424,21 @@ void ProcessDecals( void )
 		}
 
 		/* vortex: get lightmap scaling value for this entity */
-		if( strcmp( "", ValueForKey( e, "lightmapscale" ) ) ||
-			strcmp( "", ValueForKey( e, "_lightmapscale" ) ) || 
-			strcmp( "", ValueForKey( e, "_ls" ) ) )
-		{
-			lightmapScale = FloatForKey( e, "lightmapscale" );
-			if( lightmapScale <= 0.0f )
-				lightmapScale = FloatForKey( e, "_lightmapscale" );
-			if( lightmapScale <= 0.0f )
-				lightmapScale = FloatForKey( e, "_ls" );
-		}
-		else
-			lightmapScale = 0.0f;
+		GetEntityLightmapScale( e, &lightmapScale, 0);
 
 		/* vortex: per-entity normal smoothing */
-		if( strcmp( "", ValueForKey( e, "_smoothnormals" ) ) || strcmp( "", ValueForKey( e, "_np" ) ) )
-		{
-			smoothNormals = IntForKey(e, "_smoothnormals");
-			if (smoothNormals <= 0)
-				smoothNormals = IntForKey(e, "_np");
-		}
+		GetEntityNormalSmoothing( e, &smoothNormals, 0);
+
+		/* vortex: per-entity lightmap stitch */
+		GetEntityLightmapStitch( e, &lightmapStitch, -1);
+		
+		/* vortex: _backfacecull */
+		if ( KeyExists(e, "_backfacecull") )
+			backfaceAngle = FloatForKey(e, "_backfacecull");
+		else if ( KeyExists(e, "_bfc") )
+			backfaceAngle = FloatForKey(e, "_bfc");
 		else
-			smoothNormals = 0;
+			backfaceAngle = 90.0f;
 
 		/* walk entity patches */
 		for( p = e->patches; p != NULL; p = e->patches )
@@ -513,17 +502,17 @@ void ProcessDecals( void )
 							fabs( DotProduct( dv[ 1 ]->xyz, plane ) - plane[ 3 ] ) <= PLANAR_EPSILON )
 						{
 							/* make a quad projector */
-							MakeDecalProjector( p->shaderInfo, projection, distance, 4, dv, 0.0001f, lightmapScale, smoothNormals);
+							MakeDecalProjector( p->shaderInfo, projection, distance, 4, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapStitch, smoothNormals);
 						}
 						else
 						{
 							/* make first triangle */
-							MakeDecalProjector( p->shaderInfo, projection, distance, 3, dv, 0.0001f, lightmapScale, smoothNormals);
+							MakeDecalProjector( p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapStitch, smoothNormals);
 							
 							/* make second triangle */
 							dv[ 1 ] = dv[ 2 ];
 							dv[ 2 ] = dv[ 3 ];
-							MakeDecalProjector( p->shaderInfo, projection, distance, 3, dv, 0.0001f, lightmapScale, smoothNormals);
+							MakeDecalProjector( p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapStitch, smoothNormals);
 						}
 					}
 				}
@@ -628,6 +617,7 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 	ds2->fogNum = ds->fogNum;	/* why was this -1? */
 	ds2->lightmapScale = (dp->lightmapScale) ? dp->lightmapScale : ds->lightmapScale;
 	ds2->smoothNormals = (dp->smoothNormals) ? dp->smoothNormals : ds->smoothNormals;
+	ds2->lightmapStitch = (dp->lightmapStitch >= 0) ? dp->lightmapStitch : ds->lightmapStitch;
 	ds2->numVerts = w->numpoints;
 	ds2->verts = (bspDrawVert_t *)safe_malloc( ds2->numVerts * sizeof( *ds2->verts ) );
 	memset( ds2->verts, 0, ds2->numVerts * sizeof( *ds2->verts ) );

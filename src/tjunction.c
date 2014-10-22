@@ -223,15 +223,11 @@ adds a surface's edges
 
 void AddSurfaceEdges( mapDrawSurface_t *ds )
 {
-	int		i;
+	int i;
 	
-
+	/* save the edge number in the lightmap field so we don't need to look it up again */
 	for( i = 0; i < ds->numVerts; i++ )
-	{
-		/* save the edge number in the lightmap field so we don't need to look it up again */
-		ds->verts[i].lightmap[ 0 ][ 0 ] = 
-			AddEdge( ds->verts[ i ].xyz, ds->verts[ (i + 1) % ds->numVerts ].xyz, qfalse );
-	}
+		ds->verts[i].lightmap[ 0 ][ 0 ] = AddEdge( ds->verts[ i ].xyz, ds->verts[ (i + 1) % ds->numVerts ].xyz, qfalse );
 }
 
 
@@ -329,7 +325,8 @@ FixSurfaceJunctions
 ====================
 */
 #define	MAX_SURFACE_VERTS	256
-void FixSurfaceJunctions( mapDrawSurface_t *ds ) {
+void FixSurfaceJunctions( mapDrawSurface_t *ds )
+{
 	int			i, j, k;
 	edgeLine_t	*e;
 	edgePoint_t	*p;
@@ -342,7 +339,6 @@ void FixSurfaceJunctions( mapDrawSurface_t *ds ) {
 	float		start, end, frac, c;
 	vec3_t		delta;
 	
-	
 	originalVerts = ds->numVerts;
 	
 	numVerts = 0;
@@ -352,9 +348,8 @@ void FixSurfaceJunctions( mapDrawSurface_t *ds ) {
 		firstVert[i] = numVerts;
 
 		// copy first vert
-		if ( numVerts == MAX_SURFACE_VERTS ) {
+		if ( numVerts == MAX_SURFACE_VERTS )
 			Error( "MAX_SURFACE_VERTS" );
-		}
 		verts[numVerts] = ds->verts[i];
 		originals[numVerts] = i;
 		numVerts++;
@@ -364,9 +359,8 @@ void FixSurfaceJunctions( mapDrawSurface_t *ds ) {
 		v2 = &ds->verts[ (i+1) % ds->numVerts ];
 
 		j = (int)ds->verts[i].lightmap[ 0 ][ 0 ];
-		if ( j == -1 ) {
-			continue;		// degenerate edge
-		}
+		if ( j < 0 )
+			continue; // degenerate edge
 		e = &edgeLines[ j ];
 		
 		VectorSubtract( v1->xyz, e->origin, delta );
@@ -375,12 +369,10 @@ void FixSurfaceJunctions( mapDrawSurface_t *ds ) {
 		VectorSubtract( v2->xyz, e->origin, delta );
 		end = DotProduct( delta, e->dir );
 
-
-		if ( start < end ) {
+		if ( start < end )
 			p = e->chain.next;
-		} else {
+		else
 			p = e->chain.prev;
-		}
 
 		for (  ; p != &e->chain ;  ) {
 			if ( start < end ) {
@@ -696,7 +688,7 @@ void FixTJunctions( entity_t *ent )
 		/* get surface and early out if possible */
 		ds = &mapDrawSurfs[ i ];
 		si = ds->shaderInfo;
-		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->notjunc || ds->numVerts == 0 || ds->type != SURFACE_FACE )
+		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->notjunc || ds->noTJunc || ds->numVerts == 0 || ds->type != SURFACE_FACE )
 			continue;
 		
 		/* ydnar: gs mods: handle the various types of surfaces */

@@ -437,7 +437,7 @@ qboolean ChopFaceSurfaceByBrush( entity_t *e, mapDrawSurface_t *ds, brush_t *b )
 	s = ds->sideRef->side;
 	for( i = 0; i < numOutside; i++ )
 	{
-		newds = DrawSurfaceForSide( e, ds->mapBrush, s, outside[ i ] );
+		newds = DrawSurfaceForSide( e, ds->mapBrush, s, outside[ i ], NULL, 0, 0 );
 		newds->fogNum = ds->fogNum;
 		FreeWinding( outside[ i ] );
 	}
@@ -447,7 +447,7 @@ qboolean ChopFaceSurfaceByBrush( entity_t *e, mapDrawSurface_t *ds, brush_t *b )
 			  the right thing and uses the original surface's brush side */
 	
 	/* build a drawsurf for it */
-	newds = DrawSurfaceForSide( e, ds->mapBrush, s, w );
+	newds = DrawSurfaceForSide( e, ds->mapBrush, s, w, NULL, 0, 0 );
 	if( newds == NULL )
 		return qfalse;
 	

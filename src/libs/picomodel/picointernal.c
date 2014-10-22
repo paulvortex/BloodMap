@@ -226,6 +226,7 @@ void _pico_free_file( void *buffer )
 		free( buffer );
 		return;
 	}
+
 	/* free the allocated file */
 	_pico_ptr_free_file( buffer );
 }

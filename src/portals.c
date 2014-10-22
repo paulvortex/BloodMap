@@ -36,12 +36,6 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 /* dependencies */
 #include "q3map2.h"
 
-
-
-/* ydnar: to fix broken portal windings */
-extern qboolean FixWinding( winding_t *w );
-
-
 int		c_active_portals;
 int		c_peak_portals;
 int		c_boundary;
@@ -274,8 +268,7 @@ winding_t	*BaseWindingForNode (node_t *node)
 	vec3_t		normal;
 	vec_t		dist;
 
-	w = BaseWindingForPlane (mapplanes[node->planenum].normal
-		, mapplanes[node->planenum].dist);
+	w = BaseWindingForPlane (mapplanes[node->planenum].normal, mapplanes[node->planenum].dist);
 
 	// clip by all the parents
 	for (n=node->parent ; n && w ; )
@@ -314,7 +307,7 @@ void MakeNodePortal (node_t *node)
 	portal_t	*new_portal, *p;
 	winding_t	*w;
 	vec3_t		normal;
-	float		dist;
+	vec_t		dist;
 	int			side;
 
 	w = BaseWindingForNode (node);
@@ -531,9 +524,8 @@ void MakeTreePortals_r (node_t *node)
 	{
 		if (node->mins[i] < MIN_WORLD_COORD || node->maxs[i] > MAX_WORLD_COORD)
 		{
-      if(node->portals && node->portals->winding)
-        xml_Winding("WARNING: Node With Unbounded Volume", node->portals->winding->p, node->portals->winding->numpoints, qfalse);
-
+			if (node->portals && node->portals->winding)
+				xml_Winding("WARNING: Node With Unbounded Volume", node->portals->winding->p, node->portals->winding->numpoints, qfalse);
 			break;
 		}
 	}
@@ -579,19 +571,15 @@ FloodPortals_r
 
 void FloodPortals_r( node_t *node, int dist, qboolean skybox )
 {
-	int			s;
-	portal_t	*p;
-	
+	int s;
+	portal_t *p;
 	
 	if( skybox )
 		node->skybox = skybox;
-	
 	if( node->occupied || node->opaque )
 		return;
-	
 	c_floodedleafs++;
 	node->occupied = dist;
-	
 	for( p = node->portals; p; p = p->next[ s ] )
 	{
 		s = (p->nodes[ 1 ] == node);
@@ -599,7 +587,34 @@ void FloodPortals_r( node_t *node, int dist, qboolean skybox )
 	}
 }
 
+/*
+=============
+PlaceOccupantTest
+=============
+*/
 
+qboolean PlaceOccupantTest( tree_t *tree, node_t *headnode, vec3_t origin )
+{
+	vec_t d;
+	node_t *node;
+	plane_t	*plane;
+
+	node = headnode;
+	while( node->planenum != PLANENUM_LEAF )
+	{
+		plane = &mapplanes[ node->planenum ];
+		d = DotProduct( origin, plane->normal ) - plane->dist;
+		if( d >= 0 )
+			node = node->children[ 0 ];
+		else
+			node = node->children[ 1 ];
+	}
+	if( node->opaque )
+		return qfalse;
+	if( node == &tree->outside_node )
+		return qfalse;
+	return qtrue;
+}
 
 /*
 =============
@@ -646,34 +661,43 @@ Marks all nodes that can be reached by entites
 
 qboolean FloodEntities( tree_t *tree )
 {
-	int			i, s;
-	vec3_t		origin, offset, scale, angles;
-	qboolean	r, inside, tripped, skybox;
-	node_t		*headnode;
+	int			i, j, s, frame;
+	vec3_t		origin, offset, scale, angles, absmin, absmax;
+	vec_t       temp;
+	qboolean	r, inside, skybox;
+	const char	*value, *classname, *model;
+	m4x4_t      transform;;
+	picoModel_t *m;
 	entity_t	*e;
-	const char	*value;
+	qboolean    tripped;
 	
-	
-	headnode = tree->headnode;
 	Sys_FPrintf( SYS_VRB,"--- FloodEntities ---\n" );
 	inside = qfalse;
 	tree->outside_node.occupied = 0;
-	
 	tripped = qfalse;
+
 	c_floodedleafs = 0;
 	for( i = 1; i < numEntities; i++ )
 	{
 		/* get entity */
 		e = &entities[ i ];
-		
+		classname = ValueForKey( e, "classname" );
+
 		/* get origin */
 		GetVectorForKey( e, "origin", origin );
 		if( VectorCompare( origin, vec3_origin ) ) 
 			continue;
+
+		/* vortex: exclude entities which are merged to worldspawn */
+		if( !Q_stricmp( classname, "misc_model" ) || !Q_strncasecmp( classname, "light", 5 ) )
+			continue;
+
+		/* check for noflood key */
+		if ( IntForKey(e, "_noflood") > 0 || IntForKey(e, "_nf") > 0 )
+			continue;
 		
 		/* handle skybox entities */
-		value = ValueForKey( e, "classname" );
-		if( !Q_stricmp( value, "_skybox" ) )
+		if( !Q_stricmp( classname, "_skybox" ) )
 		{
 			skybox = qtrue;
 			skyboxPresent = qtrue;
@@ -711,22 +735,93 @@ qboolean FloodEntities( tree_t *tree )
 		/* nudge off floor */
 		origin[ 2 ] += 1;
 		
-		/* debugging code */
-		//%	if( i == 1 )
-		//%		origin[ 2 ] += 4096;
-		
-		/* find leaf */
-		r = PlaceOccupant( headnode, origin, e, skybox );
+		/* vortex: test leaf */
+		m = NULL;
+		if ( !PlaceOccupantTest( tree, tree->headnode, origin ) )
+		{
+			/* by default try fix at 32x32x32 box */
+			VectorSet( absmin, origin[0] - 16, origin[1] - 16, origin[2] - 16);
+			VectorSet( absmax, origin[0] + 16, origin[1] + 16, origin[2] + 32);
+
+			/* get mins/maxs from model */
+			model = ValueForKey( e, "_model" );	
+			if( model[ 0 ] == '\0' )
+				model = ValueForKey( e, "model" );
+			if( model[ 0 ] != '\0' && model[ 0 ] != '*' )
+			{
+				/* get model frame */
+				if ( KeyExists(e, "_frame") )
+					frame = IntForKey( e, "_frame" );
+				else if ( KeyExists(e, "frame") )
+					frame = IntForKey( e, "frame" );
+				else
+					frame = 0;
+
+				/* get scale */
+				scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = 1.0f;
+				temp = FloatForKey( e, "modelscale" );
+				if( temp != 0.0f )
+					scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = temp;
+				value = ValueForKey( e, "modelscale_vec" );
+				if( value[ 0 ] != '\0' )
+					sscanf( value, "%f %f %f", &scale[ 0 ], &scale[ 1 ], &scale[ 2 ] );
+
+				/* get "angle" (yaw) or "angles" (pitch yaw roll) */
+				angles[ 0 ] = angles[ 1 ] = angles[ 2 ] = 0.0f;
+				angles[ 2 ] = FloatForKey( e, "angle" );
+				value = ValueForKey( e, "angles" );
+				if( value[ 0 ] != '\0' )
+					sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] );
+
+				/* get model */
+				m = LoadModel( model, frame );
+				if ( m != NULL )
+				{
+					VectorCopy(m->mins, absmin);
+					VectorCopy(m->maxs, absmax);
+
+					/* transform */
+					m4x4_identity( transform );
+					m4x4_pivoted_transform_by_vec3( transform, origin, angles, eXYZ, scale, vec3_origin );
+					m4x4_transform_point( transform, absmin );
+					m4x4_transform_point( transform, absmax );
+				}
+			}
+
+			/* sample random positions */
+			for (j = 0; j < 256; j++)
+			{
+				offset[0] = absmin[0] + Random()*(absmax[0] - absmin[0]);
+				offset[1] = absmin[1] + Random()*(absmax[1] - absmin[1]);
+				offset[2] = absmin[2] + Random()*(absmax[2] - absmin[2]);
+				if (PlaceOccupantTest( tree, tree->headnode, offset ))
+				{
+					/* found solution */
+					VectorCopy( offset, origin );
+					break;
+				}
+			}
+		}
+
+		/* place */
+		r = PlaceOccupant( tree->headnode, origin, e, skybox );
+
+		/* warn */
 		if( r )
 			inside = qtrue;
-		if( (!r || tree->outside_node.occupied) && !tripped )
+		if( !tripped )
 		{
-			/* vortex: dont cast this for misc_model as its useless */
-			/* todo: fix better by checking for center of model */
-			if( Q_stricmp( value, "misc_model" ) && Q_stricmp( value, "info_null" ) && Q_stricmp( value, "_decal" ) )
+			if (tree->outside_node.occupied)
 			{
-				xml_Select( "Entity leaked", e->mapEntityNum, 0, qfalse );
+				Sys_Printf( "entity: '%s' at '%f %f %f' reached from outside\n", classname, origin[ 0 ], origin[ 1 ], origin[ 2 ] );
 				tripped = qtrue;
+			}
+			if( !r || tree->outside_node.occupied)
+			{
+				if (m)
+					xml_Select( "Model entity leaked", e->mapEntityNum, 0, qfalse );
+				else
+					xml_Select( "Entity leaked", e->mapEntityNum, 0, qfalse );
 			}
 		}
 	}

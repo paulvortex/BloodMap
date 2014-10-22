@@ -248,10 +248,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\diskcache.c"
-				>
-			</File>
-			<File
 				RelativePath=".\..\src\image.c"
 				>
 			</File>

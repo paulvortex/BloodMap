@@ -167,6 +167,7 @@ PatchBSPMain()
 entities compile
 */
 
+void RegionScissor( void );
 int PatchBSPMain( int argc, char **argv )
 {
 	char path[MAX_OS_PATH], out[MAX_OS_PATH];
@@ -209,6 +210,11 @@ int PatchBSPMain( int argc, char **argv )
 			Sys_Printf( "Custom info parms enabled\n" );
 			useCustomInfoParms = qtrue;
 		}
+		else if( !strcmp( argv[ i ],  "-entitysaveid") )
+		{
+			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			useEntitySaveId = qtrue;
+		}
 		else if( !strcmp( argv[ i ],  "-source" ) )
  		{
 			strcpy(name, argv[i + 1]);
@@ -247,8 +253,14 @@ int PatchBSPMain( int argc, char **argv )
 	LoadMapFile(name, qfalse, qfalse);
 	Sys_Printf( "%9d entities\n", numEntities );
 
+	/* check map for errors */
+	CheckMapForErrors();
+
 	/* preprocess map */
 	Sys_Printf( "--- CompileEntities ---\n" );
+	LoadDecorations();
+	ImportDecorations(source);
+	RegionScissor();
 	ProcessDecorations();
 	ProcessDecals();
 	SetModelNumbers();
@@ -276,6 +288,7 @@ int PatchBSPMain( int argc, char **argv )
 	if (patchentities)
 	{
 		PatchEntities();
+		RegionScissor();
 		/* write entities back */
 		numBSPEntities = numEntities;
 		UnparseEntities(qfalse);

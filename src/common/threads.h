@@ -27,21 +27,38 @@ void ThreadSetDefault (void);
 int	 GetThreadWork (void);
 void RunThreadsOnIndividual (int workcnt, qboolean showpacifier, void(*func)(int));
 void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int));
+void RunSameThreadOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int));
+void RunSameThreadOnIndividual(int workcnt, qboolean showpacifier, void(*threadfunc)(int));
 void ThreadLock (void);
 void ThreadUnlock (void);
 
 /* mutex */
 #if defined(WIN32) || defined(WIN64)
-#define	USED
-#include <windows.h>
-typedef struct ThreadMutex_s
-{
-	HANDLE handle;
-}ThreadMutex;
+	#define	USED
+	#include <windows.h>
+	typedef struct ThreadMutex_s
+	{
+		qboolean locked;
+		char *file;
+		int line;
+		HANDLE handle;
+	}ThreadMutex;
+	#define ThreadMutexInit(m) _ThreadMutexInit(m, __FILE__, __LINE__)
+	#define ThreadMutexLock(m) _ThreadMutexLock(m, __FILE__, __LINE__)
+	#define ThreadMutexUnlock(m) _ThreadMutexUnlock(m, __FILE__, __LINE__)
+	#define ThreadMutexDelete(m) _ThreadMutexDelete(m, __FILE__, __LINE__)
+	void _ThreadMutexInit(ThreadMutex *mutex, char *file, int line);
+	void _ThreadMutexLock(ThreadMutex *mutex, char *file, int line);
+	void _ThreadMutexUnlock(ThreadMutex *mutex, char *file, int line);
+	void _ThreadMutexDelete(ThreadMutex *mutex, char *file, int line);
 #else
-#error "mutex not coded for this OS!"
+	typedef struct ThreadMutex_s
+	{
+		qboolean locked;
+	}ThreadMutex;
+	// hack: use critical section
+	#define ThreadMutexInit(m)
+	#define ThreadMutexLock(m) ThreadLock()
+	#define ThreadMutexUnlock(m) ThreadUnlock()
+	#define ThreadMutexDelete(m)
 #endif
-void ThreadMutexInit(ThreadMutex *mutex);
-void ThreadMutexLock(ThreadMutex *mutex);
-void ThreadMutexUnlock(ThreadMutex *mutex);
-void ThreadMutexDelete(ThreadMutex *mutex);

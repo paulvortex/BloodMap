@@ -58,7 +58,7 @@ void RadFreeLights( void )
 			FreeWinding( light->w );
 		free( light );
 	}
-	numLights = 0;
+	numLights = -1;
 	lights = NULL;
 }
 

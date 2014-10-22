@@ -1796,6 +1796,12 @@ int OptimizeBSPMain( int argc, char **argv )
 			useCustomInfoParms = qtrue;
 			Sys_Printf( "Custom info parms enabled\n" );
 		}
+		/* -entitysaveid */
+		else if( !strcmp( argv[ i ],  "-entitysaveid") )
+		{
+			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			useEntitySaveId = qtrue;
+		}
 
 		else
 			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );

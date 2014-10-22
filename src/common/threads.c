@@ -33,25 +33,24 @@ qboolean pacifier;
 qboolean threaded;
 
 // get a new work for thread
-int	GetThreadWork (void)
+int	GetThreadWork ( void )
 {
 	int	r;
 	int	f;
 
 	ThreadLock();
-	if (dispatch == workcount)
+	if (dispatch >= workcount)
 	{
 		ThreadUnlock();
 		return -1;
 	}
-	f = 10*dispatch / workcount;
-	if (f != oldf)
+	if (pacifier == qtrue)
 	{
-		oldf = f;
-		if (pacifier == qtrue)
+		f = 10 * dispatch / workcount;
+		while ( oldf < f)
 		{
-			Sys_Printf ("%i...", f);
-			fflush( stdout );	/* ydnar */
+			oldf++;
+			Sys_Printf ("%i...", oldf);
 		}
 	}
 	r = dispatch;
@@ -60,26 +59,111 @@ int	GetThreadWork (void)
 	return r;
 }
 
+// RunThreadsOnIndividual worker
 void (*workfunction) (int);
-void ThreadWorkerFunction (int threadnum)
+void RunThreadsOnIndividualThread(int threadnum)
 {
 	int	work;
 	while (1)
 	{
-		work = GetThreadWork ();
+		work = GetThreadWork ( );
 		if (work == -1)
 			break;
 		workfunction(work);
 	}
 }
 
+// run threads on individual numbers
 void RunThreadsOnIndividual(int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	if (numthreads == -1)
 		ThreadSetDefault ();
+	if ( threaded == qtrue )
+		Error("RunThreadsOnIndividual: recursively entered!");
+
 	workfunction = func;
-	RunThreadsOn(workcnt, showpacifier, ThreadWorkerFunction);
+	RunThreadsOn(workcnt, showpacifier, RunThreadsOnIndividualThread);
 }
+
+// run thread functions
+void _RunThreadsOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int));
+void RunThreadsOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int))
+{
+	if (numthreads == -1)
+		ThreadSetDefault ();
+	if ( threaded == qtrue )
+		Error("RunThreadsOn: recursively entered!");
+
+	threaded = qtrue;
+	_RunThreadsOn(workcnt, showpacifier, threadfunc);
+	threaded = qfalse;
+}
+
+// run thread function in same thread
+void RunSameThreadOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int))
+{
+	int	start, end;
+
+	if (numthreads == -1)
+		ThreadSetDefault ();
+	if ( threaded == qtrue )
+		Error("RunSameThreadOn: recursively entered!");
+
+	start = I_FloatTime ();
+	dispatch = 0;
+	workcount = workcnt;
+	oldf = -1;
+	pacifier = showpacifier;
+	threadfunc(0);
+	end = I_FloatTime ();
+	if (pacifier == qtrue)
+	{
+		while (oldf < 9)
+		{
+			oldf++;
+			Sys_Printf ("%i...", oldf);
+		}
+		Sys_Printf (" (%i)\n", end-start);
+	}
+}
+
+// run individual numbers function in same thread
+void RunSameThreadOnIndividual(int workcnt, qboolean showpacifier, void(*func)(int))
+{
+	int	start, end;
+
+	if (numthreads == -1)
+		ThreadSetDefault ();
+	if ( threaded == qtrue )
+		Error("RunSameThreadOnIndividual: recursively entered!");
+
+	start = I_FloatTime ();
+	dispatch = 0;
+	workcount = workcnt;
+	oldf = -1;
+	pacifier = showpacifier;
+	workfunction = func;
+	RunThreadsOnIndividualThread(0);
+	end = I_FloatTime ();
+	if (pacifier == qtrue)
+	{
+		while (oldf < 9)
+		{
+			oldf++;
+			Sys_Printf ("%i...", oldf);
+		}
+		Sys_Printf (" (%i)\n", end-start);
+	}
+}
+
+/*
+===================================================================
+
+ COMMON MUTEX FUNCTIONALITY
+
+===================================================================
+*/
+
 
 /*
 ===================================================================
@@ -103,7 +187,7 @@ void ThreadSetDefault (void)
 	{
 		GetSystemInfo (&info);
 		numthreads = info.dwNumberOfProcessors;
-		if (numthreads < 1 || numthreads > 32)
+		if (numthreads < 1 || numthreads > MAX_THREADS)
 			numthreads = 1;
 	}
 	Sys_Printf ("%i threads\n", numthreads);
@@ -129,7 +213,7 @@ void ThreadUnlock (void)
 	LeaveCriticalSection (&crit);
 }
 
-void RunThreadsOn(int workcnt, qboolean showpacifier, void(*func)(int))
+void _RunThreadsOn(int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	int		threadid[MAX_THREADS];
 	HANDLE	threadhandle[MAX_THREADS];
@@ -141,7 +225,6 @@ void RunThreadsOn(int workcnt, qboolean showpacifier, void(*func)(int))
 	workcount = workcnt;
 	oldf = -1;
 	pacifier = showpacifier;
-	threaded = qtrue;
 
 	// run threads in parallel
 	InitializeCriticalSection (&crit);
@@ -169,27 +252,62 @@ void RunThreadsOn(int workcnt, qboolean showpacifier, void(*func)(int))
 	}
 	DeleteCriticalSection (&crit);
 
-	threaded = qfalse;
 	end = I_FloatTime ();
 	if (pacifier == qtrue)
+	{
+		while (oldf < 9)
+		{
+			oldf++;
+			Sys_Printf ("%i...", oldf);
+		}
 		Sys_Printf (" (%i)\n", end-start);
+	}
 }
 
-void ThreadMutexInit(ThreadMutex *mutex)
+void _ThreadMutexInit(ThreadMutex *mutex, char *file, int line)
 {
+	if (mutex->handle != NULL)
+	{
+		Error("_ThreadMutexInit(%s:%i): double initialization (first was in %s:%i)", file, line, mutex->file, mutex->line);
+		return;
+	}
 	mutex->handle = CreateMutex(NULL, FALSE, NULL);
+	mutex->file = file;
+	mutex->line = line;
+	mutex->locked = qfalse;
 }
-void ThreadMutexLock(ThreadMutex *mutex)
+void _ThreadMutexLock(ThreadMutex *mutex, char *file, int line)
 {
+	if (!threaded)
+		return;
+	if (mutex->handle == NULL)
+		Error("ThreadMutexLock(%s:%i): mutex not initialized", file, line);
 	WaitForSingleObject(mutex->handle, INFINITE);
+	if (mutex->handle == NULL)
+		Error("ThreadMutexLock(%s:%i): mutex was freed", file, line);
+	if (mutex->locked)
+		Error("ThreadMutexLock(%s:%i): recursive lock (init was in %s:%i)", file, line, mutex->file, mutex->line);
+	mutex->locked = qtrue;
 }
-void ThreadMutexUnlock(ThreadMutex *mutex)
+void _ThreadMutexUnlock(ThreadMutex *mutex, char *file, int line)
 {
+	if (!threaded)
+		return;
+	if (mutex->handle == NULL)
+		Error("ThreadMutexLock(%s:%i): mutex not initialized", file, line);
+	if (mutex->locked == qfalse)
+		Error("ThreadMutexUnlock(%s:%i): mutex already unlocked (init was in %s:%i)", file, line, mutex->file, mutex->line);
+	mutex->locked = qfalse;
 	ReleaseMutex(mutex->handle);
 }
-void ThreadMutexDelete(ThreadMutex *mutex)
+void _ThreadMutexDelete(ThreadMutex *mutex, char *file, int line)
 {
+	if (mutex->handle == NULL)
+		Error("ThreadMutexDelete(%s:%i): mutex not initialized", file, line);
+
+	mutex->locked = qfalse;
 	CloseHandle(mutex->handle);
+	mutex->handle = NULL;
 }
 #endif
 
@@ -234,10 +352,10 @@ void ThreadUnlock (void)
 
 /*
 =============
-RunThreadsOn
+_RunThreadsOn
 =============
 */
-void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
+void _RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	int		i;
 	pthread_t	work_threads[MAX_THREADS];
@@ -251,7 +369,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 	workcount = workcnt;
 	oldf = -1;
 	pacifier = showpacifier;
-	threaded = qtrue;
 
 	if (pacifier)
 		setbuf (stdout, NULL);
@@ -284,8 +401,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 		if (pthread_join (work_threads[i], &status) == -1)
 			Error ("pthread_join failed");
 	}
-
-	threaded = qfalse;
 
 	end = I_FloatTime ();
 	if (pacifier)
@@ -337,10 +452,10 @@ void ThreadUnlock (void)
 
 /*
 =============
-RunThreadsOn
+_RunThreadsOn
 =============
 */
-void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
+void _RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	int		i;
 	int		pid[MAX_THREADS];
@@ -351,7 +466,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 	workcount = workcnt;
 	oldf = -1;
 	pacifier = showpacifier;
-	threaded = qtrue;
 
 	if (pacifier)
 		setbuf (stdout, NULL);
@@ -373,8 +487,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 			
 	for (i=0 ; i<numthreads-1 ; i++)
 		wait (NULL);
-
-	threaded = qfalse;
 
 	end = I_FloatTime ();
 	if (pacifier)
@@ -489,10 +601,10 @@ void recursive_mutex_init(pthread_mutexattr_t attribs)
 
 /*
 =============
-RunThreadsOn
+_RunThreadsOn
 =============
 */
-void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
+void _RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 {
   pthread_mutexattr_t         mattrib;
   pthread_t work_threads[MAX_THREADS];
@@ -502,7 +614,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
   
   start     = I_FloatTime ();
   pacifier  = showpacifier;
-  
   dispatch  = 0;
   oldf      = -1;
   workcount = workcnt;
@@ -511,8 +622,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
     func(0);
   else
   {    
-    threaded  = qtrue;
-      
     if(pacifier)
       setbuf(stdout, NULL);
 
@@ -538,7 +647,6 @@ void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
         Error("pthread_join failed");
     }
     pthread_mutexattr_destroy(&mattrib);
-    threaded = qfalse;
   }
   
   end = I_FloatTime ();
@@ -575,10 +683,10 @@ void ThreadUnlock (void)
 
 /*
 =============
-RunThreadsOn
+_RunThreadsOn
 =============
 */
-void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
+void _RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int))
 {
 	int		i;
 	int		start, end;

@@ -232,6 +232,48 @@ void VectorFSnap( vec3_t point, float snap ){
 	}
 }
 
+/*
+SnapWeldVector() - ydnar
+welds two vec3_t's into a third, taking into account nearest-to-integer
+instead of averaging
+*/
+
+#define SNAP_EPSILON 0.01
+void SnapWeldVector( vec3_t a, vec3_t b, vec3_t out )
+{
+	int		i;
+	vec_t	ai, bi, outi;
+	
+	/* dummy check */
+	if( a == 0 || b == 0 || out == 0 )
+		return;
+	
+	/* do each element */
+	for( i = 0; i < 3; i++ )
+	{
+		/* round to integer */
+		ai = Q_rint( a[ i ] );
+		bi = Q_rint( a[ i ] );
+		
+		/* prefer exact integer */
+		if( ai == a[ i ] )
+			out[ i ] = a[ i ];
+		else if( bi == b[ i ] )
+			out[ i ] = b[ i ];
+
+		/* use nearest */
+		else if( fabs( (float)(ai - a[ i ]) ) < fabs( (float)(bi < b[ i ]) ) )
+			out[ i ] = a[ i ];
+		else
+			out[ i ] = b[ i ];
+		
+		/* snap */
+		outi = Q_rint( out[ i ] );
+		if( fabs( outi - out[ i ] ) <= SNAP_EPSILON )
+			out[ i ] = outi;
+	}
+}
+
 // NOTE: added these from Ritual's Q3Radiant
 #define INVALID_BOUNDS 99999
 void ClearBounds( vec3_t mins, vec3_t maxs ){
@@ -333,6 +375,26 @@ void VectorToAngles( vec3_t vec, vec3_t angles )
 	angles[ 0 ] = pitch;
 	angles[ 1 ] = yaw;
 	angles[ 2 ] = 0;
+}
+
+/*
+=====================
+NormalFromPoints
+
+Returns false if the triangle is degenrate.
+The normal will point out of the clock for clockwise ordered points
+=====================
+*/
+qboolean NormalFromPoints(vec3_t normal, const vec3_t a, const vec3_t b, const vec3_t c)
+{
+	vec3_t d1, d2;
+
+	VectorSubtract( b, a, d1 );
+	VectorSubtract( c, a, d2 );
+	CrossProduct( d2, d1, normal );
+	if( VectorNormalize(normal, normal) == 0 )
+		return qfalse;
+	return qtrue;
 }
 
 /*
@@ -552,4 +614,107 @@ void RotatePointAroundVector( vec3_t dst, const vec3_t dir, const vec3_t point, 
 	dst[0] = rot[0][0] * point[0] + rot[0][1] * point[1] + rot[0][2] * point[2];
 	dst[1] = rot[1][0] * point[0] + rot[1][1] * point[1] + rot[1][2] * point[2];
 	dst[2] = rot[2][0] * point[0] + rot[2][1] * point[1] + rot[2][2] * point[2];
+}
+
+/*
+================================================================================
+
+ DOUBLE PRECISION STUFF
+
+================================================================================
+*/
+
+/*
+==========
+DVectorMA
+==========
+*/
+
+void DVectorMA( const dvec3_t va, dvec_t scale, const dvec3_t vb, dvec3_t vc )
+{
+	vc[0] = va[0] + scale*vb[0];
+	vc[1] = va[1] + scale*vb[1];
+	vc[2] = va[2] + scale*vb[2];
+}
+
+/*
+==========
+DVectorNormalize
+==========
+*/
+
+dvec_t DVectorNormalize( dvec3_t in, dvec3_t out )
+{
+	dvec_t	len, ilen;
+	
+	len = (dvec_t) sqrt( in[ 0 ] * in[ 0 ] + in[ 1 ] * in[ 1 ] + in[ 2 ] * in[ 2 ] );
+	if( len == 0.0 )
+	{
+		VectorClear( out );
+		return 0.0;
+	}
+
+	ilen = 1.0 / len;
+	out[ 0 ] = in[ 0 ] * ilen;
+	out[ 1 ] = in[ 1 ] * ilen;
+	out[ 2 ] = in[ 2 ] * ilen;
+	
+	return len;
+}
+
+/*
+==========
+DVectorLength
+==========
+*/
+
+dvec_t DVectorLength( const dvec3_t v )
+{
+	int i;
+	dvec_t length;
+	length = 0.0f;
+	for ( i = 0 ; i < 3 ; i++ )
+		length += v[i] * v[i];
+	return sqrt( length );
+}
+
+/*
+==========
+SnapWeldDVector
+==========
+*/
+
+void SnapWeldDVector( dvec3_t a, dvec3_t b, dvec3_t out )
+{
+	int	i;
+	dvec_t ai, bi, outi;
+	
+	/* dummy check */
+	if( a == 0 || b == 0 || out == 0 )
+		return;
+	
+	/* do each element */
+	for( i = 0; i < 3; i++ )
+	{
+		/* round to integer */
+		ai = Q_rint( a[ i ] );
+		bi = Q_rint( a[ i ] );
+		
+		/* prefer exact integer */
+		if( ai == a[ i ] )
+			out[ i ] = a[ i ];
+		else if( bi == b[ i ] )
+			out[ i ] = b[ i ];
+
+		/* use nearest */
+		else if( fabs( (double)(ai - a[ i ]) ) < fabs( (double)(bi < b[ i ]) ) )
+			out[ i ] = a[ i ];
+		else
+			out[ i ] = b[ i ];
+		
+		/* snap */
+		outi = Q_rint( out[ i ] );
+		if( fabs( outi - out[ i ] ) <= SNAP_EPSILON )
+			out[ i ] = outi;
+	}
 }

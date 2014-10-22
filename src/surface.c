@@ -414,8 +414,7 @@ gives closed lightmap axis for a plane normal
 qboolean CalcLightmapAxis( vec3_t normal, vec3_t axis )
 {
 	vec3_t	absolute;
-		
-	
+
 	/* test */
 	if( normal[ 0 ] == 0.0f && normal[ 1 ] == 0.0f && normal[ 2 ] == 0.0f )
 	{
@@ -455,8 +454,6 @@ qboolean CalcLightmapAxis( vec3_t normal, vec3_t axis )
 	return qtrue;
 }
 
-
-
 /*
 ClassifySurfaces() - ydnar
 fills out a bunch of info in the surfaces, including planar status, lightmap projection, and bounding box
@@ -467,7 +464,7 @@ fills out a bunch of info in the surfaces, including planar status, lightmap pro
 void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
 {
 	int					i, bestAxis;
-	float				dist;
+	vec_t				dist;
 	vec4_t				plane;
 	shaderInfo_t		*si;
 	static vec3_t		axii[ 6 ] =
@@ -587,7 +584,7 @@ void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
 		{
 			VectorClear( ds->lightmapAxis );
 			//%	VectorClear( ds->lightmapVecs[ 2 ] );
-			ds->sampleSize = 0;
+			ds->sampleSize = 0.0f;
 			continue;
 		}
 		
@@ -637,10 +634,10 @@ void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
  				ds->sampleSize = ds->shaderInfo->lightmapSampleSize;
 			if( ds->lightmapScale > 0 )
 				ds->sampleSize *= ds->lightmapScale;
-			if( ds->sampleSize <= 0 )
-				ds->sampleSize = 1;
-			else if( ds->sampleSize > 16384 )	/* powers of 2 are preferred */
-				ds->sampleSize = 16384;
+			if( ds->sampleSize <= 0.0f )
+				ds->sampleSize = 1.0f;
+			else if( ds->sampleSize > 16384.0f )	/* powers of 2 are preferred */
+				ds->sampleSize = 16384.0f;
 		}
 	}
 }
@@ -826,10 +823,10 @@ DrawSurfaceForSide()
 creates a SURF_FACE drawsurface from a given brush side and winding
 */
 
-#define	SNAP_FLOAT_TO_INT	8
-#define	SNAP_INT_TO_FLOAT	(1.0 / SNAP_FLOAT_TO_INT)
+#define	SNAP_FLOAT_TO_INT	   8
+#define	SNAP_INT_TO_FLOAT	   (1.0 / SNAP_FLOAT_TO_INT)
 
-mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, winding_t *w )
+mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, winding_t *w, vec3_t *vertexCache, int *numVertsInCache, int maxCache )
 {
 	int					i, j, k;
 	mapDrawSurface_t	*ds;
@@ -841,6 +838,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	qboolean			indexed;
 	byte				shaderIndexes[ 256 ];
 	float				offsets[ 256 ];
+	int					lastDrawSurface;
 	char				tempShader[ MAX_QPATH ];
 	vec3_t				forceVecs[ 2 ];
 
@@ -854,7 +852,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	
 	/* get shader */
 	si = s->shaderInfo;
-	
+
 	/* ydnar: gs mods: check for indexed shader */
 	if( si->indexed && b->im != NULL )
 	{
@@ -866,7 +864,6 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 		{
 			shaderIndexes[ i ] = GetShaderIndexForPoint( b->im, b->eMins, b->eMaxs, w->p[ i ] );
 			offsets[ i ] = b->im->offsets[ shaderIndexes[ i ] ];
-			//%	Sys_Printf( "%f ", offsets[ i ] );
 		}
 		
 		/* get matching shader and set alpha */
@@ -895,6 +892,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	}
 	
 	/* ydnar: gs mods */
+	lastDrawSurface = numMapDrawSurfs - 1;
 	ds = AllocDrawSurface( SURFACE_FACE );
 	ds->entityNum = b->entityNum;
 	ds->castShadows = b->castShadows;
@@ -909,7 +907,10 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	ds->sideRef = AllocSideRef( s, NULL );
 	ds->fogNum = -1;
 	ds->lightmapScale = b->lightmapScale;
+	ds->lightmapStitch = b->lightmapStitch; /* vortex */
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : b->smoothNormals; /* vortex */
+	ds->noClip = b->noclip; /* vortex */
+	ds->noTJunc = b->notjunc; /* vortex */
 	ds->vertTexProj = b->vertTexProj; /* vortex */
 	ds->numVerts = w->numpoints;
 	ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
@@ -939,12 +940,35 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 		VectorCopy( w->p[ j ], dv->xyz );
 		if( indexed )
 			dv->xyz[ 2 ] += offsets[ j ];
-		
-		/* round the xyz to a given precision and translate by origin */
-		for( i = 0 ; i < 3 ; i++ )
-			dv->xyz[ i ] = SNAP_INT_TO_FLOAT * floor( dv->xyz[ i ] * SNAP_FLOAT_TO_INT + 0.5f );
+
+		/* round the xyz to a given precision */
+		//for( i = 0 ; i < 3 ; i++ )
+		//	dv->xyz[ i ] = SNAP_INT_TO_FLOAT * floor( dv->xyz[ i ] * SNAP_FLOAT_TO_INT + 0.5f );
+
+		/* stitch to the vertex cache */
+		if( 0 && vertexCache != NULL )
+		{
+			/* prefer current brush (thats why we start from last vertex) */
+			for( i = *numVertsInCache - 1; i > 0; i--)
+			{
+				if (VectorCompareExt( dv->xyz, vertexCache[ i ], SNAP_INT_TO_FLOAT ) == qtrue )
+				{
+					VectorCopy( vertexCache[ i ], dv->xyz );
+					break;
+				}
+			}
+			if ( i <= 0 )
+			{
+				if ( *numVertsInCache >= maxCache )
+					Error("DrawSurfaceForSide: maxCache reached!");
+				VectorCopy( dv->xyz, vertexCache[ *numVertsInCache ] );
+				*numVertsInCache = *numVertsInCache + 1;
+			}
+		}
+	
+		/* translate by origin */
 		VectorAdd( dv->xyz, e->origin, vTranslated );
-		
+
 		/* ydnar: tek-fu celshading support for flat shaded shit */
 		if( flat )
 		{
@@ -1152,7 +1176,7 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	if( planar )
 	{
 		/* make a map plane */
-		ds->planeNum = FindFloatPlane( plane, plane[ 3 ], 1, &mesh->verts[ 0 ].xyz );
+		ds->planeNum = FindFloatPlane( plane, plane[ 3 ], 1, &mesh->verts[ 0 ].xyz);
 		VectorCopy( plane, ds->lightmapVecs[ 2 ] );
 		
 		/* push this normal to all verts (ydnar 2003-02-14: bad idea, small patches get screwed up) */
@@ -1339,7 +1363,6 @@ static void SubdivideFace_r( entity_t *e, brush_t *brush, side_t *side, winding_
 	winding_t			*frontWinding, *backWinding;
 	mapDrawSurface_t	*ds;
 	
-	
 	/* dummy check */
 	if( w == NULL )
 		return;
@@ -1354,9 +1377,9 @@ static void SubdivideFace_r( entity_t *e, brush_t *brush, side_t *side, winding_
 	/* split the face */
 	for( axis = 0; axis < 3; axis++ )
 	{
-		vec3_t			planePoint = { 0, 0, 0 };
-		vec3_t			planeNormal = { 0, 0, 0 };
-		float			d;
+		vec3_t planePoint = { 0, 0, 0 };
+		vec3_t planeNormal = { 0, 0, 0 };
+		float d;
 		
 		
 		/* create an axial clipping plane */
@@ -1387,7 +1410,7 @@ static void SubdivideFace_r( entity_t *e, brush_t *brush, side_t *side, winding_
 	}
 	
 	/* create a face surface */
-	ds = DrawSurfaceForSide( e, brush, side, w );
+	ds = DrawSurfaceForSide( e, brush, side, w, NULL, 0, 0 );
 	
 	/* set correct fog num */
 	ds->fogNum = fogNum;
@@ -1512,8 +1535,7 @@ void ClipSideIntoTree_r( winding_t *w, side_t *side, node_t *node )
 		}
 
 		plane = &mapplanes[ node->planenum ];
-		ClipWindingEpsilon ( w, plane->normal, plane->dist,
-				ON_EPSILON, &front, &back );
+		ClipWindingEpsilon ( w, plane->normal, plane->dist, ON_EPSILON, &front, &back );
 		FreeWinding( w );
 
 		ClipSideIntoTree_r( front, side, node->children[0] );
@@ -1523,9 +1545,8 @@ void ClipSideIntoTree_r( winding_t *w, side_t *side, node_t *node )
 	}
 
 	// if opaque leaf, don't add
-	if ( !node->opaque ) {
+	if ( !node->opaque )
 		AddWindingToConvexHull( w, &side->visibleHull, mapplanes[ side->planenum ].normal );
-	}
 
 	FreeWinding( w );
 	return;
@@ -1537,27 +1558,7 @@ void ClipSideIntoTree_r( winding_t *w, side_t *side, node_t *node )
 
 static int g_numHiddenFaces, g_numCoinFaces;
 
-
-
-/*
-CullVectorCompare() - ydnar
-compares two vectors with an epsilon
-*/
-
 #define CULL_EPSILON 0.1f
-
-qboolean CullVectorCompare( const vec3_t v1, const vec3_t v2 )
-{
-	int		i;
-	
-	
-	for( i = 0; i < 3; i++ )
-		if( fabs( v1[ i ] - v2[ i ] ) > CULL_EPSILON )
-			return qfalse;
-	return qtrue;
-}
-
-
 
 /*
 SideInBrush() - ydnar
@@ -1568,7 +1569,6 @@ qboolean SideInBrush( side_t *side, brush_t *b )
 {
 	int			i, s;
 	plane_t		*plane;
-	
 	
 	/* ignore sides w/o windings or shaders */
 	if( side->winding == NULL || side->shaderInfo == NULL )
@@ -1717,7 +1717,7 @@ void CullSides( entity_t *e )
 						second = first + 1;
 					else
 						second = 0;
-					if( CullVectorCompare( w1->p[ 1 ], w2->p[ second ] ) )
+					if( VectorCompareExt( w1->p[ 1 ], w2->p[ second ], CULL_EPSILON ) )
 						dir = 1;
 					else
 					{
@@ -1725,7 +1725,7 @@ void CullSides( entity_t *e )
 							second = first - 1;
 						else
 							second = numPoints - 1;
-						if( CullVectorCompare( w1->p[ 1 ], w2->p[ second ] ) )
+						if( VectorCompareExt( w1->p[ 1 ], w2->p[ second ], CULL_EPSILON ) )
 							dir = -1;
 					}
 					if( dir == 0 )
@@ -1735,7 +1735,7 @@ void CullSides( entity_t *e )
 					l = first;
 					for( k = 0; k < numPoints; k++ )
 					{
-						if( !CullVectorCompare( w1->p[ k ], w2->p[ l ] ) )
+						if( !VectorCompareExt( w1->p[ k ], w2->p[ l ], CULL_EPSILON ) )
 							k = 100000;
 						
 						l += dir;
@@ -1786,15 +1786,18 @@ all points in non-opaque clusters, which allows overlaps
 to be trimmed off automatically.
 */
 
+#define CLIP_MAX_VERTEX_CACHE 524288
+vec3_t ClipVertexCache[ CLIP_MAX_VERTEX_CACHE ];
+int ClipVertexesInCache;
+
 void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 {
-	brush_t		*b;
-	int				i;
-	winding_t		*w;
-	side_t			*side, *newSide;
-	shaderInfo_t	*si;
-  
-	
+	brush_t	*b;
+	int	 i;
+	winding_t *w;
+	side_t *side, *newSide;
+	shaderInfo_t *si;
+
 	/* ydnar: cull brush sides */
 	CullSides( e );
 	
@@ -1802,6 +1805,7 @@ void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 	Sys_FPrintf( SYS_VRB, "--- ClipSidesIntoTree ---\n" );
 	
 	/* walk the brush list */
+	ClipVertexesInCache = 0;
 	for( b = e->brushes; b; b = b->next )
 	{
 		/* walk the brush sides */
@@ -1833,11 +1837,11 @@ void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 				continue;
 			
 			/* always use the original winding for autosprites and noclip faces */
-			if( si->autosprite || si->noClip )
+			if( si->autosprite || si->noClip || b->noclip || noclip )
 				w = side->winding;
 			
 			/* save this winding as a visible surface */
-			DrawSurfaceForSide( e, b, side, w );
+			DrawSurfaceForSide( e, b, side, w, ClipVertexCache, &ClipVertexesInCache, CLIP_MAX_VERTEX_CACHE );
 
 			/* make a back side for fog */
 			if( !(si->compileFlags & C_FOG) )
@@ -1851,7 +1855,7 @@ void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 			newSide->planenum ^= 1;
 			
 			/* save this winding as a visible surface */
-			DrawSurfaceForSide( e, b, newSide, w );
+			DrawSurfaceForSide( e, b, newSide, w, ClipVertexCache, &ClipVertexesInCache, CLIP_MAX_VERTEX_CACHE );
 		}
 	}
 }
@@ -2251,20 +2255,17 @@ static int FilterFlareSurfIntoTree( mapDrawSurface_t *ds, tree_t *tree )
 	return FilterPointIntoTree_r( ds->lightmapOrigin, ds, tree->headnode );
 }
 
-
-
 /*
 EmitDrawVerts() - ydnar
 emits bsp drawverts from a map drawsurface
 */
 
-void EmitDrawVerts( mapDrawSurface_t *ds, bspDrawSurface_t *out )
+void EmitDrawVerts( mapDrawSurface_t *ds, bspDrawSurface_t *out, int bspModelNum  )
 {
 	int				i, k;
 	bspDrawVert_t	*dv;
 	shaderInfo_t	*si;
 	float			offset;
-	
 	
 	/* get stuff */
 	si = ds->shaderInfo;
@@ -2291,8 +2292,8 @@ void EmitDrawVerts( mapDrawSurface_t *ds, bspDrawSurface_t *out )
 		/* expand model bounds
 		   necessary because of misc_model surfaces on entities
 		   note: does not happen on worldspawn as its bounds is only used for determining lightgrid bounds */
-		if( numBSPModels > 0 )
-			AddPointToBounds( dv->xyz, bspModels[ numBSPModels ].mins, bspModels[ numBSPModels ].maxs );
+		if( bspModelNum > 0 )
+			AddPointToBounds( dv->xyz, bspModels[ bspModelNum ].mins, bspModels[ bspModelNum ].maxs );
 		
 		/* debug color? */
 		if( debugSurfaces )
@@ -2375,8 +2376,6 @@ int FindDrawIndexes( int numIndexes, int *indexes )
 	return numBSPDrawIndexes;
 }
 
-
-
 /*
 EmitDrawIndexes() - ydnar
 attempts to find an existing run of drawindexes before adding new ones
@@ -2384,8 +2383,7 @@ attempts to find an existing run of drawindexes before adding new ones
 
 void EmitDrawIndexes( mapDrawSurface_t *ds, bspDrawSurface_t *out )
 {
-	int			i;
-	
+	int i;
 	
 	/* attempt to use redundant indexing */
 	out->firstIndex = FindDrawIndexes( ds->numIndexes, ds->indexes );
@@ -2404,11 +2402,7 @@ void EmitDrawIndexes( mapDrawSurface_t *ds, bspDrawSurface_t *out )
 			{
 				if( bspDrawIndexes[ numBSPDrawIndexes ] < 0 || bspDrawIndexes[ numBSPDrawIndexes ] >= ds->numVerts )
 				{
-					Sys_Printf( "WARNING: %d %s has invalid index %d (%d)\n",
-						numBSPDrawSurfaces,
-						ds->shaderInfo->shader,
-						bspDrawIndexes[ numBSPDrawIndexes ],
-						i );
+					Sys_Printf( "WARNING: %d %s has invalid index %d (%d)\n", numBSPDrawSurfaces, ds->shaderInfo->shader, bspDrawIndexes[ numBSPDrawIndexes ], i );
 					bspDrawIndexes[ numBSPDrawIndexes ] = 0;
 				}
 			}
@@ -2541,7 +2535,7 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 		/* we don't want this patch getting lightmapped */
 		VectorClear( ds->lightmapVecs[ 2 ] );
 		VectorClear( ds->lightmapAxis );
-		ds->sampleSize = 0;
+		ds->sampleSize = 0.0f;
 
 		/* emit the new fake shader */
 		out->shaderNum = EmitShader( ds->shaderInfo->shader, &contentFlags, &surfaceFlags );
@@ -2573,7 +2567,7 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 		VectorClear( out->lightmapVecs[ 2 ] );
 	
 	/* emit the verts and indexes */
-	EmitDrawVerts( ds, out );
+	EmitDrawVerts( ds, out, numBSPModels );
 	EmitDrawIndexes( ds, out );
 	
 	/* add to count */
@@ -2818,7 +2812,7 @@ static void EmitTriangleSurface( mapDrawSurface_t *ds )
 	OptimizeTriangleSurface( ds );
 	
 	/* emit the verts and indexes */
-	EmitDrawVerts( ds, out );
+	EmitDrawVerts( ds, out, numBSPModels );
 	EmitDrawIndexes( ds, out );
 	
 	/* add to count */
@@ -2836,7 +2830,7 @@ emits a bsp planar winding (brush face) drawsurface
 static void EmitFaceSurface(mapDrawSurface_t *ds )
 {
 	/* strip/fan finding was moved elsewhere */
-	StripFaceSurface( ds );
+	StripFaceSurface( ds, qfalse );
 	EmitTriangleSurface(ds);
 }
 
@@ -2853,7 +2847,6 @@ static void MakeDebugPortalSurfs_r( node_t *node, shaderInfo_t *si )
 	winding_t			*w;
 	mapDrawSurface_t	*ds;
 	bspDrawVert_t		*dv;
-	
 	
 	/* recurse if decision node */
 	if( node->planenum != PLANENUM_LEAF)
@@ -3156,7 +3149,7 @@ int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, surfaceModel_t *model, b
 			}
 			
 			/* insert the model */
-			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0 );
+			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, ds->lightmapStitch, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0, ds->skybox, NULL, NULL, NULL, NULL );
 			
 			/* return to sender */
 			return 1;
@@ -3605,26 +3598,38 @@ void FixVertexAlpha(entity_t *e, qboolean showpacifier)
 {
 	int	i, numSurfs;
 
-
 	/* note it */
 	if( showpacifier == qtrue )
 		Sys_Printf( "--- FixVertexAlpha ---\n" );
 
-	/* init mutexes */
 	numSurfs = numMapDrawSurfs - e->firstDrawSurf;
-	alphaFixMutex = (ThreadMutex *)safe_malloc(numSurfs * sizeof(ThreadMutex *));
-	for( i = 0; i < numSurfs; i++)
-		ThreadMutexInit( &alphaFixMutex[ i ] );
 
-	/* iterate crossing drawsurfaces */
-	alphaFixEntity = e;
-	numAlphaFixedVerts = 0;
-	RunThreadsOnIndividual(numSurfs, showpacifier, FixDrawsurfVertexAlpha);
+	/* world is multithreaded */
+	if (e == entities)
+	{
+		/* init mutexes */
+		alphaFixMutex = (ThreadMutex *)safe_malloc(numSurfs * sizeof(ThreadMutex));
+		memset(alphaFixMutex, 0, numSurfs * sizeof(ThreadMutex));
+		for( i = 0; i < numSurfs; i++)
+			ThreadMutexInit( &alphaFixMutex[ i ] );
 
-	/* delete mutexes */
-	for( i = 0; i < numSurfs; i++)
-		ThreadMutexDelete( &alphaFixMutex[ i ] );
-	free( alphaFixMutex );
+		/* iterate crossing drawsurfaces */
+		alphaFixEntity = e;
+		numAlphaFixedVerts = 0;
+		RunThreadsOnIndividual(numSurfs, showpacifier, FixDrawsurfVertexAlpha);
+
+		/* delete mutexes */
+		for( i = 0; i < numSurfs; i++)
+			ThreadMutexDelete( &alphaFixMutex[ i ] );
+		free( alphaFixMutex );
+	}
+	else
+	{
+		/* entities are single threaded (cos it spends more time creating threads) */
+		alphaFixEntity = e;
+		numAlphaFixedVerts = 0;
+		RunSameThreadOnIndividual(numSurfs, showpacifier, FixDrawsurfVertexAlpha);
+	}
 
 	/* emit stats */
 	Sys_FPrintf( SYS_VRB, "%9d vertexes fixed\n", numAlphaFixedVerts );

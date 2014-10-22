@@ -562,7 +562,6 @@ sets entities for decore groups
 */
 void LoadDecorationScript( void )
 {
-	int i;
 	decoreGroup_t *group;
 
 	/* file exists? */
@@ -757,18 +756,8 @@ void LoadDecorationScript( void )
 		}
 	}
 
-	/* find all map entities */
-	numDecoreEntities = 0;
-	RunThreadsOnIndividual(numEntities, verbose ? qtrue : qfalse, EntityPopulateDecorationGroups);
-
 	/* emit some stats */
 	Sys_FPrintf( SYS_VRB, "%9i decoration groups\n", numDecoreGroups );
-	for (i = 0; i < numDecoreGroups; i++)
-	{
-		group = &decoreGroups[ i ];
-		if ( group->entities.numEntities )
-			Sys_FPrintf( SYS_VRB, "%9i entities in '%s'\n", group->entities.numEntities, group->name);
-	}
 }
 
 /*
@@ -884,6 +873,36 @@ void DebugMergeModels(decoreGroup_t *group, decoreNode_t *dstnodes, int numSrcNo
 	Sys_Printf( "################################################\n" );
 }
 #endif
+
+/*
+ImportFoliage()
+import foliage models from _foliageX.reg files
+*/
+
+void ImportFoliage( char *source )
+{
+	char file[ MAX_OS_PATH ];
+	int startEntities;
+	int i;
+
+	/* note it */
+	Sys_FPrintf(SYS_VRB, "--- ImportFoliage ---\n" );
+
+	/* import */
+	startEntities = numEntities;
+	for (i = 1; i < 10; i++)
+	{
+		if (i < 2)
+			sprintf( file, "%s_foliage.reg", source );
+		else
+			sprintf( file, "%s_foliage%i.reg", source, i );
+		if( FileExists( file ) == qtrue ) 
+			LoadMapFile( file, qfalse, qtrue );
+	}
+
+	/* emit some stats */
+	Sys_FPrintf(SYS_VRB, "%9d entities imported\n", numEntities - startEntities );
+}
 
 /*
 ImportRtlights()
@@ -1044,7 +1063,7 @@ void ImportRtlights( void )
 	free(lightsstring);
 
 	/* emit some stats */
-	Sys_FPrintf(SYS_VRB, " %6i lights imported\n", numimported );
+	Sys_FPrintf(SYS_VRB, "%9d lights imported\n", numimported );
 	
 	// flags for rtlight rendering
 	#undef DARKPLACES_LIGHTFLAG_NORMALMODE
@@ -1111,7 +1130,7 @@ void ProcessDecorationGroup(int groupNum)
 	}
 
 	/* process merging */
-	if( group->mergeModels )
+	if( group->mergeModels  )
 	{
 		decoreNode_t *dst, *mergenode, *dstnodes, *testnode;
 		decoreEnts_t *src, basenode, shufflednode;
@@ -1129,18 +1148,27 @@ void ProcessDecorationGroup(int groupNum)
 		EntityArrayCopy(&group->entities, &basenode);
 		dstnodes = NewNodesArray( numDecoreTestNodes );
 
-		/* exclude large models from merging */
-		if( group->mergeMaxSize )
+		/* exclude models from merging */
+		src = &basenode;
+		for ( i = 0; i < src->numEntities; i++ )
 		{
-			src = &basenode;
-			for ( i = 0; i < src->numEntities; i++ )
+			e = src->entities[ i ];
+
+			/* already excluded? */
+			if (e == NULL)
+				continue;
+
+			/* exclude models which was already targeted */
+			value = ValueForKey( e, "target" );	
+			if ( value != NULL && value[0] != 0 )
 			{
-				e = src->entities[ i ];
+				src->entities[ i ] = NULL;
+				continue;
+			}
 
-				/* already excluded? */
-				if (e == NULL)
-					continue;
-
+			/* exclude models which are too large */
+			if( group->mergeMaxSize )
+			{
 				/* get model name */
 				model = ValueForKey( e, "_model" );	
 				if( model[ 0 ] == '\0' )
@@ -1271,6 +1299,7 @@ void ProcessDecorationGroup(int groupNum)
 			e = CreateEntity( group->mergeClass );
 			EntityProcessActions( e, group->actions );
 			SetKeyValue( e, "targetname", str );
+			SetKeyValue( e, "_noflood", "1" ); // don't leak
 			e->forceSubmodel = qtrue;
 
 			/* target head node entity */
@@ -1304,6 +1333,33 @@ void ProcessDecorationGroup(int groupNum)
 }
 
 /*
+LoadDecorations()
+load up decoratino scripts
+*/
+
+void LoadDecorations( void )
+{
+	decoreGroups = NULL;
+	LoadDecorationScript();
+}
+
+/*
+ImportDecorations()
+import decoration entities in map
+*/
+
+void ImportDecorations( char *source )
+{
+	// import foliage
+	if (nofoliage == qfalse)
+		ImportFoliage( source );
+	
+	// import rtlights
+	if (importRtlights)
+		ImportRtlights();
+}
+
+/*
 ProcessDecorations()
 does all decoration job
 */
@@ -1313,11 +1369,20 @@ void ProcessDecorations( void )
 	int	i, f, fOld, start;
 	decoreGroup_t *group;
 
-	/* load decoration scripts */
-	decoreGroups = NULL;
-	LoadDecorationScript();
-	if (!decoreGroups)
+	/* early out */
+	if (!numDecoreGroups)
 		return;
+
+	/* find all map entities */
+	Sys_FPrintf (SYS_VRB, "--- FindDecorationGroups ---\n" );
+	numDecoreEntities = 0;
+	RunThreadsOnIndividual(numEntities, verbose ? qtrue : qfalse, EntityPopulateDecorationGroups);
+	for (i = 0; i < numDecoreGroups; i++)
+	{
+		group = &decoreGroups[ i ];
+		if ( group->entities.numEntities )
+			Sys_FPrintf( SYS_VRB, "%9i entities in '%s'\n", group->entities.numEntities, group->name);
+	}
 	
 	/* get number of test nodes */
 	numDecoreTestNodes = IntForKey( &entities[ 0 ], "_mergetests" );
@@ -1327,16 +1392,6 @@ void ProcessDecorations( void )
 		numDecoreTestNodes = MIN_DECORE_TESTNODES;
 	if( numDecoreTestNodes > MAX_DECORE_TESTNODES )
 		numDecoreTestNodes = MAX_DECORE_TESTNODES;
-
-	/* init groups */
-	for ( i = 0; i < numDecoreGroups; i++ )
-	{
-		group = &decoreGroups[ i ];
-
-		/* model merging requires at least 2 ents */
-		if ( decoreGroups[ i ].entities.numEntities < 2 )
-			decoreGroups[ i ].mergeModels = 0;
-	}
 
 	/* walk all groups and entities */
 	Sys_FPrintf (SYS_VRB, "--- ProcessDecorations ---\n" );
@@ -1364,14 +1419,11 @@ void ProcessDecorations( void )
 		group = &decoreGroups[ i ];
 		if ( group->mergeModels )
 			Sys_FPrintf( SYS_VRB, "%9i models merged to %i in '%s'\n", group->entities.numEntities, group->mergeModels, group->name );
+
 		// free group-allocated stuff
 		FreeDecoreGroup ( group );
 	}
 	free( decoreGroups );
 	numDecoreGroups = 0;
 	Sys_FPrintf( SYS_VRB, "%9i large models pushed to worldspawn\n", numDecoreEntitiesPushedToWorldspawn );
-	
-	/* import rtlights */
-	if (importRtlights)
-		ImportRtlights();
 }

@@ -147,10 +147,13 @@ void PicoSetPrintFunc( void (*func)( int, const char* ) )
 }
 
 
-
-picoModel_t	*PicoModuleLoadModel( const picoModule_t* pm, char* fileName, picoByte_t* buffer, int bufSize, int frameNum )
+int PicoModuleLoadModel( const picoModule_t* pm, char* fileName, picoByte_t* buffer, int bufSize, int frameNum, picoModel_t **outmodel )
 {
-	char				*modelFileName, *remapFileName;
+	char *modelFileName, *remapFileName;
+
+	/* module must be able to load */
+	if( pm->canload == NULL || pm->load == NULL )
+		return 0;
 
 	/* see whether this module can load the model file or not */
 	if( pm->canload( fileName, buffer, bufSize ) == PICO_PMV_OK )
@@ -158,11 +161,8 @@ picoModel_t	*PicoModuleLoadModel( const picoModule_t* pm, char* fileName, picoBy
 		/* use loader provided by module to read the model data */
 		picoModel_t* model = pm->load( fileName, frameNum, buffer, bufSize );
 		if( model == NULL )
-		{
-			_pico_free_file( buffer );
-			return NULL;
-		}
-		
+			return 1;
+
 		/* assign pointer to file format module */
 		model->module = pm;
 		
@@ -188,10 +188,12 @@ picoModel_t	*PicoModuleLoadModel( const picoModule_t* pm, char* fileName, picoBy
 			}
 		}
 
-		return model;
+		*outmodel = model;
+		return 1;
 	}
 
-	return NULL;
+	/* not accepted */
+	return 0;
 }
 
 /*
@@ -201,15 +203,11 @@ the meat and potatoes function
 
 picoModel_t	*PicoLoadModel( char *fileName, int frameNum )
 {
-	const picoModule_t	**modules, *pm;
-	picoModel_t			*model;
-	picoByte_t			*buffer;
-	int					bufSize;
+	const picoModule_t **modules;
+	picoModel_t *model = NULL;
+	picoByte_t *buffer;
+	int bufSize;
 
-	
-	/* init */
-	model = NULL;
-	
 	/* make sure we've got a file name */
 	if( fileName == NULL )
 	{
@@ -230,34 +228,21 @@ picoModel_t	*PicoLoadModel( char *fileName, int frameNum )
 	
 	/* run it through the various loader functions and try */
 	/* to find a loader that fits the given file data */
+	/* break if module accepted file */
 	for( ; *modules != NULL; modules++ )
-	{
-		/* get module */
-		pm = *modules;
-		
-		/* sanity check */
-		if( pm == NULL)
+		if ( PicoModuleLoadModel(*modules, fileName, buffer, bufSize, frameNum, &model) )
 			break;
 
-		/* module must be able to load */
-		if( pm->canload == NULL || pm->load == NULL )
-			continue;
-	
-		model = PicoModuleLoadModel(pm, fileName, buffer, bufSize, frameNum);
-		if(model != NULL)
-		{
-			/* model was loaded, so break out of loop */
-			break;
-		}
-	}
-
-	/* vortex: load up skin files */
-	if(model != NULL)
+	/* load up external files */
+	if (model != NULL)
 		PicoLoadSkinFiles( fileName, model );
-	
+	else if (*modules == NULL)
+		_pico_printf( PICO_ERROR, "PicoLoadModel: Failed to load model %s - file are either malformed or not supported\n", fileName, frameNum );
+	else
+		_pico_printf( PICO_ERROR, "PicoLoadModel: Failed loading model %s frame %i - an error occured during loading\n", fileName, frameNum );
+
 	/* free memory used by file buffer */
-	if( buffer)
-		_pico_free_file( buffer );
+	_pico_free_file( buffer );
 
 	/* return */
 	return model;
@@ -269,7 +254,6 @@ picoModel_t	*PicoModuleLoadModelStream( const picoModule_t* module, void* inputS
 	picoByte_t			*buffer;
 	int					bufSize;
 
-	
 	/* init */
 	model = NULL;
 	
@@ -278,7 +262,6 @@ picoModel_t	*PicoModuleLoadModelStream( const picoModule_t* module, void* inputS
 		_pico_printf( PICO_ERROR, "PicoLoadModel: invalid input stream (inputStream == NULL)" );
 		return NULL;
 	}
-	
 	if( inputStreamRead == NULL )
 	{
 		_pico_printf( PICO_ERROR, "PicoLoadModel: invalid input stream (inputStreamRead == NULL)" );
@@ -286,23 +269,19 @@ picoModel_t	*PicoModuleLoadModelStream( const picoModule_t* module, void* inputS
 	}
 	
 	buffer = _pico_alloc(streamLength + 1);
-
 	bufSize = (int)inputStreamRead(inputStream, buffer, streamLength);
 	buffer[bufSize] = '\0';
-
 	{
 		// dummy filename
 		char fileName[128];
 		fileName[0] = '.';
 		strncpy(fileName + 1, module->defaultExts[0], 126);
 		fileName[127] = '\0';
-		model = PicoModuleLoadModel(module, fileName, buffer, bufSize, frameNum);
+		PicoModuleLoadModel(module, fileName, buffer, bufSize, frameNum, &model);
 	}
 	
-  if(model != 0)
-  {
-	  _pico_free(buffer);
-  }
+	/* free buffer */
+	_pico_free(buffer);
 
 	/* return */
 	return model;

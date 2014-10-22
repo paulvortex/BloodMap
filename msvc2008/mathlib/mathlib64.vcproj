@@ -294,6 +294,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\..\..\src\libs\mathlib.h"
+				>
+			</File>
+			<File
 				RelativePath=".\..\..\src\libs\mathlib\ray.c"
 				>
 				<FileConfiguration
@@ -324,10 +328,6 @@
 			Name="Header Files"
 			Filter="h;hpp;hxx;hm;inl"
 			>
-			<File
-				RelativePath=".\..\..\src\libs\mathlib.h"
-				>
-			</File>
 		</Filter>
 	</Files>
 	<Globals>

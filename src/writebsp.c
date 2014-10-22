@@ -604,6 +604,13 @@ void BeginModel( void )
 		VectorCopy( mins, mod->mins );
 		VectorCopy( maxs, mod->maxs );
 	}
+
+	/* bound lightgrid by region */
+	if ( mapRegion == qtrue )
+	{
+		VectorCopy( mapRegionMins, lgMins );
+		VectorCopy( mapRegionMaxs, lgMaxs );
+	}
 	
 	/* note size */
 	Sys_FPrintf( SYS_VRB, "BSP bounds: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ] );
@@ -640,6 +647,7 @@ void EndModel( entity_t *e, node_t *headnode )
 	        mod->maxs[i] = 0;
 		}
 	}
+
 	if (!mod->mins[0] && !mod->mins[1] && !mod->mins[2] && !mod->maxs[0] && !mod->maxs[1] && !mod->maxs[2])
 		Sys_Printf( "WARNING: submodel %i has null min/max!\n", numBSPModels );
 

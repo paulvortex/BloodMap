@@ -229,170 +229,51 @@ qboolean BoundBrush( brush_t *brush )
 	return qtrue;
 }
 
-
-
-
-/*
-SnapWeldVector() - ydnar
-welds two vec3_t's into a third, taking into account nearest-to-integer
-instead of averaging
-*/
-
-#define SNAP_EPSILON	0.01
-
-void SnapWeldVector( vec3_t a, vec3_t b, vec3_t out )
-{
-	int		i;
-	vec_t	ai, bi, outi;
-	
-	
-	/* dummy check */
-	if( a == NULL || b == NULL || out == NULL )
-		return;
-	
-	/* do each element */
-	for( i = 0; i < 3; i++ )
-	{
-		/* round to integer */
-		ai = Q_rint( a[ i ] );
-		bi = Q_rint( a[ i ] );
-		
-		/* prefer exact integer */
-		if( ai == a[ i ] )
-			out[ i ] = a[ i ];
-		else if( bi == b[ i ] )
-			out[ i ] = b[ i ];
-
-		/* use nearest */
-		else if( fabs( (float)(ai - a[ i ]) ) < fabs( (float)(bi < b[ i ]) ) )
-			out[ i ] = a[ i ];
-		else
-			out[ i ] = b[ i ];
-		
-		/* snap */
-		outi = Q_rint( out[ i ] );
-		if( fabs( outi - out[ i ] ) <= SNAP_EPSILON )
-			out[ i ] = outi;
-	}
-}
-
-
-
-/*
-FixWinding() - ydnar
-removes degenerate edges from a winding
-returns qtrue if the winding is valid
-*/
-
-#define DEGENERATE_EPSILON	0.1
-
-qboolean FixWinding( winding_t *w )
-{
-	qboolean	valid = qtrue;
-	int			i, j, k;
-	vec3_t		vec;
-	float		dist;
-	
-	
-	/* dummy check */
-	if( !w )
-		return qfalse;
-	
-	/* check all verts */
-	for( i = 0; i < w->numpoints; i++ )
-	{
-		/* don't remove points if winding is a triangle */
-		if( w->numpoints == 3 )
-			return valid;
-		
-		/* get second point index */
-		j = (i + 1) % w->numpoints;
-		
-		/* degenerate edge? */
-		VectorSubtract( w->p[ i ], w->p[ j ], vec );
-		dist = VectorLength( vec );
-		if( dist < DEGENERATE_EPSILON )
-		{
-			valid = qfalse;
-			//Sys_FPrintf( SYS_VRB, "WARNING: Degenerate winding edge found, fixing...\n" );
-			
-			/* create an average point (ydnar 2002-01-26: using nearest-integer weld preference) */
-			SnapWeldVector( w->p[ i ], w->p[ j ], vec );
-			VectorCopy( vec, w->p[ i ] );
-			//VectorAdd( w->p[ i ], w->p[ j ], vec );
-			//VectorScale( vec, 0.5, w->p[ i ] );
-			
-			/* move the remaining verts */
-			for( k = i + 2; k < w->numpoints; k++ )
-			{
-				VectorCopy( w->p[ k ], w->p[ k - 1 ] );
-			}
-			w->numpoints--;
-		}
-	}
-	
-	/* one last check and return */
-	if( w->numpoints < 3 )
-		valid = qfalse;
-	return valid;
-}
-
-
-
-
-
-
-
-/*
-CreateBrushWindings()
-makes basewindigs for sides and mins/maxs for the brush
-returns false if the brush doesn't enclose a valid volume
-*/
-
 qboolean CreateBrushWindings( brush_t *brush )
 {
-	int			i, j;
-	winding_t	*w;
-	side_t		*side;
-	plane_t		*plane;
-	
-	
+	dwinding_t	*dw;
+	side_t *side;
+	plane_t *plane;
+	int i, j;
+
 	/* walk the list of brush sides */
 	for( i = 0; i < brush->numsides; i++ )
 	{
 		/* get side and plane */
 		side = &brush->sides[ i ];
 		plane = &mapplanes[ side->planenum ];
-		
-		/* make huge winding */
-		w = BaseWindingForPlane( plane->normal, plane->dist );
-		
+
+		/* make huge winding (double precision) */
+		dw = BaseDWindingForPlane( plane->normal, plane->dist, MAX_WORLD_COORD );
+
 		/* walk the list of brush sides */
-		for( j = 0; j < brush->numsides && w != NULL; j++ )
+		for( j = 0; j < brush->numsides && dw != NULL; j++ )
 		{
 			if( i == j )
 				continue;
 			if( brush->sides[ j ].planenum == (brush->sides[ i ].planenum ^ 1) )
-				continue;		/* back side clipaway */
+				continue; /* back side clipaway */
 			if( brush->sides[ j ].bevel )
 				continue;
 			plane = &mapplanes[ brush->sides[ j ].planenum ^ 1 ];
-			ChopWindingInPlace( &w, plane->normal, plane->dist, 0 ); // CLIP_EPSILON );
+			ChopDWindingInPlace( &dw, plane->normal, plane->dist, 0 );
 			
 			/* ydnar: fix broken windings that would generate trifans */
-			FixWinding( w );
+			FixDWinding( dw );
 		}
-		
+
 		/* set side winding */
-		side->winding = w;
+		side->winding = 0;
+		if ( dw != NULL )
+		{
+			side->winding = WindingFromDWinding( dw );
+			FreeDWinding( dw );
+		}
 	}
 	
 	/* find brush bounds */
 	return BoundBrush( brush );
 }
-
-
-
 
 /*
 ==================
@@ -401,25 +282,45 @@ BrushFromBounds
 Creates a new axial brush
 ==================
 */
-brush_t	*BrushFromBounds (vec3_t mins, vec3_t maxs)
+brush_t	*BrushFromBounds (float minx, float miny, float minz, float maxx, float maxy, float maxz, shaderInfo_t *si)
 {
-	brush_t		*b;
-	int			i;
-	vec3_t		normal;
-	vec_t		dist;
+	brush_t	*b;
+	vec3_t mins, maxs;
+	vec3_t normal;
+	vec_t dist;
+	int	i;
 
 	b = AllocBrush (6);
+	b->entityNum = mapEntityNum;
+	b->original = b;
+	b->contentShader = si;
+	b->compileFlags = si->compileFlags;
+	b->contentFlags = si->contentFlags;
+	b->opaque = qtrue;
+	b->detail = qfalse;
 	b->numsides = 6;
+	VectorSet(mins, minx, miny, minz);
+	VectorSet(maxs, maxx, maxy, maxz);
 	for (i=0 ; i<3 ; i++)
 	{
 		VectorClear (normal);
 		normal[i] = 1;
 		dist = maxs[i];
 		b->sides[i].planenum = FindFloatPlane (normal, dist, 1, (vec3_t*) &maxs );
+		b->sides[i].shaderInfo = si;
+		b->sides[i].surfaceFlags = si->surfaceFlags;
+		b->sides[i].contentFlags = si->contentFlags;
+		b->sides[i].compileFlags = si->compileFlags;
+		b->sides[i].value = si->value;
 
 		normal[i] = -1;
 		dist = -mins[i];
 		b->sides[3+i].planenum = FindFloatPlane (normal, dist, 1, (vec3_t*) &mins );
+		b->sides[3+i].shaderInfo = si;
+		b->sides[3+i].surfaceFlags = si->surfaceFlags;
+		b->sides[3+i].contentFlags = si->contentFlags;
+		b->sides[3+i].compileFlags = si->compileFlags;
+		b->sides[3+i].value = si->value;
 	}
 
 	CreateBrushWindings (b);
@@ -506,12 +407,13 @@ void WriteBSPBrushMap( char *name, brush_t *list )
 		for (i=0,s=list->sides ; i<list->numsides ; i++,s++)
 		{
 			w = BaseWindingForPlane (mapplanes[s->planenum].normal, mapplanes[s->planenum].dist);
-
 			fprintf (f,"( %i %i %i ) ", (int)w->p[0][0], (int)w->p[0][1], (int)w->p[0][2]);
 			fprintf (f,"( %i %i %i ) ", (int)w->p[1][0], (int)w->p[1][1], (int)w->p[1][2]);
 			fprintf (f,"( %i %i %i ) ", (int)w->p[2][0], (int)w->p[2][1], (int)w->p[2][2]);
-
-			fprintf (f, "notexture 0 0 0 1 1\n" );
+			if ( s->shaderInfo == NULL )
+				fprintf (f, "notexture 0 0 0 1 1 0 0 0\n" );
+			else
+				fprintf (f, "%s %i %i 0 1 1 0 0 0\n", s->shaderInfo->shader + 9, s->shaderInfo->shaderWidth, s->shaderInfo->shaderHeight );
 			FreeWinding (w);
 		}
 		fprintf (f, "}\n");
@@ -847,7 +749,7 @@ void SplitBrush( brush_t *brush, int planenum, brush_t **front, brush_t **back )
 	for (i=0 ; i<brush->numsides && w ; i++)
 	{
 		plane2 = &mapplanes[brush->sides[i].planenum ^ 1];
-		ChopWindingInPlace (&w, plane2->normal, plane2->dist, 0); // PLANESIDE_EPSILON);
+		ChopWindingInPlace (&w, plane2->normal, plane2->dist, 0);
 	}
 
 	if (!w || WindingIsTiny (w) )

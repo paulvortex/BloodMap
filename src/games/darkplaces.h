@@ -82,6 +82,7 @@ game_t struct
 		{ "lightgrid",		0,							0,							0,							0,							C_LIGHTGRID,				0 },
 		{ "antiportal",		0,							0,							0,							0,							C_ANTIPORTAL,				0 },
 		{ "skip",			0,							0,							0,							0,							C_SKIP,						0 },
+		{ "region",			0,							0,							0,							0,							C_REGION,					0 },
 		
 		
 		/* compiler */

@@ -40,14 +40,11 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 /* dependencies */
 #include "q3map2.h"
 
-
-
 #define Vector2Copy( a, b )		((b)[ 0 ] = (a)[ 0 ], (b)[ 1 ] = (a)[ 1 ])
 #define Vector4Copy( a, b )		((b)[ 0 ] = (a)[ 0 ], (b)[ 1 ] = (a)[ 1 ], (b)[ 2 ] = (a)[ 2 ], (b)[ 3 ] = (a)[ 3 ])
 
-#define MAX_NODE_ITEMS			5
-#define MAX_NODE_TRIANGLES		5
-#define MAX_TRACE_DEPTH			32 // vortex: increased from 32
+#define MAX_NODE_TRIANGLES		2   // vortex: was 5
+#define MAX_TRACE_DEPTH			32  // vortex: increased from 32
 #define MIN_NODE_SIZE			32.0f
 
 #define GROW_TRACE_INFOS		32768		//%	4096
@@ -59,7 +56,7 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 //#define GROW_TW_VERTS			4
 #define MAX_TW_VERTS			12
 
-#define	TRACE_ON_EPSILON		0.1f
+#define	TRACE_ON_EPSILON		0.0f
 
 #define TRACE_LEAF				-1
 #define TRACE_LEAF_SOLID		-2
@@ -75,6 +72,7 @@ typedef struct traceInfo_s
 {
 	shaderInfo_t				*si;
 	int							surfaceNum;
+	int                         entityNum;
 	int							castShadows;
 }
 traceInfo_t;
@@ -151,6 +149,7 @@ static int AddTraceInfo( traceInfo_t *ti )
 	{
 		if( traceInfos[ num ].si == ti->si &&
 			traceInfos[ num ].surfaceNum == ti->surfaceNum &&
+			traceInfos[ num ].entityNum == ti->entityNum &&
 			traceInfos[ num ].castShadows == ti->castShadows )
 			return num;
 	}
@@ -737,10 +736,8 @@ static void SubdivideTraceNode_r( int nodeNum, int depth )
 	}
 	
 	/* check triangle limit */
-	//%	if( node->numItems <= MAX_NODE_ITEMS )
 	if( (count - (node->numItems * 2)) < MAX_NODE_TRIANGLES )
 	{
-		//%	Sys_Printf( "Limit: (%d triangles)\n", (count - (node->numItems * 2)) );
 		numTraceLeafNodes++;
 		return;
 	}
@@ -757,7 +754,6 @@ static void SubdivideTraceNode_r( int nodeNum, int depth )
 	/* don't split small nodes */
 	if( size[ type ] <= MIN_NODE_SIZE )
 	{
-		//%	Sys_Printf( "Limit: %f %f %f (%d items)\n", size[ 0 ], size[ 1 ], size[ 2 ], node->numItems );
 		numTraceLeafNodes++;
 		return;
 	}
@@ -974,10 +970,12 @@ static void PopulateWithBSPModel( bspModel_t *model, m4x4_t transform )
 		info = &surfaceInfos[ model->firstBSPSurface + i ];
 		if( info->si == NULL )
 			continue;
-		
+
 		/* no shadows */
+		/* vortex: disabled
 		if( !info->castShadows )
 			continue;
+		*/
 		
 		/* patchshadows? */
 		if( ds->surfaceType == MST_PATCH && patchShadows == qfalse )
@@ -999,8 +997,9 @@ static void PopulateWithBSPModel( bspModel_t *model, m4x4_t transform )
 		/* setup trace info */
 		ti.si = info->si;
 		ti.castShadows = info->castShadows;
-		ti.surfaceNum = model->firstBSPBrush + i;
-		
+		ti.surfaceNum = model->firstBSPSurface + i; // vortex: fixed: was (model->firstBSPBrush + i)
+		ti.entityNum = GetSurfaceExtraEntityNum( ti.surfaceNum );
+
 		/* choose which node (normal or skybox) */
 		if( info->parentSurfaceNum >= 0 )
 		{
@@ -1113,8 +1112,6 @@ static void PopulateWithBSPModel( bspModel_t *model, m4x4_t transform )
 	}
 }
 
-
-
 /*
 PopulateWithPicoModel() - ydnar
 filters a picomodel's surfaces into the raytracing tree
@@ -1132,6 +1129,12 @@ static void PopulateWithPicoModel( char castShadows, picoModel_t *model, m4x4_t 
 	/* dummy check */
 	if( model == NULL || transform == NULL )
 		return;
+
+	/* no shadows */
+	/* vortex: disabled
+	if ( castShadows == 0 )
+		return;
+	*/
 	
 	/* get info */
 	numSurfaces = PicoGetModelNumSurfaces( model );
@@ -1165,6 +1168,7 @@ static void PopulateWithPicoModel( char castShadows, picoModel_t *model, m4x4_t 
 		/* setup trace info */
 		ti.castShadows = castShadows;
 		ti.surfaceNum = -1;
+		ti.entityNum = -1;
 		
 		/* setup trace winding */
 		memset( &tw, 0, sizeof( tw ) );
@@ -1209,7 +1213,6 @@ static void PopulateTraceNodes( void )
 	vec3_t			origin, scale, angles;
 	m4x4_t			transform;
 
-	
 	/* add worldspawn triangles */
 	m4x4_identity( transform );
 	PopulateWithBSPModel( &bspModels[ 0 ], transform );
@@ -1221,12 +1224,7 @@ static void PopulateTraceNodes( void )
 		e = &entities[ i ];
 		
 		/* get shadow flags */
-		castShadows = ENTITY_CAST_SHADOWS;
-		GetEntityShadowFlags( e, NULL, &castShadows, NULL );
-		
-		/* early out? */
-		if( !castShadows )
-			continue;
+		GetEntityShadowFlags( e, NULL, &castShadows, NULL, qfalse );
 		
 		/* get entity origin */
 		GetVectorForKey( e, "origin", origin );
@@ -1459,43 +1457,49 @@ qboolean TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace )
 	float			shadow;
 	shaderInfo_t	*si;
 	
-	
 	/* don't double-trace against sky */
 	si = ti->si;
 	if( trace->compileFlags & si->compileFlags & C_SKY )
 		return qfalse;
-	
-	/* vortex: added ignoreShadowGroups */
-	if (trace->testShadowGroups)
+
+	/* _rs = 1 */
+	/* receive shadows from worldspawn group only */
+	if( trace->recvShadows == 1 )
 	{
-		/* _rs = 1 */
-		/* receive shadows from worldspawn group only */
-		if( trace->recvShadows == 1 )
+		if( ti->castShadows != 1 )
 		{
-			if( ti->castShadows != 1 )
-				return qfalse;
-		}
-		
-		/* _rs > 1 */
-		/* receive shadows from same group and worldspawn group */
-		else if( trace->recvShadows > 1 )
-		{
-			/* _cs != 1 and abs(_cs) should match */
-			if( ti->castShadows != 1 && abs( ti->castShadows ) != abs( trace->recvShadows ) )
-				return qfalse;
-			//%	Sys_Printf( "%d:%d ", tt->castShadows, trace->recvShadows );
-		}
-		
-		/* rs <= 1 */
-		/* receive shadows from the same group only (< 0) */
-		else
-		{
-			/* abs (_cs) should match */
-			if( abs( ti->castShadows ) != abs( trace->recvShadows ) )
-				return qfalse;
+			/* vortex: do self shadow for (_rs 1 _cs 0) */
+			if( ti->castShadows == 0 )
+			{
+				if (trace->forceSelfShadow == qtrue)
+					if( trace->entityNum == ti->entityNum )
+						goto skipShadowGroups;
+				for( i = 0; i < trace->numSurfaces; i++ )
+					if( ti->surfaceNum == trace->surfaces[ i ] )
+						goto skipShadowGroups;
+			}
+			return qfalse;
 		}
 	}
-	
+	/* _rs > 1 */
+	/* receive shadows from same group and worldspawn group */
+	else if( trace->recvShadows > 1 )
+	{
+		/* _cs != 1 and abs(_cs) should match */
+		if( ti->castShadows != 1 && abs( ti->castShadows ) != abs( trace->recvShadows ) )
+			return qfalse;
+		//%	Sys_Printf( "%d:%d ", tt->castShadows, trace->recvShadows );
+	}
+	/* rs <= 1 */
+	/* receive shadows from the same group only (< 0) */
+	else
+	{
+		/* abs (_cs) should match */
+		if( abs( ti->castShadows ) != abs( trace->recvShadows ) )
+			return qfalse;
+	}
+skipShadowGroups:
+
 	/* begin calculating determinant - also used to calculate u parameter */
 	CrossProduct( trace->direction, tt->edge2, pvec );
 	
@@ -1533,10 +1537,8 @@ qboolean TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace )
 	{
 		/* don't self-shadow */
 		for( i = 0; i < trace->numSurfaces; i++ )
-		{
 			if( ti->surfaceNum == trace->surfaces[ i ] )
 				return qfalse;
-		}
 	}
 
 	/* check for occlusionBias */
@@ -1568,7 +1570,7 @@ qboolean TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace )
 	if( u < -ASLF_EPSILON || u > (1.0f + ASLF_EPSILON) ||
 		v < -ASLF_EPSILON || (u + v) > (1.0f + ASLF_EPSILON) )
 		return qfalse;
-	
+
 	/* calculate w parameter */
 	w = 1.0f - (u + v);
 	
@@ -1611,43 +1613,6 @@ qboolean TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace )
 	}
 	
 	/* continue tracing */
-	return qfalse;
-}
-
-
-
-/*
-TraceWinding() - ydnar
-temporary hack
-*/
-
-qboolean TraceWinding( traceWinding_t *tw, trace_t *trace )
-{
-	int				i;
-	traceTriangle_t	tt;
-	
-	
-	/* initial setup */
-	tt.infoNum = tw->infoNum;
-	tt.v[ 0 ] = tw->v[ 0 ];
-	
-	/* walk vertex list */
-	for( i = 1; i + 1 < tw->numVerts; i++ )
-	{
-		/* set verts */
-		tt.v[ 1 ] = tw->v[ i ];
-		tt.v[ 2 ] = tw->v[ i + 1 ];
-		
-		/* find vectors for two edges sharing the first vert */
-		VectorSubtract( tt.v[ 1 ].xyz, tt.v[ 0 ].xyz, tt.edge1 );
-		VectorSubtract( tt.v[ 2 ].xyz, tt.v[ 0 ].xyz, tt.edge2 );
-		
-		/* trace it */
-		if( TraceTriangle( &traceInfos[ tt.infoNum ], &tt, trace ) )
-			return qtrue;
-	}
-	
-	/* done */
 	return qfalse;
 }
 
@@ -1806,8 +1771,6 @@ void TraceLine( trace_t *trace )
 			ti = &traceInfos[ tt->infoNum ];
 			if( TraceTriangle( ti, tt, trace ) )
 				return;
-			//%	if( TraceWinding( &traceWindings[ node->items[ j ] ], trace ) )
-			//%		return;
 		}
 	}
 }

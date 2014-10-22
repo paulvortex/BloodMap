@@ -25,14 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // mathlib.h
 #include <math.h>
 
-#ifdef __cplusplus
-
-// start declarations of functions defined in C library.
-extern "C"
-{
-
-#endif
-
 #include "bytebool.h"
 
 typedef float vec_t;
@@ -99,6 +91,7 @@ void VectorPolar(vec3_t v, float radius, float theta, float phi);
 void VectorSnap( vec3_t v );
 void VectorISnap( vec3_t point, int snap );
 void VectorFSnap( vec3_t point, float snap );
+void SnapWeldVector( vec3_t a, vec3_t b, vec3_t out );
 
 // NOTE: added these from Ritual's Q3Radiant
 void ClearBounds( vec3_t mins, vec3_t maxs );
@@ -121,6 +114,7 @@ void VectorRotate (vec3_t vIn, vec3_t vRotation, vec3_t out);
 void VectorRotateOrigin (vec3_t vIn, vec3_t vRotation, vec3_t vOrigin, vec3_t out);
 
 // some function merged from tools mathlib code
+qboolean NormalFromPoints( vec3_t normal, const vec3_t a, const vec3_t b, const vec3_t c );
 qboolean PlaneFromPoints( vec4_t plane, const vec3_t a, const vec3_t b, const vec3_t c );
 void NormalToLatLong( const vec3_t normal, byte bytes[2] );
 int	PlaneTypeForNormal (vec3_t normal);
@@ -406,12 +400,25 @@ vec_t ray_intersect_triangle(const ray_t* ray, qboolean bCullBack, const vec3_t 
 /*! distance from ray origin in ray direction to plane. */
 vec_t ray_intersect_plane(const ray_t* ray, const vec3_t normal, vec_t dist);
 
-
 int plane_intersect_planes(const vec4_t plane1, const vec4_t plane2, const vec4_t plane3, vec3_t intersection);
 
+/*
+================================================================================
 
-#ifdef __cplusplus
-}
-#endif
+ DOUBLE PRECISION STUFF
+
+================================================================================
+*/
+
+typedef double	dvec_t;
+typedef dvec_t	dvec3_t[ 3 ];
+dvec_t DVectorNormalize( dvec3_t in, dvec3_t out );
+void DVectorMA( const dvec3_t va, dvec_t scale, const dvec3_t vb, dvec3_t vc );
+dvec_t DVectorLength( const dvec3_t v );
+void SnapWeldDVector( dvec3_t a, dvec3_t b, dvec3_t out );
+#define Vector1ToDouble(a,b) b =(dvec_t)(a)
+#define Vector3ToDouble(a,b) ((b)[0]=(dvec_t)((a)[0]),(b)[1]=(dvec_t)((a)[1]),(b)[2]=(dvec_t)((a)[2]))
+#define DVector1ToSingle(a,b) b =(vec_t)(a)
+#define DVector3ToSingle(a,b) ((b)[0]=(vec_t)((a)[0]),(b)[1]=(vec_t)((a)[1]),(b)[2]=(vec_t)((a)[2]))
 
 #endif /* __MATHLIB__ */

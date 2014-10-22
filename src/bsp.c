@@ -172,7 +172,182 @@ static void FixBrushSides( entity_t *e )
 	}
 }
 
+/*
+StitchBrushFaces() - vortex
+performs a bugfixing of brush faces
+*/
 
+#define STITCH_DISTANCE         0.1f    /* lower than min grid */
+#define STITCH_NORMAL_EPSILON   0.1f    /* if triangle normal is changed above this, vertex is rolled back */
+#define STITCH_MAX_TRIANGLES    64      /* max triangles formed from a stiched vertex to be checked */
+//#define STITCH_USE_TRIANGLE_NORMAL_CHECK
+
+static void StitchBrushFaces( entity_t *e )
+{
+	mapDrawSurface_t *ds, *ds2;
+	shaderInfo_t *si;
+	bspDrawVert_t *dv, *dv2;
+	vec3_t mins, maxs, sub;
+	int i, j, k, m, best;
+	int numVertsStitched = 0, numSurfacesStitched = 0;
+	double dist, bestdist;
+	qboolean stitched, trystitch;
+
+#ifdef STITCH_USE_TRIANGLE_NORMAL_CHECK
+	qboolean stripped, n;
+	vec3_t normal, normals[STITCH_MAX_TRIANGLES];
+	int t, numTriangles, indexes[STITCH_MAX_TRIANGLES][3];
+#endif
+
+	/* note it */
+	Sys_FPrintf( SYS_VRB, "--- StitchBrushFaces ---\n" );
+
+	/* loop drawsurfaces */
+	for ( i = e->firstDrawSurf ; i < numMapDrawSurfs ; i++ )
+	{
+		/* get surface and early out if possible */
+		ds = &mapDrawSurfs[ i ];
+		si = ds->shaderInfo;
+		if( (si->compileFlags & C_NODRAW) || si->autosprite || ds->numVerts == 0 || ds->type != SURFACE_FACE )
+			continue;
+
+		/* get bounds, add little bevel */
+		VectorCopy(ds->mins, mins);
+		VectorCopy(ds->maxs, maxs);
+		mins[ 0 ] -= 4;
+		mins[ 1 ] -= 4;
+		mins[ 2 ] -= 4;
+		maxs[ 0 ] += 4;
+		maxs[ 1 ] += 4;
+		maxs[ 2 ] += 4;
+		
+		/* stitch with neighbour drawsurfaces */
+		stitched = qfalse;
+#ifdef STITCH_USE_TRIANGLE_NORMAL_CHECK
+		stripped = qfalse;
+#endif
+		for ( j = e->firstDrawSurf; j < numMapDrawSurfs ; j++ )
+		{
+			/* get surface */
+			ds2 = &mapDrawSurfs[ j ];
+
+			/* test bounds */
+			if( ds2->mins[ 0 ] > maxs[ 0 ] || ds2->maxs[ 0 ] < mins[ 0 ] ||
+				ds2->mins[ 1 ] > maxs[ 1 ] || ds2->maxs[ 1 ] < mins[ 1 ] ||
+				ds2->mins[ 2 ] > maxs[ 2 ] || ds2->maxs[ 2 ] < mins[ 2 ] )
+				continue;
+
+			/* loop verts */
+			for( k = 0; k < ds->numVerts; k++)
+			{
+				dv = &ds->verts[ k ];
+				trystitch = qfalse;
+
+				/* find candidate */
+				best = -1;
+				for( m = 0; m < ds2->numVerts; m++)
+				{
+					if( VectorCompareExt( ds2->verts[ m ].xyz, dv->xyz, STITCH_DISTANCE) == qfalse )
+						continue;
+
+					/* don't stitch if origins match completely */
+					dv2 = &ds2->verts[ m ];
+					if( dv2->xyz[ 0 ] == dv->xyz[ 0 ] && dv2->xyz[ 1 ] == dv->xyz[ 1 ] && dv2->xyz[ 2 ] == dv->xyz[ 2 ] )
+						continue;
+
+					/* get closest one */
+					VectorSubtract( dv2->xyz, dv->xyz, sub );
+					dist = VectorLength( sub );
+					if (best < 0 || dist < bestdist)
+					{
+						best = m;
+						bestdist = dist;
+					}
+				}
+
+				/* nothing found? */
+				if ( best < 0 )
+					continue;
+
+				/* before stitching, get a list of triangles formed by this vertex */ 
+#ifdef STITCH_USE_TRIANGLE_NORMAL_CHECK
+				if( trystitch == qfalse )
+				{
+					numTriangles = 0;
+					if ( stripped == qfalse )
+					{
+						StripFaceSurface( ds, qtrue );
+						stripped = qtrue;
+					}
+					for (t = 0; t < ds->numIndexes; t += 3)
+					{
+						if( ds->indexes[ t ] == k || ds->indexes[ t + 1 ] == k || ds->indexes[ t + 2 ] == k )
+						{
+							indexes[ numTriangles ][ 0 ] = ds->indexes[ t ];
+							indexes[ numTriangles ][ 1 ] = ds->indexes[ t + 1 ];
+							indexes[ numTriangles ][ 2 ] = ds->indexes[ t + 2 ];
+							NormalFromPoints( normals[ numTriangles ], ds->verts[ ds->indexes[ t ] ].xyz, ds->verts[ ds->indexes[ t + 1 ] ].xyz, ds->verts[ ds->indexes[ t + 2 ] ].xyz);
+							numTriangles++;
+							if (numTriangles == STITCH_MAX_TRIANGLES)
+								break;
+						}
+					}
+					trystitch = qtrue;
+				}
+#endif
+
+				/* stitch */
+				VectorCopy( dv->xyz, sub );
+				VectorCopy( ds2->verts[ best ].xyz, dv->xyz );
+
+#ifdef STITCH_USE_TRIANGLE_NORMAL_CHECK
+				/* make sure all triangles don't get their normals perverted */
+				for (t = 0; t < numTriangles; t++)
+				{
+					/* construct new normal */
+					n = NormalFromPoints( normal, ds->verts[ indexes[ t ][ 0 ] ].xyz, ds->verts[ indexes[ t ][ 1 ] ].xyz, ds->verts[ indexes[ t ][ 2 ] ].xyz);
+
+					/* compare, roll back if normal get perverted */
+					if( !n || VectorCompareExt( normals[ t ], normal, STITCH_NORMAL_EPSILON) == qfalse )
+					{
+						VectorCopy( sub, dv->xyz );
+						break;
+					}
+				}
+
+				/* done */
+				if (t == numTriangles)
+				{
+					numVertsStitched++;
+					stitched = qtrue;
+				}
+#else
+				numVertsStitched++;
+				stitched = qtrue;
+#endif
+			}
+		}
+
+#ifdef STITCH_USE_TRIANGLE_NORMAL_CHECK
+		/* clean up after StripFaceSurface */
+		if( stripped )
+		{
+			ds->numIndexes = 0;
+			if ( ds->indexes != NULL )
+				free( ds->indexes );
+			ds->indexes = NULL;
+		}
+#endif
+
+		/* add to stats */
+		if( stitched )
+			numSurfacesStitched++;
+	}
+
+	/* emit some statistics */
+	Sys_FPrintf( SYS_VRB, "%9d verts stitched\n", numVertsStitched );
+	Sys_FPrintf( SYS_VRB, "%9d surfaces stitched\n", numSurfacesStitched );
+}
 
 /*
 ProcessWorldModel()
@@ -293,7 +468,7 @@ void ProcessWorldModel( void )
 	FloodAreas( tree );
 	
 	/* create drawsurfs for triangle models */
-	AddTriangleModels( e );
+	AddTriangleModels( 0 );
 	
 	/* create drawsurfs for surface models */
 	AddEntitySurfaceModels( e );
@@ -311,11 +486,14 @@ void ProcessWorldModel( void )
 	/* subdivide each drawsurf as required by shader tesselation */
 	if( !nosubdivide )
 		SubdivideFaceSurfaces( e, tree );
+
+	/* vortex: fix degenerate brush faces */
+	StitchBrushFaces( e );
 	
 	/* add in any vertexes required to fix t-junctions */
 	if( !notjunc )
 		FixTJunctions( e );
-	
+
 	/* ydnar: classify the surfaces */
 	ClassifyEntitySurfaces( e );
 	
@@ -414,10 +592,12 @@ void ProcessSubModel( void )
 	tree_t		*tree;
 	brush_t		*b, *bc;
 	node_t		*node;
+	int         entityNum;
 	
 	/* start a brush model */
 	BeginModel();
-	e = &entities[ mapEntityNum ];
+	entityNum = mapEntityNum;
+	e = &entities[ entityNum ];
 	e->firstDrawSurf = numMapDrawSurfs;
 	
 	/* ydnar: gs mods */
@@ -436,7 +616,7 @@ void ProcessSubModel( void )
 	ClipSidesIntoTree( e, tree );
 	
 	/* ydnar: create drawsurfs for triangle models */
-	AddTriangleModels( e );
+	AddTriangleModels( entityNum );
 	
 	/* create drawsurfs for surface models */
 	AddEntitySurfaceModels( e );
@@ -455,6 +635,9 @@ void ProcessSubModel( void )
 	/* subdivide each drawsurf as required by shader tesselation */
 	if( !nosubdivide )
 		SubdivideFaceSurfaces( e, tree );
+	
+	/* vortex: fix degenerate brush faces */
+	StitchBrushFaces( e );
 	
 	/* add in any vertexes required to fix t-junctions */
 	if( !notjunc )
@@ -559,6 +742,278 @@ void ProcessModels( void )
 	EmitMetaStats();
 }
 
+/*
+RegionScissor()
+remove all stuff outside map region
+*/
+void RegionScissor( void )
+{
+	int k, entityNum, scissorEntity, c, frame;
+	int removedBrushes = 0, removedPatches = 0, removedModels = 0, removedEntities = 0, removedLights = 0;
+	const char *classname, *model, *value;
+	float temp, intensity;
+	m4x4_t transform;
+	entity_t *e;
+	brush_t *b, *bs, *bl, *nb;
+	parseMesh_t *p, *ps, *pl, *np;
+	vec3_t mins, maxs, origin, scale, angles, color;
+	picoModel_t *picomodel;
+	bspDrawVert_t *v;
+
+	/* early out */
+	if ( mapRegion == qfalse )
+		return;
+
+	/* note it */
+	Sys_FPrintf( SYS_VRB, "--- RegionScissor ---\n" );
+
+	/* scissor world brushes */
+	e = &entities[ 0 ];
+	bs = NULL;
+	for( b = e->brushes; b; b = nb )
+	{
+		nb = b->next;
+		if( b->mins[ 0 ] > mapRegionMaxs[ 0 ] || b->maxs[ 0 ] < mapRegionMins[ 0 ] ||
+			b->mins[ 1 ] > mapRegionMaxs[ 1 ] || b->maxs[ 1 ] < mapRegionMins[ 1 ] ||
+			b->mins[ 2 ] > mapRegionMaxs[ 2 ] || b->maxs[ 2 ] < mapRegionMins[ 2 ] )
+		{
+			// remove brush
+			b->next = NULL;
+			FreeBrush(b);
+			removedBrushes++;
+			continue;
+		}
+		// keep brush
+		if (bs == NULL)
+		{
+			bs = b;
+			bl = b;
+		}
+		else
+		{
+			bl->next = b;
+			b->next = NULL;
+			bl = b;
+		}
+	}
+	e->brushes = bs;
+
+	/* scissor world patches */
+	e = &entities[ 0 ];
+	ps = NULL;
+	for( p = e->patches; p; p = np )
+	{
+		np = p->next;
+		// calc patch bounds
+		ClearBounds( mins, maxs );
+		c = p->mesh.width * p->mesh.height;
+		v = p->mesh.verts;
+		for( k = 0; k < c; k++, v++ )
+			AddPointToBounds( v->xyz, mins, maxs );
+		if( mins[ 0 ] > mapRegionMaxs[ 0 ] || maxs[ 0 ] < mapRegionMins[ 0 ] ||
+			mins[ 1 ] > mapRegionMaxs[ 1 ] || maxs[ 1 ] < mapRegionMins[ 1 ] ||
+			mins[ 2 ] > mapRegionMaxs[ 2 ] || maxs[ 2 ] < mapRegionMins[ 2 ] )
+		{
+			// remove patch
+			// FIXME: leak
+			p->next = NULL;
+			removedPatches++;
+			continue;
+		}
+		// keep patch
+		if (ps == NULL)
+		{
+			ps = p;
+			pl = p;
+		}
+		else
+		{
+			pl->next = p;
+			p->next = NULL;
+			pl = p;
+		}
+	}
+	e->patches = ps;
+
+	/* scissor entities */
+	scissorEntity = 1;
+	for( entityNum = 1; entityNum < numEntities; entityNum++ )
+	{
+		e = &entities[ entityNum ];
+		classname = ValueForKey( e, "classname" );
+
+		/* scissor misc_models by model box */
+		if( !Q_stricmp( classname, "misc_model" ) || !Q_stricmp( classname, "misc_gamemodel" ) )
+		{
+			/* get model name */
+			model = ValueForKey( e, "_model" );	
+			if( model[ 0 ] == '\0' )
+				model = ValueForKey( e, "model" );
+			if( model[ 0 ] == '\0' )
+				goto scissorentity;
+					
+			/* get model frame */
+			frame = 0;
+			if( KeyExists(e, "frame" ) )
+				frame = IntForKey( e, "frame" );
+			if( KeyExists(e, "_frame" ) )
+				frame = IntForKey( e, "_frame" );
+
+			/* get origin */
+			GetVectorForKey( e, "origin", origin );
+
+			/* get scale */
+			scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = 1.0f;
+			temp = FloatForKey( e, "modelscale" );
+			if( temp != 0.0f )
+				scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = temp;
+			value = ValueForKey( e, "modelscale_vec" );
+			if( value[ 0 ] != '\0' )
+				sscanf( value, "%f %f %f", &scale[ 0 ], &scale[ 1 ], &scale[ 2 ] );
+
+			/* get "angle" (yaw) or "angles" (pitch yaw roll) */
+			angles[ 0 ] = angles[ 1 ] = angles[ 2 ] = 0.0f;
+			angles[ 2 ] = FloatForKey( e, "angle" );
+			value = ValueForKey( e, "angles" );
+			if( value[ 0 ] != '\0' )
+				sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] );
+
+			/* get model */
+			picomodel = LoadModel( model, frame );
+			if( picomodel == NULL )
+				goto scissorentity;
+			VectorCopy(picomodel->mins, mins);
+			VectorCopy(picomodel->maxs, maxs);
+
+			/* transform */
+			m4x4_identity( transform );
+			m4x4_pivoted_transform_by_vec3( transform, origin, angles, eXYZ, scale, vec3_origin );
+			m4x4_transform_point( transform, mins );
+			m4x4_transform_point( transform, maxs );
+
+			/* scissor */
+			if( mins[ 0 ] > mapRegionMaxs[ 0 ] || maxs[ 0 ] < mapRegionMins[ 0 ] ||
+				mins[ 1 ] > mapRegionMaxs[ 1 ] || maxs[ 1 ] < mapRegionMins[ 1 ] ||
+				mins[ 2 ] > mapRegionMaxs[ 2 ] || maxs[ 2 ] < mapRegionMins[ 2 ] )
+			{
+				removedEntities++;
+				removedModels++;
+				continue;
+			}
+			goto keepentity;
+		}
+
+		/* scissor bmodel entity */
+		if ( e->brushes || e->patches )
+		{
+			/* calculate entity bounds */
+			ClearBounds(mins, maxs);
+			for( b = e->brushes; b; b = b->next )
+			{
+				AddPointToBounds(b->mins, mins, maxs);
+				AddPointToBounds(b->maxs, mins, maxs);
+			}
+			for( p = e->patches; p; p = p->next )
+			{
+				c = p->mesh.width * p->mesh.height;
+				v = p->mesh.verts;
+				for( k = 0; k < c; k++, v++ )
+					AddPointToBounds( v->xyz, mins, maxs );
+			}
+
+			/* adjust by origin */
+			GetVectorForKey( e, "origin", origin );
+			VectorAdd(mins, origin, mins);
+			VectorAdd(maxs, origin, maxs);
+
+			/* scissor */
+			if( mins[ 0 ] > mapRegionMaxs[ 0 ] || maxs[ 0 ] < mapRegionMins[ 0 ] ||
+				mins[ 1 ] > mapRegionMaxs[ 1 ] || maxs[ 1 ] < mapRegionMins[ 1 ] ||
+				mins[ 2 ] > mapRegionMaxs[ 2 ] || maxs[ 2 ] < mapRegionMins[ 2 ] )
+			{
+				removedEntities++;
+				continue;
+			}
+
+			goto keepentity;
+		}
+
+		/* scissor lights by distance */
+		if( !Q_strncasecmp( classname, "light", 5 ) )
+		{
+			/* get origin */
+			GetVectorForKey( e, "origin", origin );
+
+			/* get intensity */
+			intensity = FloatForKey( e, "_light" );
+			if( intensity == 0.0f )
+				intensity = FloatForKey( e, "light" );
+			if( intensity == 0.0f)
+				intensity = 300.0f;
+
+			/* get light color */
+			color[ 0 ] = color[ 1 ] = color[ 2 ] = 1.0f;
+			value = ValueForKey( e, "_color" );
+			if( value && value[ 0 ] )
+				sscanf( value, "%f %f %f", &color[ 0 ], &color[ 1 ], &color[ 2 ] );
+
+			/* get distance */
+			temp = 0;
+			if (origin[ 0 ] > mapRegionMaxs[ 0 ])
+				temp = max(temp, origin[ 0 ] - mapRegionMaxs[ 0 ]);
+			if (origin[ 1 ] > mapRegionMaxs[ 1 ])
+				temp = max(temp, origin[ 1 ] - mapRegionMaxs[ 1 ]);
+			if (origin[ 2 ] > mapRegionMaxs[ 2 ])
+				temp = max(temp, origin[ 2 ] - mapRegionMaxs[ 2 ]);
+			if (origin[ 0 ] < mapRegionMins[ 0 ])
+				temp = max(temp, mapRegionMins[ 0 ] - origin[ 0 ]);
+			if (origin[ 1 ] < mapRegionMins[ 1 ])
+				temp = max(temp, mapRegionMins[ 1 ] - origin[ 1 ]);
+			if (origin[ 2 ] < mapRegionMins[ 2 ])
+				temp = max(temp, mapRegionMins[ 2 ] - origin[ 2 ]);
+
+			/* cull */
+			temp = intensity / ( temp * temp );
+			intensity = max(color[0] * temp, max(color[1] * temp, color[2] * temp));
+			if (intensity <= 0.002)
+			{
+				removedLights++;
+				removedEntities++;
+				continue;
+			}
+			goto keepentity;
+		}
+
+		/* scissor point entities by origin */
+scissorentity:
+		GetVectorForKey( e, "origin", origin );
+		if( VectorCompare( origin, vec3_origin ) == qfalse ) 
+		{
+			if( origin[ 0 ] > mapRegionMaxs[ 0 ] || origin[ 0 ] < mapRegionMins[ 0 ] ||
+				origin[ 1 ] > mapRegionMaxs[ 1 ] || origin[ 1 ] < mapRegionMins[ 1 ] ||
+				origin[ 2 ] > mapRegionMaxs[ 2 ] || origin[ 2 ] < mapRegionMins[ 2 ] )
+			{
+				removedEntities++;
+				continue;
+			}
+		}
+
+		/* entity is keeped */
+keepentity:
+		if (scissorEntity != entityNum)
+			memcpy(&entities[scissorEntity], &entities[entityNum], sizeof(entity_t));
+		scissorEntity++;
+	}
+	numEntities = scissorEntity;
+
+
+	/* emit some stats */
+	Sys_FPrintf( SYS_VRB, "%9d brushes removed\n", removedBrushes );
+	Sys_FPrintf( SYS_VRB, "%9d patches removed\n", removedPatches );
+	Sys_FPrintf( SYS_VRB, "%9d models removed\n", removedModels );
+	Sys_FPrintf( SYS_VRB, "%9d lights removed\n", removedLights );
+	Sys_FPrintf( SYS_VRB, "%9d entities removed\n", removedEntities );
+}
 
 /*
 BSPMain() - ydnar
@@ -567,8 +1022,8 @@ handles creation of a bsp from a map file
 
 int BSPMain( int argc, char **argv )
 {
-	int			i, j;
-	char		path[ MAX_OS_PATH ], tempSource[ MAX_OS_PATH ], foliageFile[ MAX_OS_PATH ];
+	int			i;
+	char		path[ MAX_OS_PATH ], tempSource[ MAX_OS_PATH ];
 
 	/* note it */
 	Sys_Printf( "--- BSP ---\n" );
@@ -680,6 +1135,11 @@ int BSPMain( int argc, char **argv )
 			Sys_Printf( "Disabling foliage\n" );
 			nofoliage = qtrue;
 		}
+		else if( !strcmp( argv[ i ],  "-nodecals" ) )
+		{
+			Sys_Printf( "Disabling decals\n" );
+			nodecals = qtrue;
+		}
 		else if( !strcmp( argv[ i ],  "-nofog" ) )
 		{
 			Sys_Printf( "Fog volumes disabled\n" );
@@ -707,8 +1167,13 @@ int BSPMain( int argc, char **argv )
 		}
 		else if( !strcmp( argv[ i ], "-notjunc" ) )
 		{
-			Sys_Printf( "T-junction fixing disabled\n" );
+			Sys_Printf( "Disabling T-junction fixing\n" );
 			notjunc = qtrue;
+		}
+		else if( !strcmp( argv[ i ], "-noclip" ) )
+		{
+			Sys_Printf( "Disabling face clipping by BSP tree\n" );
+			noclip = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-fakemap" ) )
 		{
@@ -717,16 +1182,21 @@ int BSPMain( int argc, char **argv )
 		}
 		else if( !strcmp( argv[ i ],  "-samplesize" ) )
  		{
-			sampleSize = atoi( argv[ i + 1 ] );
-			if( sampleSize < 1 )
-				sampleSize = 1;
+			sampleSize = atof( argv[ i + 1 ] );
+			if( sampleSize < MIN_LIGHTMAP_SAMPLE_SIZE )
+				sampleSize = MIN_LIGHTMAP_SAMPLE_SIZE;
  			i++;
-			Sys_Printf( "Lightmap sample size set to %dx%d units\n", sampleSize, sampleSize );
+			Sys_Printf( "Lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
  		}
 		else if( !strcmp( argv[ i ],  "-custinfoparms") )
 		{
 			Sys_Printf( "Custom info parms enabled\n" );
 			useCustomInfoParms = qtrue;
+		}
+		else if( !strcmp( argv[ i ],  "-entitysaveid") )
+		{
+			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			useEntitySaveId = qtrue;
 		}
 		/* sof2 args */
 		else if( !strcmp( argv[ i ], "-rename" ) )
@@ -864,7 +1334,7 @@ int BSPMain( int argc, char **argv )
 	/* ydnar: set default sample size */
 	SetDefaultSampleSize( sampleSize );
 	
-	/* delqete portal, line and surface files */
+	/* delete portal, line and surface files */
 	sprintf( path, "%s.prt", source );
 	remove( path );
 	sprintf( path, "%s.lin", source );
@@ -874,7 +1344,14 @@ int BSPMain( int argc, char **argv )
 	
 	/* expand mapname */
 	strcpy( name, ExpandArg( argv[ i ] ) );	
-	if( strcmp( name + strlen( name ) - 4, ".reg" ) )
+	if( !strcmp( name + strlen( name ) - 4, ".reg" ) )
+	{
+		/* building as region map */
+		mapRegion = qtrue;
+		mapRegionBrushes = qfalse; // disable region brushes
+		Sys_Printf( "Running region compile\n" );
+	}
+	else
 	{
 		/* if we are doing a full map, delete the last saved region map */
 		sprintf( path, "%s.reg", source );
@@ -891,19 +1368,20 @@ int BSPMain( int argc, char **argv )
 	else
 		LoadMapFile( name, qfalse, qfalse  );
 
-	/* load foliage files */
-	for (j = 1; j < 10 && nofoliage == qfalse; j++)
-	{
-		if (j < 2)
-			sprintf( foliageFile, "%s_foliage.reg", source );
-		else
-			sprintf( foliageFile, "%s_foliage%i.reg", source, j );
-		if( FileExists( foliageFile ) == qtrue ) 
-			LoadMapFile( foliageFile, qfalse, qtrue );
-	}
+	/* check map for errors */
+	CheckMapForErrors();
+
+	/* load up decorations */
+	LoadDecorations();
+
+	/* import decorations */
+	ImportDecorations( source );
 
 	/* vortex: preload triangle models */
 	LoadTriangleModels();
+
+	/* cull stuff for region */
+	RegionScissor();
 	
 	/* vortex: decorator */
 	ProcessDecorations();

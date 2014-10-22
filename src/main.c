@@ -529,6 +529,12 @@ int ConvertBSPMain( int argc, char **argv )
 			useCustomInfoParms = qtrue;
 			Sys_Printf( "Custom info parms enabled\n" );
 		}
+		/* -entitysaveid */
+		else if( !strcmp( argv[ i ],  "-entitysaveid") )
+		{
+			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			useEntitySaveId = qtrue;
+		}
 		/* -collapsebytexture */
 		else if( !strcmp( argv[ i ],  "-collapsebytexture" ) )
 		{
@@ -668,7 +674,7 @@ int main( int argc, char **argv )
 			argv[ i ] = NULL;
 		}
 
-		/* fake launch to make Radiant monitor happy */
+		/* vortex: fake launch to make Radiant monitor happy */
 		else if( !strcmp( argv[ i ], "-fake" ) )
 		{
 			/* shut down connection */
@@ -774,9 +780,6 @@ int main( int argc, char **argv )
 	/* emit time */
 	end = I_FloatTime();
 	Sys_Printf( "%9.0f seconds elapsed\n", end - start );
-
-	/* vortex: shut down diskcache system */
-	DiskCacheStats();
 
 	/* end memlog */
 	if (memlog)

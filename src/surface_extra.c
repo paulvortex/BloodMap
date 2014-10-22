@@ -51,14 +51,15 @@ typedef struct surfaceExtra_s
 	int						parentSurfaceNum;
 	int						entityNum;
 	char					castShadows, recvShadows;
-	int						sampleSize;
+	float					sampleSize;
 	float					longestCurve;
 	vec3_t					lightmapAxis;
 	float                   shadeAngle;
+	float                   lightmapStitch;
 }
 surfaceExtra_t;
 
-#define GROW_SURFACE_EXTRAS	1024
+#define GROW_SURFACE_EXTRAS	8192
 
 int							numSurfaceExtras = 0;
 int							maxSurfaceExtras = 0;
@@ -107,7 +108,7 @@ SetDefaultSampleSize()
 sets the default lightmap sample size
 */
 
-void SetDefaultSampleSize( int sampleSize )
+void SetDefaultSampleSize( float sampleSize )
 {
 	seDefault.sampleSize = sampleSize;
 }
@@ -141,6 +142,7 @@ void SetSurfaceExtra( mapDrawSurface_t *ds, int num )
 	se->sampleSize = ds->sampleSize;
 	se->longestCurve = ds->longestCurve;
 	se->shadeAngle = ds->smoothNormals;
+	se->lightmapStitch = ds->lightmapStitch;
 	VectorCopy( ds->lightmapAxis, se->lightmapAxis );
 	
 	/* debug code */
@@ -197,7 +199,7 @@ char GetSurfaceExtraRecvShadows( int num )
 }
 
 
-int GetSurfaceExtraSampleSize( int num )
+float GetSurfaceExtraSampleSize( int num )
 {
 	surfaceExtra_t	*se = GetSurfaceExtra( num );
 	return se->sampleSize;
@@ -223,7 +225,11 @@ float GetSurfaceExtraShadeAngle( int num )
 	return se->shadeAngle;
 }
 
-
+float GetSurfaceExtraLightmapStitch( int num )
+{
+	surfaceExtra_t	*se = GetSurfaceExtra( num );
+	return se->lightmapStitch;
+}
 
 /*
 WriteSurfaceExtraFile()
@@ -303,7 +309,7 @@ void WriteSurfaceExtraFile( const char *path )
 			
 			/* lightmap sample size */
 			if( se->sampleSize != seDefault.sampleSize || se == &seDefault )
-				fprintf( sf, "\tsampleSize %d\n", se->sampleSize );
+				fprintf( sf, "\tsampleSize %f\n", se->sampleSize );
 			
 			/* longest curve */
 			if( se->longestCurve != seDefault.longestCurve || se == &seDefault )
@@ -316,6 +322,10 @@ void WriteSurfaceExtraFile( const char *path )
 			/* normal smoothing */
 			if( se->shadeAngle != 0.0f )
 				fprintf( sf, "\tshadeAngle %f\n", se->shadeAngle );
+		
+			/* lightmap stitching */
+			if( se->lightmapStitch != 0.0f )
+				fprintf( sf, "\tlightmapStitch %f\n", se->lightmapStitch );
 		
 		/* close braces */
 		fprintf( sf, "}\n\n" );
@@ -430,7 +440,7 @@ void LoadSurfaceExtraFile( const char *path )
 			else if( !Q_stricmp( token, "sampleSize" ) )
 			{
 				GetToken( qfalse );
-				se->sampleSize = atoi( token );
+				se->sampleSize = atof( token );
 			}
 			
 			/* longest curve */
@@ -449,6 +459,13 @@ void LoadSurfaceExtraFile( const char *path )
 			{
 				GetToken( qfalse );
 				se->shadeAngle = atof( token );
+			}
+
+			/* lightmap stitching */
+			else if( !Q_stricmp( token, "lightmapStitch" ) )
+			{
+				GetToken( qfalse );
+				se->lightmapStitch = atof( token );
 			}
 
 			/* ignore all other tokens on the line */

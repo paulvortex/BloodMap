@@ -83,8 +83,6 @@ void PicoLoadFileFunc( char *name, byte **buffer, int *bufSize )
 	*bufSize = vfsLoadFile( (const char*) name, (void**) buffer, 0 );
 }
 
-
-
 /*
 FindModel() - ydnar
 finds an existing picoModel and returns a pointer to the picoModel_t struct or NULL if not found
@@ -92,8 +90,7 @@ finds an existing picoModel and returns a pointer to the picoModel_t struct or N
 
 picoModel_t *FindModel( const char *name, int frame )
 {
-	int			i;
-	
+	int	i;
 	
 	/* init */
 	if( numPicoModels <= 0 )
@@ -105,12 +102,8 @@ picoModel_t *FindModel( const char *name, int frame )
 	
 	/* search list */
 	for( i = 0; i < MAX_MODELS; i++ )
-	{
-		if( picoModels[ i ] != NULL &&
-			!strcmp( PicoGetModelName( picoModels[ i ] ), name ) &&
-			PicoGetModelFrameNum( picoModels[ i ] ) == frame )
+		if( picoModels[ i ] != NULL && !strcmp( PicoGetModelName( picoModels[ i ] ), name ) && PicoGetModelFrameNum( picoModels[ i ] ) == frame )
 			return picoModels[ i ];
-	}
 	
 	/* no matching picoModel found */
 	return NULL;
@@ -125,10 +118,9 @@ loads a picoModel and returns a pointer to the picoModel_t struct or NULL if not
 
 picoModel_t *LoadModel( const char *name, int frame )
 {
-	int				i;
-	picoModel_t		*model, **pm;
-	
-	
+	int	i;
+	picoModel_t	*model, **pm;
+
 	/* init */
 	if( numPicoModels <= 0 )
 		memset( picoModels, 0, sizeof( picoModels ) );
@@ -163,6 +155,8 @@ picoModel_t *LoadModel( const char *name, int frame )
 	/* if loading failed, make a bogus model to silence the rest of the warnings */
 	if( *pm == NULL )
 	{
+		Sys_Printf( "LoadModel: failed to load model %s frame %i. Fix your map!", name, frame );
+
 		/* allocate a new model */
 		*pm = PicoNewModel();
 		if( *pm == NULL )
@@ -227,7 +221,7 @@ InsertModel() - ydnar
 adds a picomodel into the bsp
 */
 
-void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes )
+void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, float lightmapStitch, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes )
 {
 	int					i, j, k, s, numSurfaces;
 	m4x4_t				identity, nTransform;
@@ -250,7 +244,7 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 	model = LoadModel( name, frame );
 	if( model == NULL )
 		return;
-	
+
 	/* handle null matrix */
 	if( transform == NULL )
 	{
@@ -268,17 +262,10 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 	if( m4x4_invert( nTransform ) )
 		Sys_FPrintf( SYS_VRB, "WARNING: Can't invert model transform matrix, using transpose instead\n" );
 	m4x4_transpose( nTransform );
-	
-	/* fix bogus lightmap scale */
-	if( lightmapScale <= 0.0f )
-		lightmapScale = 1.0f;
 
-	/* fix bogus shade angle */
-	if( shadeAngle <= 0.0f )
-		shadeAngle = 0.0f;
-	
 	/* each surface on the model will become a new map drawsurface */
 	numSurfaces = PicoGetModelNumSurfaces( model );
+
 	//%	Sys_FPrintf( SYS_VRB, "Model %s has %d surfaces\n", name, numSurfaces );
 	for( s = 0; s < numSurfaces; s++ )
 	{
@@ -286,17 +273,20 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		surface = PicoGetModelSurface( model, s );
 		if( surface == NULL )
 			continue;
-		
+
 		/* only handle triangle surfaces initially (fixme: support patches) */
 		if( PicoGetSurfaceType( surface ) != PICO_TRIANGLES )
 			continue;
 		
 		/* allocate a surface (ydnar: gs mods) */
 		ds = AllocDrawSurface( SURFACE_TRIANGLES );
-		ds->entityNum = eNum;
+		ds->entityNum = entityNum;
 		ds->castShadows = castShadows;
 		ds->recvShadows = recvShadows;
 		ds->noAlphaFix = noAlphaFix;
+		ds->skybox = skybox;
+		if (added_surfaces != NULL)
+			*added_surfaces += 1;
 		
 		/* get shader name */
 		/* vortex: support .skin files */
@@ -341,15 +331,14 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		ds->shaderInfo = si;
 
 		/* set shading angle */
-		if( shadeAngle > 0.0f )
-			ds->smoothNormals = shadeAngle;
+		ds->smoothNormals = shadeAngle;
 
 		/* force to meta? */
 		if( (si != NULL && si->forceMeta) || (spawnFlags & 4) )	/* 3rd bit */
 			ds->type = SURFACE_FORCED_META;
 	
 		/* fix the surface's normals (jal: conditioned by shader info) */
-		if( !(spawnFlags & 64) && ( shadeAngle == 0.0f || ds->type != SURFACE_FORCED_META ) )
+		if( !(spawnFlags & 64) && ( shadeAngle <= 0.0f || ds->type != SURFACE_FORCED_META ) )
 			PicoFixSurfaceNormals( surface );
 
 		/* set sample size */
@@ -360,6 +349,10 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		if( lightmapScale > 0.0f )
 			ds->lightmapScale = lightmapScale;
 
+		/* set lightmap stitch */
+		if( lightmapStitch >= 0.0f )
+			ds->lightmapStitch = lightmapStitch;
+		
 		/* set vertical texture projection */
 		if ( vertTexProj > 0 )
 			ds->vertTexProj = vertTexProj;
@@ -368,11 +361,15 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		ds->numVerts = PicoGetSurfaceNumVertexes( surface );
 		ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( ds->verts[ 0 ] ) );
 		memset( ds->verts, 0, ds->numVerts * sizeof( ds->verts[ 0 ] ) );
+		if (added_verts != NULL)
+			*added_verts += ds->numVerts;
 		
 		ds->numIndexes = PicoGetSurfaceNumIndexes( surface );
 		ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
 		memset( ds->indexes, 0, ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
-		
+		if (added_triangles != NULL)
+			*added_triangles += (ds->numIndexes / 3);
+
 		/* copy vertexes */
 		for( i = 0; i < ds->numVerts; i++ )
 		{
@@ -472,8 +469,8 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		/* ydnar: giant hack land: generate clipping brushes for model triangles */
 		if( ( si->clipModel || (spawnFlags & 2)) && !noclipmodel )	/* 2nd bit */
 		{
-			vec3_t		points[ 4 ], backs[ 3 ];
-			vec4_t		plane, reverse, pa, pb, pc;
+			vec3_t points[ 4 ], backs[ 3 ];
+			vec4_t plane, reverse, pa, pb, pc;
 			
 			/* temp hack */
 			if( !si->clipModel && ((si->compileFlags & C_TRANSLUCENT) || !(si->compileFlags & C_SOLID)) )
@@ -641,6 +638,8 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 						buildBrush->next = entities[ mapEntityNum ].brushes;
 						entities[ mapEntityNum ].brushes = buildBrush;
 						entities[ mapEntityNum ].numBrushes++;
+						if (added_brushes != NULL)
+							*added_brushes += 1;
 					}
 					else
 						free( buildBrush );
@@ -684,7 +683,7 @@ void LoadTriangleModels( void )
 		}
 
 		/* convert misc_models into raw geometry  */
-		if( Q_stricmp( "misc_model", ValueForKey( e, "classname" ) ) )
+		if( Q_stricmp( "misc_model", ValueForKey( e, "classname" ) ) && Q_stricmp( "misc_gamemodel", ValueForKey( e, "classname" ) ) )
 			continue;
 
 		/* get model name */
@@ -696,7 +695,12 @@ void LoadTriangleModels( void )
 			continue;
 
 		/* get model frame */
-		frame = IntForKey( e, "_frame" );
+		if ( KeyExists(e, "_frame") )
+			frame = IntForKey( e, "_frame" );
+		else if ( KeyExists(e, "frame") )
+			frame = IntForKey( e, "frame" );
+		else
+			frame = 0;
 
 		/* insert the model */
 		if (PreloadModel( (char*) model, frame ))
@@ -715,30 +719,30 @@ AddTriangleModels()
 adds misc_model surfaces to the bsp
 */
 
-void AddTriangleModels( entity_t *e )
+void AddTriangleModels( int entityNum )
 {
-	int				num, frame, skin, spawnFlags;
+	int				num, frame, skin, spawnFlags, added_surfaces = 0, added_triangles = 0, added_verts = 0, added_brushes = 0;
 	char			castShadows, recvShadows;
-	entity_t		*e2;
+	entity_t		*e, *e2;
 	const char		*targetName;
 	const char		*target, *model, *value;
 	char			shader[ MAX_QPATH ];
 	shaderInfo_t	*celShader;
-	float			temp, baseLightmapScale, lightmapScale, uvScale, pushVertexes;
-	byte			baseSmoothNormals, smoothNormals;
+	float			temp, baseLightmapScale, baseLightmapStitch, lightmapScale, lightmapStitch, uvScale, pushVertexes;
+	int				baseSmoothNormals, smoothNormals;
 	int				baseVertTexProj, vertTexProj;
-	qboolean        noAlphaFix;
+	qboolean        noAlphaFix, skybox;
 	vec3_t			origin, scale, angles;
 	m4x4_t			transform;
 	epair_t			*ep;
 	remap_t			*remap, *remap2;
 	char			*split;
 	
-	
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- AddTriangleModels ---\n" );
 	
 	/* get current brush entity targetname */
+	e = &entities[ entityNum ];
 	if( e == entities )
 		targetName = "";
 	else
@@ -749,21 +753,15 @@ void AddTriangleModels( entity_t *e )
 		if( targetName[ 0 ] == '\0' )
 			return;
 	}
-	
-	/* get lightmap scale */
-	/* vortex: added _ls key (short name of lightmapscale) */
-	baseLightmapScale = FloatForKey( e, "_lightmapscale" );
-	if( baseLightmapScale <= 0.0f )
-		baseLightmapScale = FloatForKey( e, "_ls" );
-	if( baseLightmapScale <= 0.0f )
-		baseLightmapScale = 0.0f;
 
-	/* vortex: normal smoothing */
-	baseSmoothNormals = IntForKey(e, "_smoothnormals");
-	if (baseSmoothNormals <= 0)
-		baseSmoothNormals = IntForKey(e, "_np");
-	if( baseSmoothNormals <= 0 )
-		baseSmoothNormals = 0;
+	/* vortex: get lightmap scaling value for this entity */
+	GetEntityLightmapScale( e, &baseLightmapScale, 0);
+
+	/* vortex: get lightmap stitching for this entity */
+	GetEntityLightmapStitch( e, &baseLightmapStitch, -1);
+
+	/* vortex: per-entity normal smoothing */
+	GetEntityNormalSmoothing( e, &baseSmoothNormals, 0);
 
 	/* vortex: vertical texture projection */
 	baseVertTexProj = IntForKey(e, "_vtcproj");
@@ -794,17 +792,16 @@ void AddTriangleModels( entity_t *e )
 			model = ValueForKey( e2, "model" );
 		if( model[ 0 ] == '\0' )
 		{
-			Sys_Printf( "WARNING: misc_model at %i %i %i without a model key\n",
-				(int) origin[ 0 ], (int) origin[ 1 ], (int) origin[ 2 ] );
+			Sys_Printf( "WARNING: misc_model at %i %i %i without a model key\n", (int) origin[ 0 ], (int) origin[ 1 ], (int) origin[ 2 ] );
 			continue;
 		}
 		
 		/* get model frame */
 		frame = 0;
 		if( KeyExists(e2, "frame" ) )
-			skin = IntForKey( e2, "frame" );
+			frame = IntForKey( e2, "frame" );
 		if( KeyExists(e2, "_frame" ) )
-			skin = IntForKey( e2, "_frame" );
+			frame = IntForKey( e2, "_frame" );
 
 		/* get model skin */
 		skin = 0;
@@ -812,23 +809,9 @@ void AddTriangleModels( entity_t *e )
 			skin = IntForKey( e2, "skin" );
 		if( KeyExists(e2, "_skin" ) )
 			skin = IntForKey( e2, "_skin" );
-		
-		/* worldspawn (and func_groups) default to cast/recv shadows in worldspawn group */
-		if( e == entities )
-		{
-			castShadows = WORLDSPAWN_CAST_SHADOWS;
-			recvShadows = WORLDSPAWN_RECV_SHADOWS;
-		}
-		
-		/* other entities don't cast any shadows, but recv worldspawn shadows */
-		else
-		{
-			castShadows = ENTITY_CAST_SHADOWS;
-			recvShadows = ENTITY_RECV_SHADOWS;
-		}
-		
+
 		/* get explicit shadow flags */
-		GetEntityShadowFlags( e2, e, &castShadows, &recvShadows );
+		GetEntityShadowFlags( e2, e, &castShadows, &recvShadows, (e == entities) ? qtrue : qfalse );
 		
 		/* get spawnflags */
 		spawnFlags = IntForKey( e2, "spawnflags" );
@@ -919,20 +902,14 @@ void AddTriangleModels( entity_t *e )
 		else
 			celShader = NULL;
 		
-		/* get lightmap scale */
-		/* vortex: added _ls key (short name of lightmapscale) */
-		lightmapScale = FloatForKey( e2, "_lightmapscale" );
-		if( lightmapScale <= 0.0f )
-			lightmapScale = FloatForKey( e2, "_ls" );
-		if( lightmapScale <= 0.0f )
-			lightmapScale = baseLightmapScale;
+		/* vortex: get lightmap scaling value for this entity */
+		GetEntityLightmapScale( e2, &lightmapScale, baseLightmapScale);
 
-		/* vortex: normal smoothing */
-		smoothNormals = IntForKey(e2, "_smoothnormals");
-		if (smoothNormals <= 0)
-			smoothNormals = IntForKey(e2, "_np");
-		if (smoothNormals <= 0)
-			smoothNormals = baseSmoothNormals;
+		/* vortex: get lightmap stitching for this entity */
+		GetEntityLightmapStitch( e2, &lightmapStitch, baseLightmapStitch);
+
+		/* vortex: per-entity normal smoothing */
+		GetEntityNormalSmoothing( e2, &smoothNormals, baseSmoothNormals);
 
 		/* vortex: vertical texture projection */
 		vertTexProj = IntForKey(e2, "_vp");
@@ -941,6 +918,7 @@ void AddTriangleModels( entity_t *e )
 
 		/* vortex: prevent alpha-fix stage on entity */
 		noAlphaFix = (IntForKey( e2, "_noalphafix" ) > 0) ? qtrue : qfalse;
+		skybox = (IntForKey( e2, "_skybox" ) > 0) ? qtrue : qfalse;
 
 		/* vortex: push vertexes among their normals (fatboy) */
 		pushVertexes = FloatForKey( e2, "_pushvertexes" );
@@ -949,7 +927,7 @@ void AddTriangleModels( entity_t *e )
 		pushVertexes += FloatForKey( e2, "_pv2" ); // vortex: set by decorator
 
 		/* insert the model */
-		InsertModel( (char*) model, frame, skin, transform, uvScale, remap, celShader, mapEntityNum, castShadows, recvShadows, spawnFlags, lightmapScale, 0, smoothNormals, vertTexProj, noAlphaFix, pushVertexes );
+		InsertModel( (char*) model, frame, skin, transform, uvScale, remap, celShader, entityNum, castShadows, recvShadows, spawnFlags, lightmapScale, lightmapStitch, 0, smoothNormals, vertTexProj, noAlphaFix, pushVertexes, skybox, &added_surfaces, &added_triangles, &added_verts, &added_brushes );
 		
 		/* free shader remappings */
 		while( remap != NULL )
@@ -959,4 +937,10 @@ void AddTriangleModels( entity_t *e )
 			remap = remap2;
 		}
 	}
+
+	/* emit some stats */
+	Sys_FPrintf( SYS_VRB, "%9d surfaces added\n", added_surfaces );
+	Sys_FPrintf( SYS_VRB, "%9d triangles added\n", added_triangles );
+	Sys_FPrintf( SYS_VRB, "%9d vertexes added\n", added_verts );
+	Sys_FPrintf( SYS_VRB, "%9d brushes added\n", added_brushes );
 }

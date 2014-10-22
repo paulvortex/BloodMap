@@ -427,32 +427,38 @@ void PatchMapDrawSurfs( entity_t *e )
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- PatchMapDrawSurfs ---\n" );
 
+	/* fetch patches from the entity */
 	patchCount = 0;
-	for ( pm = e->patches ; pm ; pm = pm->next  ) {
+	for ( pm = e->patches ; pm ; pm = pm->next  ) 
+	{
 		meshes[patchCount] = pm;
 		patchCount++;
 	}
 
-	if ( !patchCount ) {
+	if ( !patchCount ) 
 		return;
-	}
+
 	bordering = (byte *)safe_malloc( patchCount * patchCount );
 	memset( bordering, 0, patchCount * patchCount );
 
 	// build the bordering matrix
-	for ( k = 0 ; k < patchCount ; k++ ) {
+	for ( k = 0 ; k < patchCount ; k++ ) 
+	{
 		bordering[k*patchCount+k] = 1;
 
-		for ( l = k+1 ; l < patchCount ; l++ ) {
+		for ( l = k+1 ; l < patchCount ; l++ ) 
+		{
 			check = meshes[k];
 			scan = meshes[l];
 			c1 = scan->mesh.width * scan->mesh.height;
 			v1 = scan->mesh.verts;
 
-			for ( i = 0 ; i < c1 ; i++, v1++ ) {
+			for ( i = 0 ; i < c1 ; i++, v1++ ) 
+			{
 				c2 = check->mesh.width * check->mesh.height;
 				v2 = check->mesh.verts;
-				for ( j = 0 ; j < c2 ; j++, v2++ ) {
+				for ( j = 0 ; j < c2 ; j++, v2++ ) 
+				{
 					if ( fabs( v1->xyz[0] - v2->xyz[0] ) < 1.0
 						&& fabs( v1->xyz[1] - v2->xyz[1] ) < 1.0
 						&& fabs( v1->xyz[2] - v2->xyz[2] ) < 1.0 ) {
@@ -463,11 +469,13 @@ void PatchMapDrawSurfs( entity_t *e )
 					break;
 				}
 			}
-			if ( i != c1 ) {
+			if ( i != c1 ) 
+			{
 				// we have a connection
 				bordering[k*patchCount+l] =
 				bordering[l*patchCount+k] = 1;
-			} else {
+			} else 
+			{
 				// no connection
 				bordering[k*patchCount+l] =
 				bordering[l*patchCount+k] = 0;

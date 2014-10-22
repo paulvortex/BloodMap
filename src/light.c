@@ -603,8 +603,7 @@ void CreateSurfaceLights( void )
 		if( si->skyLightValue > 0.0f )
 		{
 			Sys_FPrintf( SYS_VRB, "Sky: %s\n", si->shader );
-			if( !skyLightAO )
-				CreateSkyLights( si->color, si->skyLightValue, si->skyLightIterations, si->lightFilterRadius, si->lightStyle );
+			CreateSkyLights( si->color, si->skyLightValue, si->skyLightIterations, si->lightFilterRadius, si->lightStyle );
 			skyLightSurfaces = qtrue;
 			si->skyLightValue = 0.0f;	/* FIXME: hack! */
 		}
@@ -787,248 +786,6 @@ float PointToPolygonFormFactor( const vec3_t point, const vec3_t normal, const w
 	return total;
 }
 
-
-
-#if 0
-
-int LightContributionToSample( trace_t *trace )
-{
-	light_t			*light;
-	float			angle;
-	float			add;
-	float			dist;
-	
-	/* get light */
-	light = trace->light;
-	
-	/* clear color */
-	VectorClear( trace->color );
-	VectorClear( trace->colorNoShadow );
-	
-	/* ydnar: early out */
-	if( !(light->flags & LIGHT_SURFACES) || light->envelope <= 0.0f )
-		return qfalse;
-	
-	/* do some culling checks */
-	if( light->type != EMIT_SUN )
-	{
-		/* MrE: if the light is behind the surface */
-		if( trace->twoSided == qfalse )
-			if( DotProduct( light->origin, trace->normal ) - DotProduct( trace->origin, trace->normal ) < 0.0f )
-				return 0;
-		
-		/* ydnar: test pvs */
-		if( !ClusterVisible( trace->cluster, light->cluster ) )
-			return 0;
-	}
-	
-	/* exact point to polygon form factor */
-	if( light->type == EMIT_AREA )
-	{
-		float		factor;
-		float		d;
-		vec3_t		pushedOrigin;
-		
-		/* project sample point into light plane */
-		d = DotProduct( trace->origin, light->normal ) - light->dist;
-		if( d < 3.0f )
-		{
-			/* sample point behind plane? */
-			if( !(light->flags & LIGHT_TWOSIDED) && d < -1.0f )
-				return 0;
-			
-			/* sample plane coincident? */
-			if( d > -3.0f && DotProduct( trace->normal, light->normal ) > 0.9f )
-				return 0;
-		}
-		
-		/* nudge the point so that it is clearly forward of the light */
-		/* so that surfaces meeting a light emiter don't get black edges */
-		if( d > -8.0f && d < 8.0f )
-			VectorMA( trace->origin, (8.0f - d), light->normal, pushedOrigin );				
-		else
-			VectorCopy( trace->origin, pushedOrigin );
-		
-		/* get direction and distance */
-		VectorCopy( light->origin, trace->end );
-		dist = SetupTrace( trace );
-		if( dist >= light->envelope )
-			return 0;
-		
-		/* ptpff approximation */
-		if( faster )
-		{
-			/* angle attenuation */
-			angle = DotProduct( trace->normal, trace->direction );
-			
-			/* twosided lighting */
-			if( trace->twoSided )
-				angle = fabs( angle );
-			
-			/* attenuate */
-			angle *= -DotProduct( light->normal, trace->direction );
-			if( angle == 0.0f )
-				return 0;
-			else if( angle < 0.0f &&
-				(trace->twoSided || (light->flags & LIGHT_TWOSIDED)) )
-				angle = -angle;
-			add = light->photons / (dist * dist) * angle;
-		}
-		else
-		{
-			/* calculate the contribution */
-			factor = PointToPolygonFormFactor( pushedOrigin, trace->normal, light->w );
-			if( factor == 0.0f )
-				return 0;
-			else if( factor < 0.0f )
-			{
-				/* twosided lighting */
-				if( trace->twoSided || (light->flags & LIGHT_TWOSIDED) )
-				{
-					factor = -factor;
-
-					/* push light origin to other side of the plane */
-					VectorMA( light->origin, -2.0f, light->normal, trace->end );
-					dist = SetupTrace( trace );
-					if( dist >= light->envelope )
-						return 0;
-				}
-				else
-					return 0;
-			}
-			
-			/* ydnar: moved to here */
-			add = factor * light->add;
-		}
-	}
-	
-	/* point/spot lights */
-	else if( light->type == EMIT_POINT || light->type == EMIT_SPOT )
-	{
-		/* get direction and distance */
-		VectorCopy( light->origin, trace->end );
-		dist = SetupTrace( trace );
-		if( dist >= light->envelope )
-			return 0;
-		
-		/* clamp the distance to prevent super hot spots */
-		if( dist < light->mindist )
-			dist = light->mindist;
-		
-		/* angle attenuation */
-		angle = (light->flags & LIGHT_ATTEN_ANGLE) ? DotProduct( trace->normal, trace->direction ) : 1.0f;
-		if( light->angleScale != 0.0f)
-		{
-			angle /= light->angleScale;
-			if( angle > 1.0f )
-				angle = 1.0f;
-		}
-		
-		/* twosided lighting */
-		if( trace->twoSided )
-			angle = fabs( angle );
-		
-		/* attenuate */
-		if( light->flags & LIGHT_ATTEN_LINEAR )
-		{
-			add = angle * light->photons * linearScale - (dist * light->fade);
-			if( add < 0.0f )
-				add = 0.0f;
-		}
-		else
-			add = light->photons / ( dist * dist ) * angle;
-
-		/* handle spotlights */
-		if( light->type == EMIT_SPOT )
-		{
-			float	distByNormal, radiusAtDist, sampleRadius;
-			vec3_t	pointAtDist, distToSample;
-	
-			/* do cone calculation */
-			distByNormal = -DotProduct( trace->displacement, light->normal );
-			if( distByNormal < 0.0f )
-				return 0;
-			VectorMA( light->origin, distByNormal, light->normal, pointAtDist );
-			radiusAtDist = light->radiusByDist * distByNormal;
-			VectorSubtract( trace->origin, pointAtDist, distToSample );
-			sampleRadius = VectorLength( distToSample );
-			
-			/* outside the cone */
-			if( sampleRadius >= radiusAtDist )
-				return 0;
-			
-			/* attenuate */
-			if( sampleRadius > (radiusAtDist - 32.0f) )
-				add *= ((radiusAtDist - sampleRadius) / 32.0f);
-		}
-	}
-	
-	/* ydnar: sunlight */
-	else if( light->type == EMIT_SUN )
-	{
-		/* get origin and direction */
-		VectorAdd( trace->origin, light->origin, trace->end );
-		dist = SetupTrace( trace );
-		
-		/* angle attenuation */
-		angle = (light->flags & LIGHT_ATTEN_ANGLE) ? DotProduct( trace->normal, trace->direction ) : 1.0f;
-		
-		/* twosided lighting */
-		if( trace->twoSided )
-			angle = fabs( angle );
-		
-		/* attenuate */
-		add = light->photons * angle;
-		if( add <= 0.0f )
-			return 0;
-
-		/* VorteX: set noShadow color */
-		VectorScale(light->color, add, trace->colorNoShadow);
-		
-		/* setup trace */
-		trace->testAll = qtrue;
-		VectorScale( light->color, add, trace->color );
-		
-		/* trace to point */
-		if( trace->testOcclusion && !trace->forceSunlight )
-		{
-			/* trace */
-			TraceLine( trace );
-			if( !(trace->compileFlags & C_SKY) || trace->opaque )
-			{
-				VectorClear( trace->color );
-				return -1;
-			}
-		}
-		
-		/* return to sender */
-		return 1;
-	}
-
-	/* VorteX: set noShadow color */
-	VectorScale(light->color, add, trace->colorNoShadow);
-	
-	/* ydnar: changed to a variable number */
-	if( add <= 0.0f || (add <= light->falloffTolerance && (light->flags & LIGHT_FAST_ACTUAL)) )
-		return 0;
-	
-	/* setup trace */
-	trace->testAll = qfalse;
-	VectorScale( light->color, add, trace->color );
-	
-	/* raytrace */
-	TraceLine( trace );
-	if( trace->passSolid || trace->opaque )
-	{
-		VectorClear( trace->color );
-		return -1;
-	}
-	
-	/* return to sender */
-	return 1;
-}
-#endif
-
 /*
 LightContribution()
 determines the amount of light reaching a sample (luxel or vertex) from a given light
@@ -1178,7 +935,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 			if( trace->twoSided )
 				angle = fabs( angle );
 		}
-		
+
 		/* attenuate */
 		if( light->flags & LIGHT_ATTEN_LINEAR )
 		{
@@ -1237,7 +994,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 			if( trace->twoSided )
 				angle = fabs( angle );
 		}
-		
+	
 		/* attenuate */
 		add = light->photons * angle;
 		if( add <= 0.0f )
@@ -1357,210 +1114,6 @@ void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], v
 	}
 }
 
-
-
-/*
-LightContributionToPoint()
-for a given light, how much light/color reaches a given point in space (with no facing)
-note: this is similar to LightContributionToSample() but optimized for omnidirectional sampling
-*/
-
-#if 0
-int LightContributionToPoint( trace_t *trace )
-{
-	light_t		*light;
-	float		add, dist;
-	
-	
-	/* get light */
-	light = trace->light;
-	
-	/* clear color */
-	VectorClear( trace->color );
-	
-	/* ydnar: early out */
-	if( !(light->flags & LIGHT_GRID) || light->envelope <= 0.0f )
-		return qfalse;
-	
-	/* is this a sun? */
-	if( light->type != EMIT_SUN )
-	{
-		/* sun only? */
-		if( sunOnly )
-			return qfalse;
-		
-		/* test pvs */
-		if( !ClusterVisible( trace->cluster, light->cluster ) )
-			return qfalse;
-	}
-	
-	/* ydnar: check origin against light's pvs envelope */
-	if( trace->origin[ 0 ] > light->maxs[ 0 ] || trace->origin[ 0 ] < light->mins[ 0 ] ||
-		trace->origin[ 1 ] > light->maxs[ 1 ] || trace->origin[ 1 ] < light->mins[ 1 ] ||
-		trace->origin[ 2 ] > light->maxs[ 2 ] || trace->origin[ 2 ] < light->mins[ 2 ] )
-	{
-		gridBoundsCulled++;
-		return qfalse;
-	}
-	
-	/* set light origin */
-	if( light->type == EMIT_SUN )
-		VectorAdd( trace->origin, light->origin, trace->end );
-	else
-		VectorCopy( light->origin, trace->end );
-	
-	/* set direction */
-	dist = SetupTrace( trace );
-	
-	/* test envelope */
-	if( dist > light->envelope )
-	{
-		gridEnvelopeCulled++;
-		return qfalse;
-	}
-	
-	/* ptpff approximation */
-	if( light->type == EMIT_AREA && faster )
-	{
-		/* clamp the distance to prevent super hot spots */
-		if( dist < 16.0f )
-			dist = 16.0f;
-		
-		/* attenuate */
-		add = light->photons / (dist * dist);
-	}
-	
-	/* exact point to polygon form factor */
-	else if( light->type == EMIT_AREA )
-	{
-		float		factor, d;
-		vec3_t		pushedOrigin;
-		
-		
-		/* see if the point is behind the light */
-		d = DotProduct( trace->origin, light->normal ) - light->dist;
-		if( !(light->flags & LIGHT_TWOSIDED) && d < -1.0f )
-			return qfalse;
-		
-		/* nudge the point so that it is clearly forward of the light */
-		/* so that surfaces meeting a light emiter don't get black edges */
-		if( d > -8.0f && d < 8.0f )
-			VectorMA( trace->origin, (8.0f - d), light->normal, pushedOrigin );				
-		else
-			VectorCopy( trace->origin, pushedOrigin );
-		
-		/* calculate the contribution (ydnar 2002-10-21: [bug 642] bad normal calc) */
-		factor = PointToPolygonFormFactor( pushedOrigin, trace->direction, light->w );
-		if( factor == 0.0f )
-			return qfalse;
-		else if( factor < 0.0f )
-		{
-			if( light->flags & LIGHT_TWOSIDED )
-				factor = -factor;
-			else
-				return qfalse;
-		}
-		
-		/* ydnar: moved to here */
-		add = factor * light->add;
-	}
-	
-	/* point/spot lights */
-	else if( light->type == EMIT_POINT || light->type == EMIT_SPOT )
-	{
-		/* clamp the distance to prevent super hot spots */
-		if( dist < light->mindist )
-			dist = light->mindist;
-		
-		/* attenuate */
-		if( light->flags & LIGHT_ATTEN_LINEAR )
-		{
-			add = light->photons * linearScale - (dist * light->fade);
-			if( add < 0.0f )
-				add = 0.0f;
-		}
-		else
-			add = light->photons / (dist * dist);
-		
-		/* handle spotlights */
-		if( light->type == EMIT_SPOT )
-		{
-			float	distByNormal, radiusAtDist, sampleRadius;
-			vec3_t	pointAtDist, distToSample;
-			
-			
-			/* do cone calculation */
-			distByNormal = -DotProduct( trace->displacement, light->normal );
-			if( distByNormal < 0.0f )
-				return qfalse;
-			VectorMA( light->origin, distByNormal, light->normal, pointAtDist );
-			radiusAtDist = light->radiusByDist * distByNormal;
-			VectorSubtract( trace->origin, pointAtDist, distToSample );
-			sampleRadius = VectorLength( distToSample );
-			
-			/* outside the cone */
-			if( sampleRadius >= radiusAtDist )
-				return qfalse;
-			
-			/* attenuate */
-			if( sampleRadius > (radiusAtDist - 32.0f) )
-				add *= ((radiusAtDist - sampleRadius) / 32.0f);
-		}
-	}
-	
-	/* ydnar: sunlight */
-	else if( light->type == EMIT_SUN )
-	{
-		/* attenuate */
-		add = light->photons;
-		if( add <= 0.0f )
-			return qfalse;
-		
-		/* setup trace */
-		trace->testAll = qtrue;
-		VectorScale( light->color, add, trace->color );
-		
-		/* trace to point */
-		if( trace->testOcclusion && !trace->forceSunlight )
-		{
-			/* trace */
-			TraceLine( trace );
-			if( !(trace->compileFlags & C_SKY) || trace->opaque )
-			{
-				VectorClear( trace->color );
-				return -1;
-			}
-		}
-		
-		/* return to sender */
-		return qtrue;
-	}
-	
-	/* unknown light type */
-	else
-		return qfalse;
-	
-	/* ydnar: changed to a variable number */
-	if( add <= 0.0f || (add <= light->falloffTolerance && (light->flags & LIGHT_FAST_ACTUAL)) )
-		return qfalse;
-	
-	/* setup trace */
-	trace->testAll = qfalse;
-	VectorScale( light->color, add, trace->color );
-	
-	/* trace */
-	TraceLine( trace );
-	if( trace->passSolid )
-	{
-		VectorClear( trace->color );
-		return qfalse;
-	}
-	
-	/* we have a valid sample */
-	return qtrue;
-}
-#endif
-
 /*
 TraceGrid()
 grid samples are for quickly determining the lighting
@@ -1653,10 +1206,11 @@ void TraceGrid(int num)
 	}
 	
 	/* setup trace */
+	trace.entityNum = -1;
 	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
 	trace.occlusionBias = 0;
 	trace.forceSunlight = qfalse;
-	trace.testShadowGroups = qtrue;
+	trace.forceSelfShadow = qfalse;
 	trace.recvShadows = WORLDSPAWN_RECV_SHADOWS;
 	trace.numSurfaces = 0;
 	trace.surfaces = NULL;
@@ -1712,10 +1266,11 @@ void TraceGrid(int num)
 		dir[0]=dir[1]=0;
 		dir[2]=1;
       
+		trace.entityNum = -1;
 		trace.testOcclusion = qtrue;
 		trace.occlusionBias = 0;
 		trace.forceSunlight = qfalse;
-		trace.testShadowGroups = qtrue;
+		trace.forceSelfShadow = qfalse;
 		trace.inhibitRadius = DEFAULT_INHIBIT_RADIUS;
 		trace.testAll = qtrue;     
       
@@ -2011,10 +1566,6 @@ void LightWorld( void )
 	Sys_Printf( "%9d spotlights\n", numSpotLights );
 	Sys_Printf( "%9d diffuse (area) lights\n", numDiffuseLights );
 	Sys_Printf( "%9d sun/sky lights\n", numSunLights );
-
-	/* setup sky light ambient occlusion */
-	if( skyLightAO && skyLightSurfaces)
-		SetupSkyLightAmbient();
 	
 	/* calculate lightgrid */
 	if( !noGridLighting )
@@ -2054,8 +1605,6 @@ void LightWorld( void )
 	/* slight optimization to remove a sqrt */
 	subdivideThreshold *= subdivideThreshold;
 	
-	DiskCacheTest();
-
 	/* map the world luxels */
 	Sys_Printf( "--- MapRawLightmap ---\n" );
 	RunThreadsOnIndividual( numRawLightmaps, qtrue, MapRawLightmap );
@@ -2082,13 +1631,16 @@ void LightWorld( void )
 	lightsEnvelopeCulled = 0;
 	lightsBoundsCulled = 0;
 	lightsClusterCulled = 0;
-	
+
+	/* illuminate lightmaps */
 	Sys_Printf( "--- IlluminateRawLightmap ---\n" );
 	RunThreadsOnIndividual( numRawLightmaps, qtrue, IlluminateRawLightmap );
 	Sys_Printf( "%9d luxels illuminated\n", numLuxelsIlluminated );
 	
+	/* stitch lightmaps */
 	StitchSurfaceLightmaps();
 
+	/* illuminate vertexes */
 	Sys_Printf( "--- IlluminateVertexes ---\n" );
 	RunThreadsOnIndividual( numBSPDrawSurfaces, qtrue, IlluminateVertexes );
 	Sys_Printf( "%9d vertexes illuminated\n", numVertsIlluminated );
@@ -2145,18 +1697,28 @@ void LightWorld( void )
 		lightsEnvelopeCulled = 0;
 		lightsBoundsCulled = 0;
 		lightsClusterCulled = 0;
-		
+
+		/* illuminate lightmaps */
 		Sys_Printf( "--- IlluminateRawLightmap ---\n" );
 		RunThreadsOnIndividual( numRawLightmaps, qtrue, IlluminateRawLightmap );
 		Sys_Printf( "%9d luxels illuminated\n", numLuxelsIlluminated );
 		Sys_Printf( "%9d vertexes illuminated\n", numVertsIlluminated );
 		
+		/* stitch lightmaps */
 		StitchSurfaceLightmaps();
+
+		/* debug luxels */
+		if( debugLightmap )
+		{
+			Sys_Printf( "--- DebugRawLightmap ---\n" );
+			RunThreadsOnIndividual( numRawLightmaps, qtrue, DebugRawLightmap );
+		}
 		
+		/* illuminate vertexes */
 		Sys_Printf( "--- IlluminateVertexes ---\n" );
 		RunThreadsOnIndividual( numBSPDrawSurfaces, qtrue, IlluminateVertexes );
 		Sys_Printf( "%9d vertexes illuminated\n", numVertsIlluminated );
-		
+
 		/* ydnar: emit statistics on light culling */
 		Sys_FPrintf( SYS_VRB, "%9d lights plane culled\n", lightsPlaneCulled );
 		Sys_FPrintf( SYS_VRB, "%9d lights envelope culled\n", lightsEnvelopeCulled );
@@ -2500,6 +2062,12 @@ int LightMain( int argc, char **argv )
 			useCustomInfoParms = qtrue;
 		}
 		
+		else if( !strcmp( argv[ i ],  "-entitysaveid") )
+		{
+			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			useEntitySaveId = qtrue;
+		}
+
 		else if( !strcmp( argv[ i ], "-wolf" ) )
 		{
 			/* -game should already be set */
@@ -2530,12 +2098,6 @@ int LightMain( int argc, char **argv )
 		{
 			sunOnly = qtrue;
 			Sys_Printf( "Only computing sunlight\n" );
-		}
-
-		else if( !strcmp( argv[ i ], "-skylightao" ) )
-		{
-			skyLightAO = qtrue;
-			Sys_Printf( "Using ambient occlusion for sky light (test)\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-bounceonly" ) )
@@ -2664,11 +2226,23 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Luxel origin debugging enabled\n" );
 		}
 		
+		else if( !strcmp( argv[ i ], "-debugstitch" ) )
+		{
+			debugStitch = qtrue;
+			Sys_Printf( "Luxel stitching debugging enabled\n" );
+		}
+		
 		else if( !strcmp( argv[ i ], "-debugdeluxe" ) )
 		{
 			deluxemap = qtrue;
 			debugDeluxemap = qtrue;
 			Sys_Printf( "Deluxemap debugging enabled\n" );
+		}
+
+		else if( !strcmp( argv[ i ], "-debuglightmap" ) )
+		{
+			debugLightmap = qtrue;
+			Sys_Printf( "Lightmap debugging enabled, generating additional drawsurfs for luxels\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-export" ) )
@@ -2706,11 +2280,11 @@ int LightMain( int argc, char **argv )
 		}
 		else if( !strcmp( argv[ i ], "-samplesize" ) )
 		{
-			sampleSize = atoi( argv[ i + 1 ] );
-			if( sampleSize < 1 )
-				sampleSize = 1;
+			sampleSize = atof( argv[ i + 1 ] );
+			if( sampleSize < MIN_LIGHTMAP_SAMPLE_SIZE )
+				sampleSize = MIN_LIGHTMAP_SAMPLE_SIZE;
 			i++;
-			Sys_Printf( "Default lightmap sample size set to %dx%d units\n", sampleSize, sampleSize );
+			Sys_Printf( "Default lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
 		}
 		else if( !strcmp( argv[ i ],  "-samplescale" ) )
  		{
@@ -2738,6 +2312,16 @@ int LightMain( int argc, char **argv )
 			noSurfaces = qtrue;
 			Sys_Printf( "Not tracing against surfaces\n" );
 		}
+		else if( !strcmp( argv[ i ], "-stitch" ) )
+		{
+			noStitch = qfalse;
+			Sys_Printf( "Enable lightmap stitching\n" );
+		}
+		else if( !strcmp( argv[ i ], "-nostitch" ) )
+		{
+			noStitch = qtrue;
+			Sys_Printf( "Disable lightmap stitching\n" );
+		}
 		else if( !strcmp( argv[ i ], "-dump" ) )
 		{
 			dump = qtrue;
@@ -2752,14 +2336,6 @@ int LightMain( int argc, char **argv )
 		{
 			loMemSky = qtrue;
 			Sys_Printf( "Enabling low-memory (slower) lighting mode for sky light\n" );
-		}
-		else if( !strcmp( argv[ i ], "-diskcache" ) )
-		{
-			diskCache = qtrue;
-			strncpy(diskCachePath, argv[ i + 1 ], sizeof(diskCachePath));
-			Sys_Printf( "Enabling disk cache usage (potentially slower) to suppress memory overruns\n" );
-			Sys_Printf( "DiskCachePath = %s\n", diskCachePath );
-			i++;
 		}
 		else if( !strcmp( argv[ i ], "-nostyle" ) || !strcmp( argv[ i ], "-nostyles" ) )
 		{
@@ -2810,17 +2386,8 @@ int LightMain( int argc, char **argv )
 		}
 		else if( !strcmp( argv[ i ], "-dirtmode" ) )
 		{
-			dirtMode = atoi( argv[ i + 1 ] );
-			if (dirtMode != 0 && dirtMode != 1 && dirtMode != 2 && dirtMode != 3)
-				dirtMode = 0;
-			if ( dirtMode == 0 )
-				Sys_Printf( "Enabling ordered cone-based ambient occlusion (dirtmapping)\n" );
-			else if( dirtMode == 1 )
-				Sys_Printf( "Enabling randomized cone-based ambient occlusion (dirtmapping)\n" );
-			else if( dirtMode == 2 )
-				Sys_Printf( "Enabling uniform low quality ambient occlusion\n" );
-			else if( dirtMode == 3 )
-				Sys_Printf( "Enabling uniform high quality ambient occlusion\n" );
+			dirtMode = (dirtMode_t)atoi( argv[ i + 1 ] );
+			Sys_Printf( "Dirtmap mode set to '%s'\n", DirtModeName(&dirtMode) );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtdepth" ) )
@@ -2867,7 +2434,12 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Dirtmapping gain mask set to %1.1f %1.1f %1.1f\n", dirtGainMask[0], dirtGainMask[1], dirtGainMask[2]);
 			i++;
 		}
-
+		else if( !strcmp( argv[ i ], "-dirtfilter" ) )
+		{
+			dirtFilter = (dirtFilter_t)atoi( argv[ i + 1 ] );
+			Sys_Printf( "Dirtmapping filter set to '%s'\n", DirtFilterName(&dirtFilter) );
+			i++;
+		}
 		/* vortex: global deviance */
 		else if( !strcmp( argv[ i ], "-nodeviance" ) )
 		{

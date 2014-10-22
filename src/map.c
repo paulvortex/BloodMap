@@ -42,7 +42,7 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 
 /* undefine to make plane finding use linear sort (note: really slow) */
 #define	USE_HASHING
-#define	PLANE_HASHES	65536 /* vortex: was 8192 */
+#define	PLANE_HASHES	8192
 
 plane_t					*planehash[ PLANE_HASHES ];
 
@@ -149,8 +149,6 @@ int CreateNewFloatPlane (vec3_t normal, vec_t dist)
 	return nummapplanes - 2;
 }
 
-
-
 /*
 SnapNormal()
 snaps a near-axial normal vector
@@ -177,8 +175,6 @@ void SnapNormal( vec3_t normal )
 	}
 }
 
-
-
 /*
 SnapPlane()
 snaps a plane to normal/distance epsilons
@@ -196,7 +192,6 @@ void SnapPlane( vec3_t normal, vec_t *dist )
 		*dist = Q_rint( *dist );
 }
 
-
 /*
 FindFloatPlane()
 ydnar: changed to allow a number of test points to be supplied that
@@ -204,18 +199,15 @@ must be within an epsilon distance of the plane
 */
 
 int FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points )
-
-#ifdef USE_HASHING
-
 {
-	int		i, j, hash, h;
+#ifdef USE_HASHING
+	int	i, j, hash, h;
 	plane_t	*p;
-	vec_t	d;
-	
+	vec_t d;
 	
 	/* hash the plane */
 	SnapPlane( normal, &dist );
-	hash = (PLANE_HASHES - 1) & (int) fabs( dist );
+	hash = (PLANE_HASHES - 1) & (int)fabs( dist );
 	
 	/* search the border bins as well */
 	for( i = -1; i <= 1; i++ )
@@ -243,17 +235,9 @@ int FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points )
 				return p - mapplanes;
 		}
 	}
-	
-	/* none found, so create a new one */
-	return CreateNewFloatPlane( normal, dist );
-}
-
 #else
-
-{
 	int		i;
 	plane_t	*p;
-	
 
 	SnapPlane( normal, &dist );
 	for( i = 0, p = mapplanes; i < nummapplanes; i++, p++ )
@@ -261,13 +245,11 @@ int FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points )
 		if( PlaneEqual( p, normal, dist ) )
 			return i;
 	}
-	
-	return CreateNewFloatPlane( normal, dist );
-}
-
 #endif
 
-
+	/* none found, so create a new one */
+	return CreateNewFloatPlane( normal, dist );
+}
 
 /*
 MapPlaneFromPoints()
@@ -276,24 +258,27 @@ takes 3 points and finds the plane they lie in
 
 int MapPlaneFromPoints( vec3_t *p )
 {
-	vec3_t	t1, t2, normal;
-	vec_t	dist;
-	
-	
+	dvec3_t t1, t2, normal;
+	vec3_t snormal;
+	dvec_t dist;
+	vec_t sdist;
+
 	/* calc plane normal */
 	VectorSubtract( p[ 0 ], p[ 1 ], t1 );
 	VectorSubtract( p[ 2 ], p[ 1 ], t2 );
 	CrossProduct( t1, t2, normal );
-	VectorNormalize( normal, normal );
+	DVectorNormalize( normal, normal );
 	
 	/* calc plane distance */
 	dist = DotProduct( p[ 0 ], normal );
-	
+
+	/* convert to single precision */
+	DVector3ToSingle( normal, snormal );
+	DVector1ToSingle( dist, sdist );
+
 	/* store the plane */
-	return FindFloatPlane( normal, dist, 3, p );
+	return FindFloatPlane( snormal, sdist, 3, p );
 }
-
-
 
 /*
 SetBrushContents()
@@ -398,7 +383,7 @@ void AddBrushBevels( void )
 	side_t		*s, *s2;
 	winding_t	*w, *w2;
 	vec3_t		normal;
-	float		dist;
+	vec_t		dist;
 	vec3_t		vec, vec2;
 	float		d, minBack;
 
@@ -430,7 +415,8 @@ void AddBrushBevels( void )
 				#endif
 			}
 
-			if ( i == buildBrush->numsides ) {
+			if ( i == buildBrush->numsides ) 
+			{
 				// add a new side
 				if ( buildBrush->numsides == MAX_BUILD_SIDES ) {
 					xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, qtrue);
@@ -464,7 +450,8 @@ void AddBrushBevels( void )
 			}
 
 			// if the plane is not in it canonical order, swap it
-			if ( i != order ) {
+			if ( i != order ) 
+			{
 				sidetemp = buildBrush->sides[order];
 				buildBrush->sides[order] = buildBrush->sides[i];
 				buildBrush->sides[i] = sidetemp;
@@ -475,7 +462,8 @@ void AddBrushBevels( void )
 	//
 	// add the edge bevels
 	//
-	if ( buildBrush->numsides == 6 ) {
+	if ( buildBrush->numsides == 6 ) 
+	{
 		return;		// pure axial
 	}
 
@@ -628,6 +616,22 @@ brush_t *FinishBrush( void )
 			Sys_Printf ("Entity %i, Brush %i: areaportals only allowed in world\n", numEntities - 1, entitySourceBrushes );
 			return NULL;
 		}
+	}
+
+	/* determine if the brush is an region brush */
+	if( buildBrush->compileFlags & C_REGION )
+	{
+		if ( mapRegionBrushes == qtrue )
+		{
+			if ( mapRegion == qfalse )
+				ClearBounds( mapRegionMins, mapRegionMaxs );
+			AddPointToBounds(buildBrush->mins, mapRegionMins, mapRegionMaxs);
+			AddPointToBounds(buildBrush->maxs, mapRegionMins, mapRegionMaxs);
+			mapRegion = qtrue;
+		}
+
+		/* don't keep this brush */
+		return NULL;
 	}
 	
 	/* add bevel planes */
@@ -1001,16 +1005,15 @@ ParseBrush()
 parses a brush out of a map file and sets it up
 */
 
-static void ParseBrush( qboolean onlyLights )
+static void ParseBrush( qboolean onlyLights, qboolean onlyFoliage )
 {
 	brush_t	*b;
 	
-
 	/* parse the brush out of the map */
-	ParseRawBrush( onlyLights );
+	ParseRawBrush( (onlyLights == qtrue || onlyFoliage == qtrue ) ? qtrue : qfalse );
 	
 	/* only go this far? */
-	if( onlyLights )
+	if( onlyLights || onlyFoliage )
 		return;
 	
 	/* set some defaults */
@@ -1379,8 +1382,8 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 {
 	epair_t			*ep;
 	const char		*classname, *value;
-	float			lightmapScale;
-	byte			smoothNormals;
+	float			lightmapScale, lightmapStitch;
+	int			    smoothNormals;
 	int				vertTexProj;
 	char			shader[ MAX_QPATH ];
 	shaderInfo_t	*celShader = NULL;
@@ -1388,7 +1391,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 	parseMesh_t		*patch;
 	qboolean		funcGroup;
 	char			castShadows, recvShadows;
-	qboolean		forceNonSolid;
+	qboolean		forceNonSolid, forceNoClip, forceNoTJunc;
 	
 	
 	/* eof check */
@@ -1456,7 +1459,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 				g_bBrushPrimit = BPRIMIT_NEWBRUSHES;
 				
 				/* parse brush primitive */
-				ParseBrush( onlyLights );
+				ParseBrush( onlyLights, onlyFoliage );
 			}
 			else
 			{
@@ -1466,7 +1469,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 				
 				/* parse old brush format */
 				UnGetToken();
-				ParseBrush( onlyLights );
+				ParseBrush( onlyLights, onlyFoliage );
 			}
 			entitySourceBrushes++;
 		}
@@ -1507,51 +1510,17 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 	else
 		funcGroup = qfalse;
 	
-	/* worldspawn (and func_groups) default to cast/recv shadows in worldspawn group */
-	if( funcGroup || mapEnt->mapEntityNum == 0 )
-	{
-		//%	Sys_Printf( "World:  %d\n", mapEnt->mapEntityNum );
-		castShadows = WORLDSPAWN_CAST_SHADOWS;
-		recvShadows = WORLDSPAWN_RECV_SHADOWS;
-	}
-	
-	/* other entities don't cast any shadows, but recv worldspawn shadows */
-	else
-	{
-		//%	Sys_Printf( "Entity: %d\n", mapEnt->mapEntityNum );
-		castShadows = ENTITY_CAST_SHADOWS;
-		recvShadows = ENTITY_RECV_SHADOWS;
-	}
-	
 	/* get explicit shadow flags */
-	GetEntityShadowFlags( mapEnt, NULL, &castShadows, &recvShadows );
+	GetEntityShadowFlags( mapEnt, NULL, &castShadows, &recvShadows, (funcGroup || mapEnt->mapEntityNum == 0) ? qtrue : qfalse );
 	
-	/* vortex: added _ls key (short name of lightmapscale) */
-	/* ydnar: get lightmap scaling value for this entity */
-	if( strcmp( "", ValueForKey( mapEnt, "lightmapscale" ) ) ||
-		strcmp( "", ValueForKey( mapEnt, "_lightmapscale" ) ) || 
-		strcmp( "", ValueForKey( mapEnt, "_ls" ) ) )
-	{
-		/* get lightmap scale from entity */
-		lightmapScale = FloatForKey( mapEnt, "lightmapscale" );
-		if( lightmapScale <= 0.0f )
-			lightmapScale = FloatForKey( mapEnt, "_lightmapscale" );
-		if( lightmapScale <= 0.0f )
-			lightmapScale = FloatForKey( mapEnt, "_ls" );
-	}
-	else
-		lightmapScale = 0.0f;
+	/* vortex: get lightmap scaling value for this entity */
+	GetEntityLightmapScale( mapEnt, &lightmapScale, 0);
+
+	/* vortex: per-entity lightmap stitch */
+	GetEntityLightmapStitch( mapEnt, &lightmapStitch, -1);
 
 	/* vortex: per-entity normal smoothing */
-	if( strcmp( "", ValueForKey( mapEnt, "_smoothnormals" ) ) || strcmp( "", ValueForKey( mapEnt, "_np" ) ) )
-	{
-		/* get normal smoothing */
-		smoothNormals = IntForKey(mapEnt, "_smoothnormals");
-		if (smoothNormals <= 0.0f)
-			smoothNormals = IntForKey(mapEnt, "_np");
-	}
-	else
-		smoothNormals = 0;
+	GetEntityNormalSmoothing( mapEnt, &smoothNormals, 0);
 
 	/* vortex: vertical texture projection */
 	if( strcmp( "", ValueForKey( mapEnt, "_vtcproj" ) ) || strcmp( "", ValueForKey( mapEnt, "_vp" ) ) )
@@ -1578,7 +1547,8 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 
 	/* vortex: _nonsolid forces detail non-solid brush */
 	forceNonSolid = ((IntForKey(mapEnt, "_nonsolid") > 0) || (IntForKey(mapEnt, "_ns") > 0)) ? qtrue : qfalse;
-
+	forceNoClip = ((IntForKey(mapEnt, "_noclip") > 0) || (IntForKey(mapEnt, "_nc") > 0)) ? qtrue : qfalse;
+	forceNoTJunc = ((IntForKey(mapEnt, "_notjunc") > 0) || (IntForKey(mapEnt, "_ntj") > 0)) ? qtrue : qfalse;
 
 	/* attach stuff to everything in the entity */
 	for( brush = mapEnt->brushes; brush != NULL; brush = brush->next )
@@ -1587,13 +1557,17 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 		brush->castShadows = castShadows;
 		brush->recvShadows = recvShadows;
 		brush->lightmapScale = lightmapScale;
+		brush->lightmapStitch = lightmapStitch; /* vortex */
 		brush->smoothNormals = smoothNormals; /* vortex */
+		brush->noclip = forceNoClip; /* vortex */
+		brush->notjunc = forceNoTJunc; /* vortex */
 		brush->vertTexProj = vertTexProj; /* vortex */
 		brush->celShader = celShader;
 		if (forceNonSolid == qtrue)
 		{
 			brush->detail = qtrue;
 			brush->nonsolid = qtrue;
+			brush->noclip = qtrue;
 		}
 	}
 	
@@ -1702,6 +1676,34 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
 			AddPointToBounds( b->mins, mapMins, mapMaxs );
 			AddPointToBounds( b->maxs, mapMins, mapMaxs );
 		}
+
+		/* region seal */
+		if ( mapRegion == qtrue )
+		{
+			brush_t *b[6];
+
+			if ( mapRegionBrushes == qfalse )
+			{
+				VectorCopy( mapMins, mapRegionMins );
+				VectorCopy( mapMaxs, mapRegionMaxs );
+			}
+
+			shaderInfo_t *si = ShaderInfoForShader("textures/common/caulk");
+			b[0] = BrushFromBounds(mapRegionMins[0] - 8, mapRegionMins[1] - 8, mapRegionMins[2] - 8, mapRegionMins[0]    , mapRegionMaxs[1] + 8, mapRegionMaxs[2] + 8, si);
+			b[1] = BrushFromBounds(mapRegionMaxs[0]    , mapRegionMins[1] - 8, mapRegionMins[2] - 8, mapRegionMaxs[0] + 8, mapRegionMaxs[1] + 8, mapRegionMaxs[2] + 8, si);
+			b[2] = BrushFromBounds(mapRegionMins[0] - 8, mapRegionMins[1] - 8, mapRegionMins[2] - 8, mapRegionMaxs[0] + 8, mapRegionMins[1]    , mapRegionMaxs[2] + 8, si);
+			b[3] = BrushFromBounds(mapRegionMins[0] - 8, mapRegionMaxs[1]    , mapRegionMins[2] - 8, mapRegionMaxs[0] + 8, mapRegionMaxs[1] + 8, mapRegionMaxs[2] + 8, si);
+			b[4] = BrushFromBounds(mapRegionMins[0] - 8, mapRegionMins[1] - 8, mapRegionMins[2] - 8, mapRegionMaxs[0] + 8, mapRegionMaxs[1] + 8, mapRegionMins[2]    , si);
+			b[5] = BrushFromBounds(mapRegionMins[0] - 8, mapRegionMins[1] - 8, mapRegionMaxs[2]    , mapRegionMaxs[0] + 8, mapRegionMaxs[1] + 8, mapRegionMaxs[2] + 8, si);
+			b[0]->next = b[1];
+			b[1]->next = b[2];
+			b[2]->next = b[3];
+			b[3]->next = b[4];
+			b[4]->next = b[5];
+			b[5]->next = entities[ 0 ].brushes;
+			entities[ 0 ].brushes = b[0];
+			entities[ 0 ].numBrushes += 6;
+		}
 		
 		/* get brush counts */
 		numMapBrushes = CountBrushList( entities[ 0 ].brushes );
@@ -1719,8 +1721,67 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
 		Sys_FPrintf( SYS_VRB, "%9d areaportals\n", c_areaportals);
 		Sys_FPrintf( SYS_VRB, "Size: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mapMins[ 0 ], mapMins[ 1 ], mapMins[ 2 ], mapMaxs[ 0 ], mapMaxs[ 1 ], mapMaxs[ 2 ]);
 		
+		/* region stats */
+		if ( mapRegion == qtrue )
+			Sys_FPrintf( SYS_VRB, "Region: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mapRegionMins[ 0 ], mapRegionMins[ 1 ], mapRegionMins[ 2 ], mapRegionMaxs[ 0 ], mapRegionMaxs[ 1 ], mapRegionMaxs[ 2 ]);
+
 		/* write bogus map */
 		if( fakemap )
 			WriteBSPBrushMap( "fakemap.map", entities[ 0 ].brushes );
 	}
+}
+
+/*
+CheckMapForErrors()
+check map for possible errors
+*/
+
+int CheckMapForErrors( void )
+{
+	int entityNum, numErrors = 0, i;
+	qboolean foundDuplicate;
+	const char *classname, *saveid, *saveid2;
+	char msg[2048];
+	entity_t *e;
+
+	if ( useEntitySaveId == qtrue )
+	{
+		/* check map for duplicate or missing entity save id */
+		for( entityNum = 1; entityNum < numEntities; entityNum++ )
+		{
+			e = &entities[ entityNum ];
+			
+			/* exclude entities to be merged to worldspawn */
+			classname = ValueForKey( e, "classname" );
+			if (!Q_stricmp(classname, "func_group") || !Q_stricmp(classname, "misc_model") || !Q_stricmp(classname, "_skybox") || !Q_strncasecmp(classname, "light", 5))
+				continue;
+	
+			/* get saveid */
+			saveid = ValueForKey( e, "sid" ); 
+			if( saveid[ 0 ] == '\0' )
+			{
+				xml_Select( "Missing SaveID", e->mapEntityNum, 0, qfalse );
+				numErrors++;
+				continue;
+			}
+
+			/* get entity with duplicate saveid */
+			foundDuplicate = qfalse;
+			for( i = entityNum + 1; i < numEntities; i++ )
+			{
+				saveid2 = ValueForKey( &entities[ i ], "sid" ); 
+				if( !Q_stricmp( saveid, saveid2) )
+				{
+					sprintf(msg, "Duplicate SaveID (%s)", saveid );
+					if ( foundDuplicate == qfalse )
+						xml_Select( msg, e->mapEntityNum, 0, qfalse );
+					xml_Select( msg, entities[ i ].mapEntityNum, 0, qfalse );
+					numErrors++;
+					foundDuplicate = qtrue;
+				}
+			}
+		}
+	}
+
+	return numErrors;
 }

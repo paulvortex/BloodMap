@@ -78,9 +78,11 @@ dependencies
 #ifdef MAIN_C
 	#define Q_EXTERN
 	#define Q_ASSIGN( a )	= a
+	#define Q_ASSIGN_VEC3( a, b, c ) = { a, b, c }
 #else
 	#define Q_EXTERN extern
 	#define Q_ASSIGN( a )	
+	#define Q_ASSIGN_VEC3( a, b, c )	
 #endif
 
 /* -------------------------------------------------------------------------------
@@ -164,7 +166,7 @@ constants
 #define C_ANTIPORTAL			0x00004000	/* like hint, but doesn't generate portals */
 #define C_SKIP					0x00008000	/* like hint, but skips this face (doesn't split bsp) */
 #define C_NOMARKS				0x00010000	/* no decals */
-
+#define C_REGION				0x00020000  /* define map region to be compiled (everything outside region get excluded) */
 #define C_DETAIL				0x08000000	/* THIS MUST BE THE SAME AS IN RADIANT! */
 
 
@@ -237,14 +239,16 @@ constants
 #define LIGHT_Q3A_DEFAULT		(LIGHT_ATTEN_ANGLE | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES | LIGHT_FAST)
 #define LIGHT_WOLF_DEFAULT		(LIGHT_ATTEN_LINEAR | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES | LIGHT_FAST)
 
-#define MAX_TRACE_TEST_NODES	256
+#define MAX_TRACE_TEST_NODES	4096
 #define DEFAULT_INHIBIT_RADIUS	0.1f /* vortex: was 1.5f */
 
 #define LUXEL_EPSILON			0.125f
 #define VERTEX_EPSILON			-0.125f
 #define GRID_EPSILON			0.0f
 
-#define DEFAULT_LIGHTMAP_SAMPLE_SIZE	16
+
+#define MIN_LIGHTMAP_SAMPLE_SIZE	    0.1f
+#define DEFAULT_LIGHTMAP_SAMPLE_SIZE	16.0f
 #define DEFAULT_LIGHTMAP_SAMPLE_OFFSET	0.5f /* vortex: was 1.0 */
 #define DEFAULT_SUBDIVIDE_THRESHOLD		1.0f
 
@@ -691,7 +695,7 @@ typedef struct shaderInfo_s
 	float				lightSubdivide;					/* default 999 */
 	float				lightFilterRadius;				/* ydnar: lightmap filtering/blurring radius for lights created by this shader (default: 0) */
 	
-	int					lightmapSampleSize;				/* lightmap sample size */
+	float				lightmapSampleSize;				/* lightmap sample size */
 	float				lightmapSampleOffset;			/* ydnar: lightmap sample offset (default: 1.0) */
 	
 	float				bounceScale;					/* ydnar: radiosity re-emission [0,1.0+] */
@@ -737,6 +741,7 @@ typedef struct shaderInfo_s
 	qb_t				noFog;							/* ydnar: supress fogging */
 	qb_t				clipModel;						/* ydnar: solid model hack */
 	qb_t				noVertexLight;					/* ydnar: leave vertex color alone */
+	qb_t                noSmooth;                       /* vortex: doesnt allow vertex normal smoothing */
 	
 	byte				styleMarker;					/* ydnar: light styles hack */
 	
@@ -882,7 +887,8 @@ typedef struct brush_s
 	
 	/* ydnar: gs mods */
 	float				lightmapScale;
-	byte				smoothNormals; /* VorteX: per-entity normal smoothing (with func_group support) */
+	float				lightmapStitch;
+	int					smoothNormals;
 	int					vertTexProj;
 	vec3_t				eMins, eMaxs;
 	indexMap_t			*im;
@@ -891,13 +897,15 @@ typedef struct brush_s
 	int					compileFlags; /* ydnar */
 	qboolean			detail;
 	qboolean			nonsolid; /* vortex: render-only brush */
+	qboolean            noclip; /* vortex: don't clip faces by BSP tree */
+	qboolean            notjunc; /* vortex: disable T-junction fixing */
 	qboolean			opaque;
 
 	int					portalareas[ 2 ];
 
 	vec3_t				mins, maxs;
 	int					numsides;
-	
+
 	side_t				sides[ 6 ];			/* variably sized */
 }
 brush_t;
@@ -936,7 +944,7 @@ typedef struct parseMesh_s
 	
 	/* ydnar: gs mods */
 	float				lightmapScale;
-	byte				smoothNormals; /* VorteX: per-entity normal smoothing (with func_group support) */
+	int					smoothNormals; /* VorteX: per-entity normal smoothing (with func_group support) */
 	int					vertTexProj;
 	vec3_t				eMins, eMaxs;
 	indexMap_t			*im;
@@ -1034,14 +1042,17 @@ typedef struct mapDrawSurface_s
 	
 	/* ydnar: gs mods */
 	float				lightmapScale;
-	byte				smoothNormals;
+	float				lightmapStitch;
+	int					smoothNormals;
 	int					vertTexProj;
 	qboolean			noAlphaFix;
+	qboolean            noClip;
+	qboolean            noTJunc;
 
 	/* ydnar: surface classification */
 	vec3_t				mins, maxs;
 	vec3_t				lightmapAxis;
-	int					sampleSize;
+	float				sampleSize;
 	
 	/* ydnar: shadow group support */
 	char				castShadows, recvShadows;
@@ -1077,16 +1088,19 @@ drawSurfRef_t;
 /* ydnar: metasurfaces are constructed from lists of metatriangles so they can be merged in the best way */
 typedef struct metaTriangle_s
 {
+	mapDrawSurface_t    *ds;
 	shaderInfo_t		*si;
 	side_t				*side;
-	int					entityNum, surfaceNum, planeNum, fogNum, sampleSize;
+	int					entityNum, planeNum, fogNum;
+	float               sampleSize;
 	char				castShadows, recvShadows;
+	int					smoothNormals;
 	vec4_t				plane;
 	vec3_t				lightmapAxis;
 	int					indexes[ 3 ];
+	float               area;
 }
 metaTriangle_t;
-
 
 typedef struct epair_s
 {
@@ -1094,7 +1108,6 @@ typedef struct epair_s
 	char				*key, *value;
 }
 epair_t;
-
 
 typedef struct
 {
@@ -1319,10 +1332,11 @@ light_t;
 typedef struct
 {
 	/* constant input */
-	qboolean			testOcclusion, forceSunlight, testAll, testShadowGroups;
+	qboolean			testOcclusion, forceSunlight, testAll, forceSelfShadow;
 	int					recvShadows;
 	float               occlusionBias;
 
+	int                 entityNum;
 	int					numSurfaces;
 	int					*surfaces;
 	
@@ -1415,11 +1429,14 @@ typedef struct rawLightmap_s
 	int						customWidth, customHeight;
 	float					brightness;
 	float					filterRadius;
+	float                   stitchRadius;
 	
 	int						firstLightSurface, numLightSurfaces;	/* index into lightSurfaces */
 	int						numLightClusters, *lightClusters;
 	
-	int						sampleSize, actualSampleSize, axisNum;
+	float                   sampleSize;
+	float                   actualSampleSize;
+	int						axisNum;
 
 	/* vortex: per-surface lighting control */
 	float					floodlightDirectionScale;
@@ -1475,7 +1492,9 @@ typedef struct surfaceInfo_s
 	shaderInfo_t		*si;
 	rawLightmap_t		*lm;
 	int					parentSurfaceNum, childSurfaceNum;
-	int					entityNum, sampleSize, patchIterations;
+	int					entityNum, patchIterations;
+	float               sampleSize;
+	float               lightmapStitch;
 	char				castShadows, recvShadows;
 	float				longestCurve;
 	float				*plane;
@@ -1508,32 +1527,6 @@ qboolean                    GetGamePath(char *fileFullPath, char *outGamePath);
 /* bsp.c */
 int							BSPMain( int argc, char **argv );
 
-/* diskcache.c */
-typedef struct cachePage_s
-{
-	int                     num;
-	int                     size;       // page size
-	char                   *filename;
-	FILE                   *file;       // page file
-	byte                   *data;       // loaded page data
-	int                     selected;   // selected switch (once 0 - file get saved to disk)
-}diskPage_t;
-
-typedef struct
-{
-	diskPage_t             *pages;      // pages array
-	int                     maxpages;   // current size of pages array
-	char                    cachepath[MAX_QPATH];
-}diskCache_t;
-
-diskCache_t                *AllocateDiskCache( int pagecount );
-void                        AllocateDiskPage( diskCache_t *dk, int num, int size );
-diskPage_t                 *SelectDiskPage( diskCache_t *dk, int num );
-void                        DeselectDiskPage( diskCache_t *dk, int num );
-void                        FreeDiskCache( diskCache_t *dk );
-void                        DiskCacheTest( void );
-void                        DiskCacheStats( void );
-
 /* convert_map.c */
 int							ConvertBSPToMap( char *bspName, int collapseByTexture );
 
@@ -1550,7 +1543,7 @@ void						FreeBrushList( brush_t *brushes );
 brush_t                     *CopyBrush( brush_t *brush );
 qboolean					BoundBrush( brush_t *brush );
 qboolean					CreateBrushWindings( brush_t *brush );
-brush_t						*BrushFromBounds( vec3_t mins, vec3_t maxs );
+brush_t						*BrushFromBounds( float minx, float miny, float minz, float maxx, float maxy, float maxz, shaderInfo_t *si );
 vec_t						BrushVolume( brush_t *brush );
 void						WriteBSPBrushMap( char *name, brush_t *list );
 
@@ -1583,6 +1576,7 @@ void						MakeMeshNormals( mesh_t in );
 void						PutMeshOnCurve( mesh_t in );
 
 /* map.c */
+int                         CheckMapForErrors( void );
 void 						LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage );
 int							FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points );
 int							PlaneTypeForNormal( vec3_t normal );
@@ -1646,7 +1640,6 @@ void						TriangulatePatchSurface( entity_t *e , mapDrawSurface_t *ds );
 /* tjunction.c */
 void						FixTJunctions( entity_t *e );
 
-
 /* fog.c */
 winding_t					*WindingFromDrawSurf( mapDrawSurface_t *ds );
 void						FogDrawSurfaces( entity_t *e );
@@ -1667,14 +1660,14 @@ void						PicoPrintFunc( int level, const char *str );
 void						PicoLoadFileFunc( char *name, byte **buffer, int *bufSize );
 picoModel_t					*FindModel( const char *name, int frame );
 picoModel_t					*LoadModel( const char *name, int frame );
-void						InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int eNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, byte shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes );
-void						AddTriangleModels( entity_t *e );
+void						InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, float lightmapStitch, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes );
+void						AddTriangleModels( int entityNum );
 
 
 /* surface.c */
 mapDrawSurface_t			*AllocDrawSurface( surfaceType_t type );
 void						FinishSurface( mapDrawSurface_t *ds );
-void						StripFaceSurface( mapDrawSurface_t *ds );
+void						StripFaceSurface( mapDrawSurface_t *ds, qboolean onlyCreateIndexes );
 qboolean					CalcSurfaceTextureRange( mapDrawSurface_t *ds );
 qboolean					CalcLightmapAxis( vec3_t normal, vec3_t axis );
 void                        ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds );
@@ -1685,7 +1678,7 @@ mapDrawSurface_t			*MakeCelSurface( mapDrawSurface_t *src, shaderInfo_t *si );
 qboolean					IsTriangleDegenerate( bspDrawVert_t *points, int a, int b, int c );
 void						ClearSurface( mapDrawSurface_t *ds );
 void						AddEntitySurfaceModels( entity_t *e );
-mapDrawSurface_t			*DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, winding_t *w );
+mapDrawSurface_t			*DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, winding_t *w, vec3_t *vertexCache, int *numVertsInCache, int maxCache );
 mapDrawSurface_t			*DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh );
 mapDrawSurface_t			*DrawSurfaceForFlare( int entNum, vec3_t origin, vec3_t normal, vec3_t color, char *flareShader, int lightStyle );
 mapDrawSurface_t			*DrawSurfaceForShader( char *shader );
@@ -1721,7 +1714,7 @@ void						EmitMetaStats(); // vortex: print meta statistics even in no-verbose m
 
 
 /* surface_extra.c */
-void						SetDefaultSampleSize( int sampleSize );
+void						SetDefaultSampleSize( float sampleSize );
 
 void						SetSurfaceExtra( mapDrawSurface_t *ds, int num );
 
@@ -1730,10 +1723,11 @@ int							GetSurfaceExtraParentSurfaceNum( int num );
 int							GetSurfaceExtraEntityNum( int num );
 char						GetSurfaceExtraCastShadows( int num );
 char						GetSurfaceExtraRecvShadows( int num );
-int							GetSurfaceExtraSampleSize( int num );
+float						GetSurfaceExtraSampleSize( int num );
 float						GetSurfaceExtraLongestCurve( int num );
 void						GetSurfaceExtraLightmapAxis( int num, vec3_t lightmapAxis );
 float						GetSurfaceExtraShadeAngle( int num );
+float						GetSurfaceExtraLightmapStitch( int num );
 
 void						WriteSurfaceExtraFile( const char *path );
 void						LoadSurfaceExtraFile( const char *path );
@@ -1745,11 +1739,12 @@ void						MakeEntityDecals( entity_t *e );
 
 
 /* decorations.c */
+void						LoadDecorations( void );
+void						ImportDecorations( char *source );
 void						ProcessDecorations( void );
 
 /* brush_primit.c */
 void						ComputeAxisBase( vec3_t normal, vec3_t texX, vec3_t texY);
-
 
 /* vis.c */
 fixedWinding_t				*NewFixedWinding( int points );
@@ -1794,11 +1789,8 @@ void						SmoothNormals( void );
 void						MapRawLightmap(int num);
 
 void						SetupDirt();
-float						DirtForSample( trace_t *trace, int entitynum );
+float						DirtForSample( trace_t *trace  );
 void						DirtyRawLightmap(int num);
-
-void                        SetupSkyLightAmbient(void);
-void                        SkyLightAmbientIlluminateLightmap( rawLightmap_t *lm );
 
 void						SetupFloodLight();
 void						FloodlightRawLightmaps();
@@ -1808,6 +1800,7 @@ void						FloodLightRawLightmap(int num);
 
 void						IlluminateRawLightmap(int num);
 void						IlluminateVertexes(int num);
+void						DebugRawLightmap(int num);
 
 void						SetupBrushes( void );
 void						SetupClusters( void );
@@ -1833,9 +1826,6 @@ void						SetupSurfaceLightmaps( void );
 void						AllocateSurfaceLightmaps( void );
 void						StitchSurfaceLightmaps( void );
 void						StoreSurfaceLightmaps( void );
-
-diskPage_t                 *LoadRawLightmap( int num );
-void                        StoreRawLightmap( diskPage_t *lmdk );
 
 /* optimize.c */
 int                         OptimizeBSPMain( int argc, char **argv );
@@ -1900,8 +1890,10 @@ int							IntForKey( const entity_t *ent, const char *key );
 vec_t						FloatForKey( const entity_t *ent, const char *key );
 void						GetVectorForKey( const entity_t *ent, const char *key, vec3_t vec );
 entity_t					*FindTargetEntity( const char *target );
-void						GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *castShadows, char *recvShadows );
-
+void						GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *castShadows, char *recvShadows, qboolean isWorldspawn );
+void						GetEntityLightmapScale( const entity_t *ent, float *lightmapScale, float baseScale );
+void						GetEntityNormalSmoothing( const entity_t *ent, int *smoothNormals, int baseSmoothing );
+void                        GetEntityLightmapStitch( const entity_t *ent, float *stitchRadius, float baseStitchRadius );
 
 /* bspfile_ibsp.c */
 void						LoadIBSPFile( const char *filename );
@@ -1999,15 +1991,18 @@ Q_EXTERN qboolean			verboseEntities Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			force Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			infoMode Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			useCustomInfoParms Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			useEntitySaveId Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noprune Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			leaktest Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nodetail Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nosubdivide Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noclipmodel Q_ASSIGN( qfalse ); /* vortex: disable misc_model "autoclip" spawnflag */
+Q_EXTERN qboolean			noclip Q_ASSIGN( qfalse ); /* globally disable BSP clipping of brush faces */
 Q_EXTERN qboolean			notjunc Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fulldetail Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nodetailcollision Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nofoliage Q_ASSIGN( qfalse ); /* vortex: don't load foliage file */
+Q_EXTERN qboolean			nodecals Q_ASSIGN( qfalse ); /* vortex: don't process decals */
 Q_EXTERN qboolean			nowater Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noCurveBrushes Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fakemap Q_ASSIGN( qfalse );
@@ -2062,7 +2057,9 @@ Q_EXTERN int				nummapplanes;					/* nummapplanes will always be even */
 Q_EXTERN int				allocatedmapplanes Q_ASSIGN(0);
 Q_EXTERN int				numMapPatches;
 Q_EXTERN vec3_t				mapMins, mapMaxs;
-
+Q_EXTERN vec3_t				mapRegionMins, mapRegionMaxs;
+Q_EXTERN qboolean			mapRegion Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			mapRegionBrushes Q_ASSIGN( qtrue );
 Q_EXTERN int				defaultFogNum Q_ASSIGN( -1 );	/* ydnar: cleaner fog handling */
 Q_EXTERN int				numMapFogs Q_ASSIGN( 0 );
 Q_EXTERN fog_t				mapFogs[ MAX_MAP_FOGS ];
@@ -2177,19 +2174,18 @@ light global variables
 Q_EXTERN qboolean			wolfLight Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			loMem Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			loMemSky Q_ASSIGN( qfalse );
-Q_EXTERN qboolean			diskCache Q_ASSIGN( qfalse );
-Q_EXTERN char			    diskCachePath[MAX_QPATH];
 Q_EXTERN qboolean			noStyles Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			keepLights Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			colorNormalize Q_ASSIGN( qfalse );
 
-Q_EXTERN int				sampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_SAMPLE_SIZE );
+Q_EXTERN float				sampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_SAMPLE_SIZE );
 Q_EXTERN qboolean			noVertexLighting Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noGridLighting Q_ASSIGN( qfalse );
 
 Q_EXTERN qboolean			noTrace Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noTraceGrid Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noSurfaces Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			noStitch Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			patchShadows Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			cpmaHack Q_ASSIGN( qfalse );
 
@@ -2216,7 +2212,6 @@ Q_EXTERN int				lightSamples Q_ASSIGN( 1 );
 Q_EXTERN qboolean			filter Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dark Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			sunOnly Q_ASSIGN( qfalse );
-Q_EXTERN qboolean			skyLightAO Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			skyLightSurfaces Q_ASSIGN( qfalse );
 Q_EXTERN int				approximateTolerance Q_ASSIGN( 0 );
 Q_EXTERN qboolean			noCollapse Q_ASSIGN( qfalse );
@@ -2224,25 +2219,32 @@ Q_EXTERN qboolean			exportLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			externalLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN int				lmCustomSize Q_ASSIGN( LIGHTMAP_WIDTH );
 Q_EXTERN qboolean			lightmapsRGB Q_ASSIGN( qfalse );
+
+/* vortex: dirtmapping/ambient occlusion */
+typedef enum
+{
+	DIRTMODE_ORDERED_CONE,
+	DIRTMODE_RANDOM_CONE,
+	DIRTMODE_AMBIENT_SPHERE_LOWQUALITY,
+	DIRTMODE_AMBIENT_SPHERE_HIGHQUALITY
+}dirtMode_t;
+char *DirtModeName(dirtMode_t *mode);
+typedef enum
+{
+	DIRTFILTER_NONE,
+	DIRTFILTER_AVERAGE
+}dirtFilter_t;
+char *DirtFilterName(dirtFilter_t *filter);
 Q_EXTERN qboolean			dirty Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dirtDebug Q_ASSIGN( qfalse );
-Q_EXTERN int				dirtMode Q_ASSIGN( 0 );
+Q_EXTERN dirtMode_t			dirtMode Q_ASSIGN( DIRTMODE_ORDERED_CONE );
+Q_EXTERN dirtFilter_t		dirtFilter Q_ASSIGN( DIRTFILTER_AVERAGE );
 Q_EXTERN float				dirtDepth Q_ASSIGN( 128.0f );
 Q_EXTERN float				dirtDepthExponent Q_ASSIGN( 2.0f );
 Q_EXTERN float				dirtScale Q_ASSIGN( 1.0f );
 Q_EXTERN float				dirtGain Q_ASSIGN( 1.0f );
-Q_EXTERN vec3_t             dirtGainMask
-#ifndef MAIN_C
-							;
-#else
-							= {1, 1, 1};
-#endif
-Q_EXTERN vec3_t             dirtScaleMask
-#ifndef MAIN_C
-							;
-#else
-							= {1, 1, 1};
-#endif
+Q_EXTERN vec3_t             dirtGainMask Q_ASSIGN_VEC3( 1, 1, 1 );
+Q_EXTERN vec3_t             dirtScaleMask Q_ASSIGN_VEC3( 1, 1, 1 );
 typedef struct
 {
 	qboolean       enabled;
@@ -2251,16 +2253,18 @@ typedef struct
 	int            numVectors;
 	float          wholeDepth;
 	/* options */
-	int            mode;
+	dirtMode_t     mode;
 	float          depth;
 	float          depthExponent;
 	float          gain;
 	vec3_t         gainMask;
 	float          scale;
 	vec3_t         scaleMask;
+	dirtFilter_t   filter;
 } dirtSettings_t;
 Q_EXTERN dirtSettings_t dirtSettings[MAX_MAP_ENTITIES];
 
+/* vortex: light deviance */
 Q_EXTERN qboolean			noDeviance Q_ASSIGN( qfalse );
 Q_EXTERN float			    devianceJitter Q_ASSIGN( 0.0f );
 Q_EXTERN int			    devianceSamples Q_ASSIGN( 0 );
@@ -2282,6 +2286,8 @@ Q_EXTERN qboolean			debugUnused Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugAxis Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugCluster Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugOrigin Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			debugStitch Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			debugLightmap Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			lightmapBorder Q_ASSIGN( qfalse );
 
 /* longest distance across the map */
@@ -2319,7 +2325,7 @@ Q_EXTERN void (*ColorToBytes)(const float *, byte *, float, qboolean);
 		 void ColorToBytesUnified( const float *color, byte *colorBytes, float scale, qboolean sRGB );
 
 /* ydnar: for runtime tweaking of falloff tolerance */
-Q_EXTERN float				falloffTolerance Q_ASSIGN( 1.0f );
+Q_EXTERN float				falloffTolerance Q_ASSIGN( 0.1f ); /* vortex: was 1.0 */
 Q_EXTERN qboolean			exactPointToPolygon Q_ASSIGN( qtrue );
 Q_EXTERN float				formFactorValueScale Q_ASSIGN( 3.0f );
 Q_EXTERN float				linearScale Q_ASSIGN( 1.0f / 8000.0f );
@@ -2329,7 +2335,7 @@ Q_EXTERN int				numPointLights;
 Q_EXTERN int				numSpotLights;
 Q_EXTERN int				numSunLights;
 Q_EXTERN int				numAreaLights;
-Q_EXTERN int				numLights;
+Q_EXTERN int				numLights Q_ASSIGN( -1 );
 Q_EXTERN int				numCulledLights;
 Q_EXTERN int				numNegativeLights;
 
@@ -2407,7 +2413,6 @@ Q_EXTERN int				numRawSuperLuxels Q_ASSIGN( 0 );
 Q_EXTERN int				numRawLightmaps Q_ASSIGN( 0 );
 Q_EXTERN rawLightmap_t		*rawLightmaps Q_ASSIGN( NULL );
 Q_EXTERN int				*sortLightmaps Q_ASSIGN( NULL );
-Q_EXTERN diskCache_t        *rawLightmapsDiskCache;
 
 /* vertex luxels */
 Q_EXTERN float				*vertexLuxels[ MAX_LIGHTMAPS ];

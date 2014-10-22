@@ -795,7 +795,7 @@ static shaderInfo_t	*AllocShaderInfo( void )
 	si->polygonOffset = qfalse;
 	
 	si->shadeAngleDegrees = 0.0f;
-	si->lightmapSampleSize = 0;
+	si->lightmapSampleSize = 0.0f;
 	si->lightmapSampleOffset = DEFAULT_LIGHTMAP_SAMPLE_OFFSET;
 	si->patchShadows = qfalse;
 	si->vertexShadows = qtrue;	/* ydnar: changed default behavior */
@@ -1675,7 +1675,7 @@ static void ParseShaderFile( const char *filename )
 				else if( !Q_stricmp( token, "q3map_lightmapSampleSize" ) )
 				{
 					GetTokenAppend( shaderText, qfalse );
-					si->lightmapSampleSize = atoi( token );
+					si->lightmapSampleSize = atof( token );
 				}
 				
 				/* q3map_lightmapSampleSffset <value> */
@@ -2184,6 +2184,10 @@ static void ParseShaderFile( const char *filename )
 				/* vortex: prevent adding brush faces to BSP tree */
 				else if( !Q_stricmp( token, "q3map_nobsp" ) )
 					si->noBSP = qtrue;
+
+				/* vortex: prevent metasurface vertex normal smoothing */
+				else if( !Q_stricmp( token, "q3map_nosmooth" ) )
+					si->noSmooth = qtrue;
 
 				/* q3map_notjunc */
 				else if( !Q_stricmp( token, "q3map_notjunc" ) )

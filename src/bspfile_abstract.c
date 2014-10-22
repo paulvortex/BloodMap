@@ -596,7 +596,6 @@ void UnparseEntities( qboolean removeQ3map2keys )
 	char		key[ 1024 ], value[ 1024 ];
 	const char	*value2;
 	
-	
 	/* setup */
 	buf = bspEntData;
 	end = buf;
@@ -828,21 +827,26 @@ entity_t *FindTargetEntity( const char *target )
 	return NULL;
 }
 
-
-
 /*
 GetEntityShadowFlags() - ydnar
 gets an entity's shadow flags
 note: does not set them to defaults if the keys are not found!
 */
 
-void GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *castShadows, char *recvShadows )
+void GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *castShadows, char *recvShadows, qboolean isWorldspawn )
 {
 	const char	*value;
 	
 	/* get cast shadows */
 	if( castShadows != NULL )
 	{
+		/* default shadow cast groups */
+		if( isWorldspawn == qtrue )
+			*castShadows = WORLDSPAWN_CAST_SHADOWS;
+		else  
+			*castShadows = ENTITY_CAST_SHADOWS;
+
+		/* explicit shadow cast group */
 		value = ValueForKey( ent, "_castShadows" );
 		if( value[ 0 ] == '\0' )
 			value = ValueForKey( ent, "_cs" );
@@ -857,6 +861,13 @@ void GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *cast
 	/* receive */
 	if( recvShadows != NULL )
 	{
+		/* default shadow receive groups */
+		if( isWorldspawn == qtrue )
+			*recvShadows = WORLDSPAWN_RECV_SHADOWS;
+		else
+			*recvShadows = ENTITY_RECV_SHADOWS;
+
+		/* explicit shadow receive group */
 		value = ValueForKey( ent, "_receiveShadows" );
 		if( value[ 0 ] == '\0' )
 			value = ValueForKey( ent, "_rs" );
@@ -869,3 +880,50 @@ void GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *cast
 	}
 }
 
+/*
+GetEntityLightmapScale() - vortex
+gets an entity's lightmap scale
+*/
+
+void GetEntityLightmapScale( const entity_t *ent, float *lightmapScale, float baseScale )
+{
+	*lightmapScale = baseScale;
+	if( KeyExists( ent, "_ls" ) )
+		*lightmapScale = FloatForKey( ent, "_ls" );
+	if( KeyExists( ent, "_lightmapscale" ) )
+		*lightmapScale = FloatForKey( ent, "_lightmapscale" );
+	if( KeyExists( ent, "lightmapscale" ) )
+		*lightmapScale = FloatForKey( ent, "lightmapscale" );
+
+	/* fix negative */
+	if( *lightmapScale <= 0.0f )
+		*lightmapScale = 0.0f;
+}
+
+/*
+GetEntityNormalSmoothing() - vortex
+gets an entity's normal smoothing
+*/
+
+void GetEntityNormalSmoothing( const entity_t *ent, int *smoothNormals, int baseSmoothing )
+{
+	*smoothNormals = baseSmoothing;
+	if( KeyExists( ent, "_np" ) )
+		*smoothNormals = IntForKey(ent, "_np");
+	if( KeyExists( ent, "_smoothnormals" ) )
+		*smoothNormals  = IntForKey(ent, "_smoothnormals");
+}
+
+/*
+GetEntityLightmapStitch() - vortex
+gets entity lightmap stitching
+*/
+
+void GetEntityLightmapStitch( const entity_t *ent, float *stitchRadius, float baseStitchRadius )
+{
+	*stitchRadius = baseStitchRadius;
+	if( KeyExists( ent, "_lst" ) )
+		*stitchRadius = FloatForKey(ent, "_lst");
+	if( KeyExists( ent, "_lightmapstitch" ) )
+		*stitchRadius  = FloatForKey(ent, "_lightmapstitch");
+}
