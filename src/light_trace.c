@@ -26,16 +26,8 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 
 ------------------------------------------------------------------------------- */
 
-
-
 /* marker */
 #define LIGHT_TRACE_C
-
-
-
-/* dependencies */
-#include "q3map2.h"
-
 
 /* dependencies */
 #include "q3map2.h"
@@ -43,8 +35,8 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 #define Vector2Copy( a, b )		((b)[ 0 ] = (a)[ 0 ], (b)[ 1 ] = (a)[ 1 ])
 #define Vector4Copy( a, b )		((b)[ 0 ] = (a)[ 0 ], (b)[ 1 ] = (a)[ 1 ], (b)[ 2 ] = (a)[ 2 ], (b)[ 3 ] = (a)[ 3 ])
 
-#define MAX_NODE_TRIANGLES		2   // vortex: was 5
-#define MAX_TRACE_DEPTH			32  // vortex: increased from 32
+#define MAX_NODE_TRIANGLES		25   // vortex: was 5
+#define MAX_TRACE_DEPTH			256
 #define MIN_NODE_SIZE			32.0f
 
 #define GROW_TRACE_INFOS		32768		//%	4096
@@ -53,7 +45,6 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 #define GROW_TRACE_NODES		16384		//%	16384
 #define GROW_NODE_ITEMS			16			//%	256
 
-//#define GROW_TW_VERTS			4
 #define MAX_TW_VERTS			12
 
 #define	TRACE_ON_EPSILON		0.0f
@@ -82,12 +73,7 @@ typedef struct traceWinding_s
 	vec4_t						plane;
 	int							infoNum;
 	unsigned char				numVerts;
-#ifdef GROW_TW_VERTS
-	unsigned char				maxVerts;
-	traceVert_t					*v;
-#else
 	traceVert_t					v[MAX_TW_VERTS];
-#endif
 }
 traceWinding_t;
 
@@ -220,19 +206,6 @@ populates trace winding with new vert using dynamical grow allocation
 
 void TraceWindingAddVert(traceWinding_t *tw, traceVert_t *v)
 {
-#ifdef GROW_TW_VERTS
-	traceVert_t *newv;
-	if (tw->numVerts >= tw->maxVerts)
-	{
-		tw->maxVerts = tw->maxVerts + GROW_TW_VERTS;
-		// allocate & copy
-		newv = (traceVert_t *)safe_malloc(sizeof(traceVert_t) * tw->maxVerts);
-		memcpy(newv, tw->v, sizeof(traceVert_t) * tw->numVerts);
-		if (tw->v)
-			free(tw->v);
-		tw->v = newv;
-	}
-#endif
 	// check limit
 	if (tw->numVerts >= MAX_TW_VERTS)
 		Error("MAX_TW_VERTS (%d) exceeded", MAX_TW_VERTS);
@@ -247,16 +220,7 @@ copy trace wingding
 
 void TraceWindingCopy(traceWinding_t *dst, traceWinding_t *src)
 {
-#ifdef GROW_TW_VERTS
-	free(dst->v);
-	memcpy(dst, src, sizeof(*src));
-	if (dst->maxVerts < 0)
-		dst->maxVerts = GROW_TW_VERTS;
-	dst->v = (traceVert_t *)safe_malloc(sizeof(traceVert_t) * dst->maxVerts);
-	memcpy(dst->v, src->v, sizeof(traceVert_t) * src->maxVerts);
-#else
 	memcpy(dst, src, sizeof(traceWinding_t));
-#endif
 }
 
 /*
@@ -294,10 +258,6 @@ static int AddTraceWinding( traceWinding_t *tw )
 	
 	/* add the winding */
 	memcpy( &traceWindings[ num ], tw, sizeof( *traceWindings ) );
-#ifdef GROW_TW_VERTS
-	traceWindings[num].v = (traceVert_t *)safe_malloc(sizeof(traceVert_t) * traceWindings[num].maxVerts);
-	memcpy(traceWindings[num].v, tw->v, sizeof(traceVert_t) * traceWindings[num].maxVerts);
-#endif
 	if( num == numTraceWindings )
 		numTraceWindings++;
 	deadWinding = -1;

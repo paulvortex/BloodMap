@@ -1838,9 +1838,18 @@ void SetupDirt( void )
 {
 	int i;
 
+	/* init */
+	memset(&dirtSettings, 0, sizeof(dirtSettings));
+
+	/* disabled? */
+	if (nodirt)
+	{
+		dirty = qfalse;
+		return;
+	}
+
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- SetupDirt ---\n" );
-	memset(&dirtSettings, 0, sizeof(dirtSettings));
 
 	/* setup global dirt */
 	if (dirty)
@@ -2463,6 +2472,79 @@ static void SubsampleRawLuxel_r( rawLightmap_t *lm, trace_t *trace, vec3_t sampl
 }
 
 
+/*
+SampleLightGrid()
+calculates the lighting at point based on LightGrid
+*/
+
+qboolean latLongSinTableBuilt = qfalse;
+float    latLongSinTable[320] = { 0 };
+
+void SampleLightGrid(vec3_t origin, vec3_t outambient, vec3_t outdirected, vec3_t outdirection )
+{
+	int i, j, k, index[3];
+	float trans[3], blend1, blend2, blend;
+	bspGridPoint_t *a, *s;
+	rawGridPoint_t *ar, *sr;
+
+	/* init */
+	VectorClear(outambient);
+	VectorClear(outdirected);
+	VectorClear(outdirection);
+
+	/* build latLong sin table */
+	if( latLongSinTableBuilt == qfalse )
+	{
+		for( i = 0; i < 320; i++)
+			latLongSinTable[i] = sin(i * Q_PI * 2.0f / 256.0);
+		latLongSinTableBuilt = qtrue;
+	}
+
+	/* transform origin into lightGrid space */
+	trans[0] = (origin[0] - gridMins[0]) / gridSize[0];
+	trans[1] = (origin[1] - gridMins[1]) / gridSize[1];
+	trans[2] = (origin[2] - gridMins[2]) / gridSize[2];
+	trans[0] = max(0, min(trans[0], gridBounds[0] - 1));
+	trans[1] = max(0, min(trans[1], gridBounds[1] - 1));
+	trans[2] = max(0, min(trans[2], gridBounds[2] - 1));
+	index[0] = (int)floor(trans[0]);
+	index[1] = (int)floor(trans[1]);
+	index[2] = (int)floor(trans[2]);
+
+	/* now lerp the values */
+	a = &bspGridPoints[(index[2] * gridBounds[1] + index[1]) * gridBounds[0] + index[0]];
+	ar = &rawGridPoints[(index[2] * gridBounds[1] + index[1]) * gridBounds[0] + index[0]];
+	for (k = 0;k < 2;k++)
+	{
+		blend1 = (k ? (trans[2] - index[2]) : (1 - (trans[2] - index[2])));
+		if (blend1 < 0.001f || index[2] + k >= gridBounds[2])
+			continue;
+		for (j = 0;j < 2;j++)
+		{
+			blend2 = blend1 * (j ? (trans[1] - index[1]) : (1 - (trans[1] - index[1])));
+			if (blend2 < 0.001f || index[1] + j >= gridBounds[1])
+				continue;
+			for (i = 0;i < 2;i++)
+			{
+				blend = blend2 * (i ? (trans[0] - index[0]) : (1 - (trans[0] - index[0])));
+				if (blend < 0.001f || index[0] + i >= gridBounds[0])
+					continue;
+				s = a + (k * gridBounds[1] + j) * gridBounds[0] + i;				
+				sr = ar + (k * gridBounds[1] + j) * gridBounds[0] + i;
+				VectorMA(outambient, blend * (1.0f / 128.0f) * gridScale * gridAmbientScale, sr->ambient[ 0 ], outambient);
+				VectorMA(outdirected, blend * (1.0f / 128.0f) * gridScale, sr->directed[ 0 ], outdirected);
+				// this uses the mod_md3_sin table because the values are
+				// already in the 0-255 range, the 64+ bias fetches a cosine instead of a sine value
+				outdirection[0] += blend * (latLongSinTable[64 + s->latLong[1]] * latLongSinTable[s->latLong[0]]);
+				outdirection[1] += blend * (latLongSinTable[     s->latLong[1]] * latLongSinTable[s->latLong[0]]);
+				outdirection[2] += blend * (latLongSinTable[64 + s->latLong[0]]);
+			}
+		}
+	}
+
+	/* renormalize light direction */
+	VectorNormalize(outdirection, outdirection);
+}
 
 /*
 IlluminateRawLightmap()
@@ -2531,7 +2613,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 	numLuxelsIlluminated += (lm->sw * lm->sh);
 	
 	/* test debugging state */
-	if( debugSurfaces || debugAxis || debugCluster || debugOrigin || dirtDebug || normalmap )
+	if( lightmapDebugState )
 	{
 		/* debug fill the luxels */
 		for( y = 0; y < lm->sh; y++ )
@@ -2552,7 +2634,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 				normal = SUPER_NORMAL( x, y );
 
 				/* set plain deluxemap */
-				if( deluxemap)
+				if( deluxemap )
 					VectorScale( normal, 0.00390625f, deluxel );
 				
 				/* color the luxel with raw lightmap num? */
@@ -2588,6 +2670,31 @@ void IlluminateRawLightmap(int rawLightmapNum)
 					luxel[ 0 ] = (normal[ 0 ] + 1.0f) * 127.5f;
 					luxel[ 1 ] = (normal[ 1 ] + 1.0f) * 127.5f;
 					luxel[ 2 ] = (normal[ 2 ] + 1.0f) * 127.5f;
+				}
+
+				/* color the luxel by lightgrid sample */
+				else if( debugGrid )
+				{
+					vec3_t ambient, diffuse, dir;
+					float shade;
+
+					/* sample grid */
+					SampleLightGrid( origin, ambient, diffuse, dir );
+
+					/* apply shading */
+					shade = DotProduct( normal, dir );
+					if (trace.twoSided == qtrue)
+						shade = fabs(shade);
+					shade = max(0, shade);
+
+					/* color the luxel */
+					luxel[ 0 ] = (ambient[0] + shade * diffuse[0]) * 255.0f;
+					luxel[ 1 ] = (ambient[1] + shade * diffuse[1]) * 255.0f;
+					luxel[ 2 ] = (ambient[2] + shade * diffuse[2]) * 255.0f;
+
+					/* add to light direction */
+					if( deluxemap )
+						VectorMA( deluxel, shade, dir, deluxel );
 				}
 				
 				/* otherwise clear it */
@@ -3122,7 +3229,6 @@ light the surface vertexes
 */
 
 #define VERTEX_NUDGE	4.0f
-#define DEFAULT_VERTEX_SHADOW_BIAS 0.125f
 
 void IlluminateVertexes(int num)
 {
@@ -3156,7 +3262,7 @@ void IlluminateVertexes(int num)
 		/* setup trace */
 		trace.entityNum = info->entityNum;
 		trace.testOcclusion = (cpmaHack && lm != NULL) ? qfalse : (noTrace ? qfalse : qtrue);
-		trace.occlusionBias = (info->si->vertexShadowBias >= 0) ? info->si->vertexShadowBias : DEFAULT_VERTEX_SHADOW_BIAS;
+		trace.occlusionBias = info->si->vertexOcclusionBias;
 		trace.forceSunlight = info->si->forceSunlight ? qtrue : qfalse;
 		trace.forceSelfShadow = qfalse;
 		trace.recvShadows = info->recvShadows;
@@ -3232,11 +3338,6 @@ void IlluminateVertexes(int num)
 					/* store */
 					for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
 					{
-						/* dirty */
-						//if( dirty )
-						//	ApplyDirt(&colors[lightmapNum][0], &colors[lightmapNum][1], &colors[lightmapNum][2], &dirt, info->entityNum, info->si->aoScale, info->si->aoScale * info->si->aoGainScale);
-						
-						/* store */
 						radVertLuxel = RAD_VERTEX_LUXEL( lightmapNum, ds->firstVert + i );
 						VectorCopy( colors[ lightmapNum ], radVertLuxel );
 						VectorAdd( avgColors[ lightmapNum ], colors[ lightmapNum ], colors[ lightmapNum ] );

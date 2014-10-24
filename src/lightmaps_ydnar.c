@@ -2334,10 +2334,10 @@ void FloodLightmapBorders( outLightmap_t *olm )
 	sampledLightTex = (byte *)safe_malloc( size );
 	sampledDirTex = (byte *)safe_malloc( size );
 	
-	/* multiple passes cover most types of block compression */
+	/* multiple passes cover 4x4 block compression */
 	texLight = olm->bspLightBytes;
 	texDir = olm->bspDirBytes;
-	for ( pass = 0; pass < 9; pass++ )
+	for ( pass = 0; pass < 4; pass++ )
 	{
 		memcpy( sampledLightTex, texLight, size );
 		memcpy( sampledDirTex, texDir, size );

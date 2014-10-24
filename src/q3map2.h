@@ -244,8 +244,6 @@ constants
 
 #define LUXEL_EPSILON			0.125f
 #define VERTEX_EPSILON			-0.125f
-#define GRID_EPSILON			0.0f
-
 
 #define MIN_LIGHTMAP_SAMPLE_SIZE	    0.1f
 #define DEFAULT_LIGHTMAP_SAMPLE_SIZE	16.0f
@@ -746,7 +744,7 @@ typedef struct shaderInfo_s
 	byte				styleMarker;					/* ydnar: light styles hack */
 	
 	float				vertexScale;					/* vertex light scale */
-	float               vertexShadowBias;               /* vortex: bias the occlusion point (if trace hit position within this radius from sample, we are not shadowed) */
+	float               vertexOcclusionBias;            /* vortex: bias the occlusion point (if trace hit position within this radius from sample, we are not shadowed) */
 
 	float               aoScale;                        /* vortex: ambient occlusion scale */
 	float               aoGainScale;                    /* vortex: ambient occlusion gain scale */
@@ -2236,6 +2234,7 @@ typedef enum
 }dirtFilter_t;
 char *DirtFilterName(dirtFilter_t *filter);
 Q_EXTERN qboolean			dirty Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			nodirt Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dirtDebug Q_ASSIGN( qfalse );
 Q_EXTERN dirtMode_t			dirtMode Q_ASSIGN( DIRTMODE_ORDERED_CONE );
 Q_EXTERN dirtFilter_t		dirtFilter Q_ASSIGN( DIRTFILTER_AVERAGE );
@@ -2273,12 +2272,12 @@ Q_EXTERN int			    devianceAtten Q_ASSIGN( 0 );
 Q_EXTERN int			    devianceForm Q_ASSIGN( 0 );
 
 /* 27: floodlighting */
-Q_EXTERN qboolean					debugnormals Q_ASSIGN( qfalse );
-Q_EXTERN qboolean					floodlighty Q_ASSIGN( qfalse );
-Q_EXTERN qboolean					floodlight_lowquality Q_ASSIGN( qfalse );
-Q_EXTERN vec3_t						floodlightRGB;
-Q_EXTERN float						floodlightIntensity Q_ASSIGN( 512.0f );
-Q_EXTERN float						floodlightDistance Q_ASSIGN( 1024.0f );
+Q_EXTERN qboolean			debugnormals Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			floodlighty Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			floodlight_lowquality Q_ASSIGN( qfalse );
+Q_EXTERN vec3_t				floodlightRGB;
+Q_EXTERN float				floodlightIntensity Q_ASSIGN( 512.0f );
+Q_EXTERN float				floodlightDistance Q_ASSIGN( 1024.0f );
 
 Q_EXTERN qboolean			dump Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debug Q_ASSIGN( qfalse );
@@ -2288,7 +2287,9 @@ Q_EXTERN qboolean			debugCluster Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugOrigin Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugStitch Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugLightmap Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			debugGrid Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			lightmapBorder Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			lightmapDebugState Q_ASSIGN( qfalse );
 
 /* longest distance across the map */
 Q_EXTERN float				maxMapDistance Q_ASSIGN( 0 );
@@ -2512,9 +2513,6 @@ Q_EXTERN bspBrushSide_t		bspBrushSides[ MAX_MAP_BRUSHSIDES ];
 
 Q_EXTERN int				numBSPLightBytes Q_ASSIGN( 0 );
 Q_EXTERN byte				*bspLightBytes Q_ASSIGN( NULL );
-
-//%	Q_EXTERN int				numBSPGridPoints Q_ASSIGN( 0 );
-//%	Q_EXTERN byte				*bspGridPoints Q_ASSIGN( NULL );
 
 Q_EXTERN int				numBSPGridPoints Q_ASSIGN( 0 );
 Q_EXTERN bspGridPoint_t		*bspGridPoints Q_ASSIGN( NULL );

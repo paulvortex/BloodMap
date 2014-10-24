@@ -799,7 +799,7 @@ static shaderInfo_t	*AllocShaderInfo( void )
 	si->lightmapSampleOffset = DEFAULT_LIGHTMAP_SAMPLE_OFFSET;
 	si->patchShadows = qfalse;
 	si->vertexShadows = qtrue;	/* ydnar: changed default behavior */
-	si->vertexShadowBias = -1;
+	si->vertexOcclusionBias = 0.125f;
 	si->forceSunlight = qfalse;
 	si->vertexScale = 1.0;
 	si->aoGainScale = 1.0;
@@ -2221,11 +2221,11 @@ static void ParseShaderFile( const char *filename )
 				else if( !Q_stricmp( token, "q3map_vertexShadows" ) )
 					si->vertexShadows = qtrue;	/* ydnar */
 
-				/* q3map_vertexshadowbias */
-				else if( !Q_stricmp( token, "q3map_vertexShadowBias" ) )
+				/* q3map_vertexOcclusionBias */
+				else if( !Q_stricmp( token, "q3map_vertexOcclusionBias" ) )
 				{
 					GetTokenAppend( shaderText, qfalse );
-					si->vertexShadowBias = atof( token );
+					si->vertexOcclusionBias = atof( token );
 				}
 				
 				/* q3map_novertexshadows */
