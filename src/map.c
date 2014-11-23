@@ -801,7 +801,7 @@ support for old brush format back in
 NOTE: it would be "cleaner" to have seperate functions to parse between old and new brushes
 */
 
-static void ParseRawBrush( qboolean onlyLights )
+static void ParseRawBrush( )
 {
 	side_t			*side;
 	vec3_t			planePoints[ 3 ];
@@ -884,10 +884,7 @@ static void ParseRawBrush( qboolean onlyLights )
 		
 		/* set default flags and values */
 		sprintf( shader, "textures/%s", name );
-		if( onlyLights )
-			si = &shaderInfo[ 0 ];
-		else
-			si = ShaderInfoForShader( shader );
+		si = ShaderInfoForShader( shader );
 		side->shaderInfo = si;
 		side->surfaceFlags = si->surfaceFlags;
 		side->contentFlags = si->contentFlags;
@@ -1005,15 +1002,15 @@ ParseBrush()
 parses a brush out of a map file and sets it up
 */
 
-static void ParseBrush( qboolean onlyLights, qboolean onlyFoliage )
+static void ParseBrush( qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage )
 {
 	brush_t	*b;
-	
+
 	/* parse the brush out of the map */
-	ParseRawBrush( (onlyLights == qtrue || onlyFoliage == qtrue ) ? qtrue : qfalse );
+	ParseRawBrush( );
 	
 	/* only go this far? */
-	if( onlyLights || onlyFoliage )
+	if( onlyFoliage )
 		return;
 	
 	/* set some defaults */
@@ -1028,6 +1025,16 @@ static void ParseBrush( qboolean onlyLights, qboolean onlyFoliage )
 	
 	/* get the content for the entire brush */
 	SetBrushContents( buildBrush );
+
+	/* only go this far? */
+	if( onlyLights || onlyLightBrushes )
+	{
+		/* register lightgrid brush */
+		if( buildBrush->compileFlags & C_LIGHTGRID )
+			if( CreateBrushWindings( buildBrush ) )
+				AllocateGridArea( buildBrush->mins, buildBrush->maxs );
+		return;
+	}
 	
 	/* allow detail brushes to be removed */
 	if( nodetail && (buildBrush->compileFlags & C_DETAIL) )
@@ -1378,7 +1385,7 @@ ParseMapEntity()
 parses a single entity out of a map file
 */
 
-static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
+static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage )
 {
 	epair_t			*ep;
 	const char		*classname, *value;
@@ -1459,7 +1466,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 				g_bBrushPrimit = BPRIMIT_NEWBRUSHES;
 				
 				/* parse brush primitive */
-				ParseBrush( onlyLights, onlyFoliage );
+				ParseBrush( onlyLights, onlyLightBrushes, onlyFoliage );
 			}
 			else
 			{
@@ -1469,7 +1476,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 				
 				/* parse old brush format */
 				UnGetToken();
-				ParseBrush( onlyLights, onlyFoliage );
+				ParseBrush( onlyLights, onlyLightBrushes, onlyFoliage );
 			}
 			entitySourceBrushes++;
 		}
@@ -1499,6 +1506,13 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyFoliage )
 
 	/* vortex: only foliage? */
 	if( onlyFoliage && Q_strncasecmp( classname, "misc_model", 10 ) )
+	{
+		numEntities--;
+		return qtrue;
+	}
+
+	/* vortex: only light brushes */
+	if( onlyLightBrushes )
 	{
 		numEntities--;
 		return qtrue;
@@ -1619,7 +1633,7 @@ LoadMapFile()
 loads a map file into a list of entities
 */
 
-void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
+void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage )
 {		
 	FILE		*file;
 	brush_t		*b;
@@ -1637,7 +1651,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
 	LoadScriptFile( filename, -1 );
 	
 	/* setup */
-	if( onlyLights || onlyFoliage )
+	if( onlyLights || onlyFoliage || onlyLightBrushes )
 		oldNumEntities = numEntities;
 	else
 		numEntities = 0;
@@ -1654,7 +1668,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
 	}
 
 	/* parse the map file */
-	while( ParseMapEntity( onlyLights, onlyFoliage ) );
+	while( ParseMapEntity( onlyLights, onlyLightBrushes, onlyFoliage ) );
 	
 	/* light loading */
 	if ( onlyFoliage )
@@ -1666,6 +1680,10 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage )
 	{
 		/* emit some statistics */
 		Sys_FPrintf( SYS_VRB, "%9d light entities\n", numEntities - oldNumEntities );
+	}
+	else if( onlyLightBrushes )
+	{
+		/* emit some statistics */
 	}
 	else
 	{

@@ -250,7 +250,7 @@ int PatchBSPMain( int argc, char **argv )
 
 	/* load MAP file */
 	Sys_Printf( "--- LoadMap ---\n" );
-	LoadMapFile(name, qfalse, qfalse);
+	LoadMapFile(name, qfalse, qfalse, qfalse);
 	Sys_Printf( "%9d entities\n", numEntities );
 
 	/* check map for errors */

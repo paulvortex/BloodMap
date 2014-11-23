@@ -857,8 +857,8 @@ void FixMetaTJunctions( void )
 			VectorCopy( metaVerts[ j ].xyz, pt );
 
 			/* debug code: darken verts */
-			if( i == 0 )
-				VectorSet( metaVerts[ j ].color[ 0 ], 8, 8, 8 );
+			//if( i == 0 )
+			//	VectorSet( metaVerts[ j ].color[ 0 ], 8, 8, 8 );
 			
 			/* determine if point lies in the triangle's plane */
 			dist = DotProduct( pt, plane ) - plane[ 3 ];

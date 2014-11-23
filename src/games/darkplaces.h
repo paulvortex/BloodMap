@@ -56,8 +56,6 @@ game_t struct
 	1.0f,				/* lightmap gamma */
 	200.0f,				/* lightmap exposure */
 	1.0f,				/* lightmap compensate */
-	0.4f,				/* lightgrid scale */
-	0.6f,				/* lightgrid ambient scale */
 	qtrue,				/* disable shader lightstyles hack */
 	qtrue,				/* keep light entities on bsp */
 	qfalse,				/* do light color normalization */

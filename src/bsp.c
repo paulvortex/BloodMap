@@ -1364,9 +1364,9 @@ int BSPMain( int argc, char **argv )
 
 	/* load original file from temp spot in case it was renamed by the editor on the way in */
 	if( strlen( tempSource ) > 0 )
-		LoadMapFile( tempSource, qfalse, qfalse );
+		LoadMapFile( tempSource, qfalse, qfalse, qfalse );
 	else
-		LoadMapFile( name, qfalse, qfalse  );
+		LoadMapFile( name, qfalse, qfalse, qfalse  );
 
 	/* check map for errors */
 	CheckMapForErrors();

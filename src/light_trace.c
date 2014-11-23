@@ -1489,7 +1489,7 @@ skipShadowGroups:
 	
 	/* calculate t (depth) */
 	depth = DotProduct( tt->edge2, qvec ) * invDet;
-	if( depth <= trace->inhibitRadius || depth >= trace->distance )
+	if( depth < trace->inhibitRadius || depth >= trace->distance )
 		return qfalse;
 	
 	/* if hitpoint is really close to trace origin (sample point), then check for self-shadowing */

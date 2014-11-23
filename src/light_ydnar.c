@@ -701,9 +701,9 @@ static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t
 	/* get cluster */
 	pointCluster = ClusterForPointExtFilter( origintwo, LUXEL_EPSILON, numClusters, clusters );
 	
-	/* point in solid? (except in dark mode) */
+	/* point in solid? */
 	numnudges = 0;
-	if( pointCluster < 0 && dark == qfalse )
+	if( pointCluster < 0 )
 	{
 		/* nudge the the location around */
 		nudge = nudges[ 0 ];
@@ -723,8 +723,8 @@ static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t
 		}
 	}
 	
-	/* as a last resort, if still in solid, try drawvert origin offset by normal (except in dark mode) */
-	if( pointCluster < 0 && si != NULL && dark == qfalse )
+	/* as a last resort, if still in solid, try drawvert origin offset by normal */
+	if( pointCluster < 0 && si != NULL )
 	{
 		VectorMA( dv->xyz, lightmapSampleOffset, dv->normal, nudged );
 		pointCluster = ClusterForPointExtFilter( nudged, LUXEL_EPSILON, numClusters, clusters );
@@ -1872,10 +1872,10 @@ void SetupDirt( void )
 	/* emit some statistics */
 	if (dirtSettings[0].enabled)
 	{
-		Sys_FPrintf( SYS_VRB, "World mode: %s\n", DirtModeName(&dirtSettings[0].mode) );
-		Sys_FPrintf( SYS_VRB, "Filter mode: %s\n", DirtFilterName(&dirtSettings[0].filter) );
-		Sys_FPrintf( SYS_VRB, "Gain mask: %1.1f %1.1f %1.1f\n", dirtSettings[0].gainMask[0], dirtSettings[0].gainMask[1], dirtSettings[0].gainMask[2] );
-		Sys_FPrintf( SYS_VRB, "Scale mask: %1.1f %1.1f %1.1f\n", dirtSettings[0].scaleMask[0], dirtSettings[0].scaleMask[1], dirtSettings[0].scaleMask[2] );
+		Sys_FPrintf( SYS_VRB, "World mode = %s\n", DirtModeName(&dirtSettings[0].mode) );
+		Sys_FPrintf( SYS_VRB, "Filter mode = %s\n", DirtFilterName(&dirtSettings[0].filter) );
+		Sys_FPrintf( SYS_VRB, "Gain mask = ( %1.1f %1.1f %1.1f )\n", dirtSettings[0].gainMask[0], dirtSettings[0].gainMask[1], dirtSettings[0].gainMask[2] );
+		Sys_FPrintf( SYS_VRB, "Scale mask = %1.1f %1.1f %1.1f )\n", dirtSettings[0].scaleMask[0], dirtSettings[0].scaleMask[1], dirtSettings[0].scaleMask[2] );
 		Sys_FPrintf( SYS_VRB, "%9d vectors\n", dirtSettings[0].numVectors );
 		Sys_FPrintf( SYS_VRB, "%9.1f depth\n", dirtSettings[0].depth );
 		Sys_FPrintf( SYS_VRB, "%9.1f depth exponent\n", dirtSettings[0].depthExponent );
@@ -2033,7 +2033,7 @@ float DirtForSample( trace_t *trace )
 	/* setup trace */
 	oldTestAll = trace->testAll;
 	oldInhibitRadius = trace->inhibitRadius;
-	trace->inhibitRadius = 0.0f;
+	trace->inhibitRadius = 0;
 	trace->testAll = qfalse;
 
 	/* iterate through uniform vectors */
@@ -2113,7 +2113,7 @@ void DirtyRawLightmap(int rawLightmapNum)
 	trace.recvShadows = lm->recvShadows;
 	trace.numSurfaces = lm->numLightSurfaces;
 	trace.surfaces = &lightSurfaces[ lm->firstLightSurface ];
-	trace.inhibitRadius = -0.01;
+	trace.inhibitRadius = 0;
 	trace.testAll = qfalse;
 	
 	/* twosided lighting (may or may not be a good idea for lightmapped stuff) */
@@ -2471,81 +2471,6 @@ static void SubsampleRawLuxel_r( rawLightmap_t *lm, trace_t *trace, vec3_t sampl
 	}
 }
 
-
-/*
-SampleLightGrid()
-calculates the lighting at point based on LightGrid
-*/
-
-qboolean latLongSinTableBuilt = qfalse;
-float    latLongSinTable[320] = { 0 };
-
-void SampleLightGrid(vec3_t origin, vec3_t outambient, vec3_t outdirected, vec3_t outdirection )
-{
-	int i, j, k, index[3];
-	float trans[3], blend1, blend2, blend;
-	bspGridPoint_t *a, *s;
-	rawGridPoint_t *ar, *sr;
-
-	/* init */
-	VectorClear(outambient);
-	VectorClear(outdirected);
-	VectorClear(outdirection);
-
-	/* build latLong sin table */
-	if( latLongSinTableBuilt == qfalse )
-	{
-		for( i = 0; i < 320; i++)
-			latLongSinTable[i] = sin(i * Q_PI * 2.0f / 256.0);
-		latLongSinTableBuilt = qtrue;
-	}
-
-	/* transform origin into lightGrid space */
-	trans[0] = (origin[0] - gridMins[0]) / gridSize[0];
-	trans[1] = (origin[1] - gridMins[1]) / gridSize[1];
-	trans[2] = (origin[2] - gridMins[2]) / gridSize[2];
-	trans[0] = max(0, min(trans[0], gridBounds[0] - 1));
-	trans[1] = max(0, min(trans[1], gridBounds[1] - 1));
-	trans[2] = max(0, min(trans[2], gridBounds[2] - 1));
-	index[0] = (int)floor(trans[0]);
-	index[1] = (int)floor(trans[1]);
-	index[2] = (int)floor(trans[2]);
-
-	/* now lerp the values */
-	a = &bspGridPoints[(index[2] * gridBounds[1] + index[1]) * gridBounds[0] + index[0]];
-	ar = &rawGridPoints[(index[2] * gridBounds[1] + index[1]) * gridBounds[0] + index[0]];
-	for (k = 0;k < 2;k++)
-	{
-		blend1 = (k ? (trans[2] - index[2]) : (1 - (trans[2] - index[2])));
-		if (blend1 < 0.001f || index[2] + k >= gridBounds[2])
-			continue;
-		for (j = 0;j < 2;j++)
-		{
-			blend2 = blend1 * (j ? (trans[1] - index[1]) : (1 - (trans[1] - index[1])));
-			if (blend2 < 0.001f || index[1] + j >= gridBounds[1])
-				continue;
-			for (i = 0;i < 2;i++)
-			{
-				blend = blend2 * (i ? (trans[0] - index[0]) : (1 - (trans[0] - index[0])));
-				if (blend < 0.001f || index[0] + i >= gridBounds[0])
-					continue;
-				s = a + (k * gridBounds[1] + j) * gridBounds[0] + i;				
-				sr = ar + (k * gridBounds[1] + j) * gridBounds[0] + i;
-				VectorMA(outambient, blend * (1.0f / 128.0f) * gridScale * gridAmbientScale, sr->ambient[ 0 ], outambient);
-				VectorMA(outdirected, blend * (1.0f / 128.0f) * gridScale, sr->directed[ 0 ], outdirected);
-				// this uses the mod_md3_sin table because the values are
-				// already in the 0-255 range, the 64+ bias fetches a cosine instead of a sine value
-				outdirection[0] += blend * (latLongSinTable[64 + s->latLong[1]] * latLongSinTable[s->latLong[0]]);
-				outdirection[1] += blend * (latLongSinTable[     s->latLong[1]] * latLongSinTable[s->latLong[0]]);
-				outdirection[2] += blend * (latLongSinTable[64 + s->latLong[0]]);
-			}
-		}
-	}
-
-	/* renormalize light direction */
-	VectorNormalize(outdirection, outdirection);
-}
-
 /*
 IlluminateRawLightmap()
 illuminates the luxels
@@ -2585,7 +2510,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 	trace.recvShadows = lm->recvShadows;
 	trace.numSurfaces = lm->numLightSurfaces;
 	trace.surfaces = &lightSurfaces[ lm->firstLightSurface ];
-	trace.inhibitRadius = DEFAULT_INHIBIT_RADIUS;
+	trace.inhibitRadius = 0;
 	
 	/* twosided lighting (may or may not be a good idea for lightmapped stuff) */
 	trace.twoSided = qfalse;
@@ -2603,7 +2528,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 	}
 	
 	/* create a culled light list for this raw lightmap */
-	CreateTraceLightsForBounds( lm->mins, lm->maxs, lm->plane, lm->numLightClusters, lm->lightClusters, LIGHT_SURFACES, &trace );
+	CreateTraceLightsForBounds( qfalse, lm->mins, lm->maxs, lm->plane, lm->numLightClusters, lm->lightClusters, LIGHT_SURFACES, &trace );
 	
 	/* -----------------------------------------------------------------
 	   fill pass
@@ -2679,7 +2604,7 @@ void IlluminateRawLightmap(int rawLightmapNum)
 					float shade;
 
 					/* sample grid */
-					SampleLightGrid( origin, ambient, diffuse, dir );
+					SampleGrid( origin, ambient, diffuse, dir );
 
 					/* apply shading */
 					shade = DotProduct( normal, dir );
@@ -3174,14 +3099,6 @@ void IlluminateRawLightmap(int rawLightmapNum)
 				if( samples <= 0.0f )
 					continue;
 				
-				/* dark lightmap seams */
-				if( dark )
-				{
-					if( lightmapNum == 0 )
-						VectorMA( averageColor, 2.0f, ambientColor, averageColor );
-					samples += 2.0f;
-				}
-				
 				/* average it */
 				if( filterColor )
 				{
@@ -3268,7 +3185,7 @@ void IlluminateVertexes(int num)
 		trace.recvShadows = info->recvShadows;
 		trace.numSurfaces = 1;
 		trace.surfaces = &num;
-		trace.inhibitRadius = DEFAULT_INHIBIT_RADIUS;
+		trace.inhibitRadius = 0;
 
 		/* vertexShadows */
 		if (info->si->vertexShadows == qfalse)
@@ -4298,17 +4215,16 @@ CreateTraceLightsForBounds()
 creates a list of lights that affect the given bounding box and pvs clusters (bsp leaves)
 */
 
-void CreateTraceLightsForBounds( vec3_t mins, vec3_t maxs, vec3_t normal, int numClusters, int *clusters, int flags, trace_t *trace )
+void CreateTraceLightsForBounds( qboolean forGrid, vec3_t mins, vec3_t maxs, vec3_t normal, int numClusters, int *clusters, int flags, trace_t *trace )
 {
 	int			i;
 	light_t		*light;
 	vec3_t		origin, dir, nullVector = { 0.0f, 0.0f, 0.0f };
 	float		radius, dist, length;
 	
-	
 	/* potential pre-setup  */
 	if( numLights < 0 )
-		SetupEnvelopes( qfalse, fast );
+		SetupEnvelopes( forGrid, fast );
 	
 	/* debug code */
 	//% Sys_Printf( "CTWLFB: (%4.1f %4.1f %4.1f) (%4.1f %4.1f %4.1f)\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ] );
@@ -4468,7 +4384,7 @@ void CreateTraceLightsForSurface( int num, trace_t *trace )
 	}
 	
 	/* create the lights for the bounding box */
-	CreateTraceLightsForBounds( mins, maxs, normal, info->numSurfaceClusters, &surfaceClusters[ info->firstSurfaceCluster ], LIGHT_SURFACES, trace );
+	CreateTraceLightsForBounds( qfalse, mins, maxs, normal, info->numSurfaceClusters, &surfaceClusters[ info->firstSurfaceCluster ], LIGHT_SURFACES, trace );
 }
 
 /////////////////////////////////////////////////////////////
@@ -4695,7 +4611,7 @@ void FloodLightRawLightmapPass( rawLightmap_t *lm , vec3_t lmFloodLightRGB, floa
 	trace.twoSided = qtrue;
 	trace.numSurfaces = lm->numLightSurfaces;
 	trace.surfaces = &lightSurfaces[ lm->firstLightSurface ];
-	trace.inhibitRadius = DEFAULT_INHIBIT_RADIUS;
+	trace.inhibitRadius = 0;
 	trace.testAll = qfalse;
 	trace.distance = 1024;
 	

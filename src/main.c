@@ -607,15 +607,11 @@ int main( int argc, char **argv )
 	int		i, r;
 	double	start, end;
 	
-	
 	/* we want consistent 'randomness' */
 	srand( 0 );
 	
 	/* start timer */
 	start = I_FloatTime();
-
-	/* this was changed to emit version number over the network */
-	printf( Q3MAP_VERSION "\n" );
 	
 	/* set exit call */
 	atexit( ExitQ3Map );
@@ -706,9 +702,10 @@ int main( int argc, char **argv )
 	
 	Sys_Printf( "Q3Map         - v1.0r (c) 1999 Id Software Inc.\n" );
 	Sys_Printf( "Q3Map (ydnar) - v2.5.16 FS20g\n" );
-	Sys_Printf( "BloodMap      - v" Q3MAP_VERSION "\n" );
-	Sys_Printf( "GtkRadiant    - v" RADIANT_VERSION " " __DATE__ " " __TIME__ "\n" );
-	Sys_Printf( "%s\n", Q3MAP_MOTD );
+	Sys_Printf( "BloodMap      - v" BLOODMAP_VERSION " " __DATE__ " " __TIME__ "\n" );
+	Sys_Printf( "%s\n", BLOODMAP_MOTD );
+	ThreadStats();
+	Sys_Printf( "\n" );
 	
 	/* ydnar: new path initialization */
 	InitPaths( &argc, argv );

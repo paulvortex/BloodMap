@@ -259,7 +259,7 @@ void WriteSurfaceExtraFile( const char *path )
 	sf = fopen( srfPath, "w" );
 	if( sf == NULL )
 		Error( "Error opening %s for writing", srfPath );
-	
+
 	/* lap through the extras list */
 	for( i = -1; i < numSurfaceExtras; i++ )
 	{

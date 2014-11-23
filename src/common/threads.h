@@ -24,6 +24,7 @@ extern	int		numthreads;
 
 /* threads */
 void ThreadSetDefault (void);
+void ThreadStats (void);
 int	 GetThreadWork (void);
 void RunThreadsOnIndividual (int workcnt, qboolean showpacifier, void(*func)(int));
 void RunThreadsOn (int workcnt, qboolean showpacifier, void(*func)(int));

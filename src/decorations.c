@@ -897,7 +897,7 @@ void ImportFoliage( char *source )
 		else
 			sprintf( file, "%s_foliage%i.reg", source, i );
 		if( FileExists( file ) == qtrue ) 
-			LoadMapFile( file, qfalse, qtrue );
+			LoadMapFile( file, qfalse, qfalse, qtrue );
 	}
 
 	/* emit some stats */

@@ -240,7 +240,6 @@ constants
 #define LIGHT_WOLF_DEFAULT		(LIGHT_ATTEN_LINEAR | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES | LIGHT_FAST)
 
 #define MAX_TRACE_TEST_NODES	4096
-#define DEFAULT_INHIBIT_RADIUS	0.1f /* vortex: was 1.5f */
 
 #define LUXEL_EPSILON			0.125f
 #define VERTEX_EPSILON			-0.125f
@@ -316,7 +315,7 @@ abstracted bsp file
 #define	MAX_MAP_LEAFBRUSHES		0x40000
 #define	MAX_MAP_PORTALS			0x20000
 #define	MAX_MAP_LIGHTING		0x800000
-#define	MAX_MAP_LIGHTGRID		0x100000	//%	0x800000 /* ydnar: set to points, not bytes */
+#define	MAX_MAP_LIGHTGRID		0xF000000	//%	0x800000 /* ydnar: set to points, not bytes */
 #define	MAX_MAP_VISIBILITY		0x200000
 
 #define	MAX_MAP_DRAW_SURFS		0x40000 // vortex: was 0x20000
@@ -545,8 +544,6 @@ typedef struct game_s
 	float				lightmapGamma;					/* default lightmap gamma */
 	float				lightmapExposure;				/* default lightmap exposure */
 	float				lightmapCompensate;				/* default lightmap compensate value */
-	float				gridScale;						/* vortex: default lightgrid scale (affects both directional and ambient spectres) */
-	float				gridAmbientScale;				/* vortex: default lightgrid ambient spectre scale */
 	qboolean			noStyles;						/* use lightstyles hack or not */
 	qboolean			keepLights;						/* keep light entities on bsp */
 	qboolean			colorNormalize;					/* vortex: do light color normalization */
@@ -1480,9 +1477,13 @@ typedef struct rawGridPoint_s
 	vec3_t				directed[ MAX_LIGHTMAPS ];
 	vec3_t				dir;
 	byte				styles[ MAX_LIGHTMAPS ];
+	qboolean            mapped;        // vortex: inside lightgrid brush (if any)
+	qboolean            flooded;       // vortex: inside wall, flood from the neightbors
+	qboolean            unused1;       // 
+	qboolean            unused2;
+	int                 contributions; // vortex: how many lights contributed to this point
 }
 rawGridPoint_t;
-
 
 typedef struct surfaceInfo_s
 {
@@ -1575,7 +1576,7 @@ void						PutMeshOnCurve( mesh_t in );
 
 /* map.c */
 int                         CheckMapForErrors( void );
-void 						LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyFoliage );
+void 						LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage );
 int							FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points );
 int							PlaneTypeForNormal( vec3_t normal );
 void						AddBrushBevels( void );
@@ -1762,8 +1763,9 @@ void						PassagePortalFlow( int portalnum );
 
 /* light.c  */
 float						PointToPolygonFormFactor( const vec3_t point, const vec3_t normal, const winding_t *w );
-int							LightContribution ( trace_t *trace, int lightflags, qboolean noSurfaceNormal );
-void						LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], vec3_t colors[ MAX_LIGHTMAPS ], int lightflags, qboolean noSurfaceNormal );
+int							LightContribution ( trace_t *trace, int lightflags, qboolean point3d );
+void						LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], vec3_t colors[ MAX_LIGHTMAPS ], int lightflags, qboolean point3d );
+int                         LightContributionSuper(trace_t *trace, int lightflags, qboolean point3d, int samples, const vec3_t multiVec1, const vec3_t multiVec2, const vec3_t multiVec3, float sampleSize );
 int							LightMain( int argc, char **argv );
 
 
@@ -1790,6 +1792,10 @@ void						SetupDirt();
 float						DirtForSample( trace_t *trace  );
 void						DirtyRawLightmap(int num);
 
+void                        SetupGrid();
+void                        AllocateGridArea(vec3_t mins, vec3_t maxs);
+void                        SampleGrid(vec3_t origin, vec3_t outambient, vec3_t outdirected, vec3_t outdirection );
+
 void						SetupFloodLight();
 void						FloodlightRawLightmaps();
 void						FloodlightIlluminateLightmap( rawLightmap_t *lm );
@@ -1810,7 +1816,7 @@ int							ClusterForPointExtFilter( vec3_t point, float epsilon, int numClusters
 int							ShaderForPointInLeaf( vec3_t point, int leafNum, float epsilon, int wantContentFlags, int wantSurfaceFlags, int *contentFlags, int *surfaceFlags );
 void						SetupEnvelopes( qboolean forGrid, qboolean fastFlag );
 void						FreeTraceLights( trace_t *trace );
-void						CreateTraceLightsForBounds( vec3_t mins, vec3_t maxs, vec3_t normal, int numClusters, int *clusters, int flags, trace_t *trace );
+void						CreateTraceLightsForBounds( qboolean forGrid, vec3_t mins, vec3_t maxs, vec3_t normal, int numClusters, int *clusters, int flags, trace_t *trace );
 void						CreateTraceLightsForSurface( int num, trace_t *trace );
 
 
@@ -2195,8 +2201,6 @@ Q_EXTERN qboolean			fast Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			faster Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fastgrid Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fastbounce Q_ASSIGN( qfalse );
-Q_EXTERN qboolean			cheap Q_ASSIGN( qfalse );
-Q_EXTERN qboolean			cheapgrid Q_ASSIGN( qfalse );
 Q_EXTERN int				bounce Q_ASSIGN( 0 );
 Q_EXTERN qboolean			bounceOnly Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			bouncing Q_ASSIGN( qfalse );
@@ -2206,6 +2210,7 @@ Q_EXTERN qboolean			trisoup Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			shade Q_ASSIGN( qfalse );
 Q_EXTERN float				shadeAngleDegrees Q_ASSIGN( 0.0f );
 Q_EXTERN int				superSample Q_ASSIGN( 0 );
+Q_EXTERN int				gridSuperSample Q_ASSIGN( 0 );
 Q_EXTERN int				lightSamples Q_ASSIGN( 1 );
 Q_EXTERN qboolean			filter Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dark Q_ASSIGN( qfalse );
@@ -2301,11 +2306,6 @@ Q_EXTERN float				skyScale Q_ASSIGN( 1.0f );
 Q_EXTERN float				bounceScale Q_ASSIGN( 0.25f );
 Q_EXTERN float				vertexScale Q_ASSIGN( 1.0f );
 
-/* vortex: gridscale and gridambientscale */
-Q_EXTERN float				gridScale Q_ASSIGN( 1.0f );
-Q_EXTERN float				gridAmbientScale Q_ASSIGN( 1.0f );
-Q_EXTERN float				gridMix Q_ASSIGN( 0.0f );
-
 /* ydnar: lightmap gamma/compensation */
 Q_EXTERN float				lightmapGamma Q_ASSIGN( 1.0f );
 Q_EXTERN double				lightmapInvGamma Q_ASSIGN( 1.0f );
@@ -2367,7 +2367,9 @@ Q_EXTERN int				c_subsampled;	/* ydnar */
 Q_EXTERN int				defaultLightSubdivide Q_ASSIGN( 999 );
 
 Q_EXTERN vec3_t				ambientColor;
-Q_EXTERN vec3_t				minLight, minVertexLight, minGridLight;
+Q_EXTERN vec3_t				minLight Q_ASSIGN_VEC3( 0, 0, 0 );
+Q_EXTERN vec3_t             minVertexLight Q_ASSIGN_VEC3( 0, 0, 0 );
+Q_EXTERN vec3_t             minGridLight Q_ASSIGN_VEC3( 0, 0, 0 );
 
 Q_EXTERN int				*entitySurface;
 Q_EXTERN vec3_t				*surfaceOrigin;
@@ -2385,9 +2387,6 @@ Q_EXTERN float				subdivideThreshold Q_ASSIGN( DEFAULT_SUBDIVIDE_THRESHOLD );
 
 Q_EXTERN int				numOpaqueBrushes, maxOpaqueBrush;
 Q_EXTERN byte				*opaqueBrushes;
-
-Q_EXTERN int				gridBoundsCulled;
-Q_EXTERN int				gridEnvelopeCulled;
 
 Q_EXTERN int				lightsBoundsCulled;
 Q_EXTERN int				lightsEnvelopeCulled;
@@ -2449,15 +2448,25 @@ Q_EXTERN int				numLuxelsOccluded Q_ASSIGN( 0 );
 Q_EXTERN int				numLuxelsIlluminated Q_ASSIGN( 0 );
 Q_EXTERN int				numVertsIlluminated Q_ASSIGN( 0 );
 
+/* vortex: lightgrid areas */
+#define MAX_GRID_AREAS      1024
+typedef struct gridArea_s
+{
+	vec3_t mins;
+	vec3_t maxs;
+}gridArea_t;
+Q_EXTERN gridArea_t         gridAreas[MAX_GRID_AREAS];
+Q_EXTERN int                numGridAreas Q_ASSIGN( 0 );
+
 /* lightgrid */
 Q_EXTERN vec3_t				gridMins;
 Q_EXTERN int				gridBounds[ 3 ];
-Q_EXTERN vec3_t				gridSize
-#ifndef MAIN_C
-							;
-#else
-							= { 64, 64, 128 };
-#endif
+Q_EXTERN vec3_t				gridDefaultSize Q_ASSIGN_VEC3( 64, 64, 128 );
+Q_EXTERN vec3_t				gridSize Q_ASSIGN_VEC3( 64, 64, 128 );
+
+Q_EXTERN int                gridBlocks[3];
+Q_EXTERN int                gridBlockSize[3];
+Q_EXTERN int                numGridBlocks;
 
 /* -------------------------------------------------------------------------------
 

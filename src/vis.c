@@ -1029,27 +1029,47 @@ int VisMain (int argc, char **argv)
 	/* process arguments */
 	for (i=1 ; i < (argc - 1) ; i++)
 	{
-		if (!strcmp(argv[i], "-fast")) {
+		if (!strcmp(argv[i], "-fast")) 
+		{
 			Sys_Printf ("fastvis = true\n");
 			fastvis = qtrue;
-		} else if (!strcmp(argv[i], "-merge")) {
+		} 
+		else if (!strcmp(argv[i], "-full")) 
+		{
+			Sys_Printf ("fastvis = false\n");
+			fastvis = qfalse;
+		} 
+		else if (!strcmp(argv[i], "-merge")) 
+		{
 			Sys_Printf ("merge = true\n");
 			mergevis = qtrue;
-		} else if (!strcmp(argv[i], "-nopassage")) {
+		} 
+		else if (!strcmp(argv[i], "-nopassage"))
+		{
 			Sys_Printf ("nopassage = true\n");
 			noPassageVis = qtrue;
-		} else if (!strcmp(argv[i], "-passageOnly")) {
+		} 
+		else if (!strcmp(argv[i], "-passageOnly"))
+		{
 			Sys_Printf ("passageOnly = true\n");
 			passageVisOnly = qtrue;
-		} else if (!strcmp (argv[i],"-nosort")) {
+		} 
+		else if (!strcmp (argv[i],"-nosort"))
+		{
 			Sys_Printf ("nosort = true\n");
 			nosort = qtrue;
-		} else if (!strcmp (argv[i],"-saveprt")) {
+		} 
+		else if (!strcmp (argv[i],"-saveprt"))
+		{
 			Sys_Printf ("saveprt = true\n");
 			saveprt = qtrue;
-		} else if (!strcmp (argv[i],"-tmpin")) {
+		} 
+		else if (!strcmp (argv[i],"-tmpin"))
+		{
 			strcpy (inbase, "/tmp");
-		} else if (!strcmp (argv[i],"-tmpout")) {
+		} 
+		else if (!strcmp (argv[i],"-tmpout")) 
+		{
 			strcpy (outbase, "/tmp");
 		}
 		

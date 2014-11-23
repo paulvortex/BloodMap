@@ -26,17 +26,19 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 
 ------------------------------------------------------------------------------- */
 
-
-
 /* marker */
 #define LIGHT_C
-
-
 
 /* dependencies */
 #include "q3map2.h"
 
+/*
+================================================================================
 
+ LIGHT CREATING
+
+================================================================================
+*/
 
 /*
 CreateSunLight() - ydnar
@@ -558,8 +560,6 @@ void CreateEntityLights( void )
 	}
 }
 
-
-
 /*
 CreateSurfaceLights() - ydnar
 this hijacks the radiosity code to generate surface lights for first pass
@@ -720,7 +720,13 @@ void SetEntityOrigins( void )
 	}
 }
 
+/*
+================================================================================
 
+ SAMPLING
+
+================================================================================
+*/
 
 /*
 PointToPolygonFormFactor()
@@ -791,13 +797,13 @@ LightContribution()
 determines the amount of light reaching a sample (luxel or vertex) from a given light
 */
 
-int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal )
+int LightContribution( trace_t *trace, int lightflags, qboolean point3d )
 {
-	light_t			*light;
-	float			angle;
-	float			add;
-	float			dist;
-
+	light_t	*light;
+	float angle;
+	float add;
+	float dist;
+ 
 	/* get light */
 	light = trace->light;
 	
@@ -817,7 +823,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 			return qfalse;
 
 		/* MrE: if the light is behind the surface */
-		if( !noSurfaceNormal && trace->twoSided == qfalse )
+		if( !point3d && trace->twoSided == qfalse )
 			if( DotProduct( light->origin, trace->normal ) - DotProduct( trace->origin, trace->normal ) < 0.0f )
 				return 0;
 		
@@ -842,7 +848,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 				return 0;
 			
 			/* sample plane coincident? */
-			if (!noSurfaceNormal)
+			if (!point3d)
 				if( d > -3.0f && DotProduct( trace->normal, light->normal ) > 0.9f )
 					return 0;
 		}
@@ -864,7 +870,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 		if( faster )
 		{
 			/* angle attenuation */
-			angle = noSurfaceNormal ? 1.0f : DotProduct( trace->normal, trace->direction );
+			angle = point3d ? 1.0f : DotProduct( trace->normal, trace->direction );
 			
 			/* twosided lighting */
 			if( trace->twoSided )
@@ -881,7 +887,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 		else
 		{
 			/* calculate the contribution */
-			factor = PointToPolygonFormFactor( pushedOrigin, (noSurfaceNormal ? trace->direction : trace->normal), light->w );
+			factor = PointToPolygonFormFactor( pushedOrigin, (point3d ? trace->direction : trace->normal), light->w );
 			if( factor == 0.0f )
 				return 0;
 			else if( factor < 0.0f )
@@ -923,7 +929,7 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 		angle = 1.0f;
 		if (light->flags & LIGHT_ATTEN_ANGLE)
 		{
-			if (noSurfaceNormal)
+			if( point3d )
 				angle = 0.7f; // vortex: 0.6 is average angle atten when tracing against sphere, 0.7 fits most lightmapped surfaces
 			else
 			{
@@ -986,8 +992,8 @@ int LightContribution( trace_t *trace, int lightflags, qboolean noSurfaceNormal 
 		angle = 1.0f;
 		if (light->flags & LIGHT_ATTEN_ANGLE)
 		{
-			if( noSurfaceNormal )
-				angle = 0.75f; // vortex: 0.6 is average angle atten when tracing against sphere, 0.75 fits most lightmapped surfaces
+			if( point3d )
+				angle = 0.7f; // vortex: 0.6 is average angle atten when tracing against sphere, 0.75 fits most lightmapped surfaces
 			else
 			{
 				angle = DotProduct( trace->normal, trace->direction );
@@ -1059,7 +1065,7 @@ LightContributionAllStyles()
 determines the amount of light reaching a sample (luxel or vertex)
 */
 
-void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], vec3_t colors[ MAX_LIGHTMAPS ], int lightflags, qboolean noSurfaceNormal )
+void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], vec3_t colors[ MAX_LIGHTMAPS ], int lightflags, qboolean point3d )
 {
 	int i, lightmapNum;
 	
@@ -1068,7 +1074,7 @@ void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], v
 		VectorClear( colors[ lightmapNum ] );
 	
 	/* ydnar: normalmap */
-	if( !noSurfaceNormal && normalmap )
+	if( !point3d && normalmap )
 	{
 		colors[ 0 ][ 0 ] = (trace->normal[ 0 ] + 1.0f) * 127.5f;
 		colors[ 0 ][ 1 ] = (trace->normal[ 1 ] + 1.0f) * 127.5f;
@@ -1099,7 +1105,7 @@ void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], v
 			continue;
 		
 		/* sample light */
-		LightContribution( trace, lightflags, noSurfaceNormal );
+		LightContribution( trace, lightflags, point3d );
 		if( trace->color[ 0 ] == 0.0f && trace->color[ 1 ] == 0.0f && trace->color[ 2 ] == 0.0f )
 			continue;
 		
@@ -1112,17 +1118,160 @@ void LightContributionAllStyles( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], v
 		
 		/* add it */
 		VectorAdd( colors[ lightmapNum ], trace->color, colors[ lightmapNum ] );
-		
-		/* cheap mode */
-		if( cheap &&
-			colors[ 0 ][ 0 ] >= 255.0f &&
-			colors[ 0 ][ 1 ] >= 255.0f &&
-			colors[ 0 ][ 2 ] >= 255.0f )
-			break;
 	}
 }
 
-#define	MAX_CONTRIBUTIONS	1024
+/*
+LightContributionSuper()
+LightContribution with recursive supersampling
+*/
+
+int LightContributionSuper(trace_t *trace, int lightflags, qboolean point3d, int samples, const vec3_t mv1, const vec3_t mv2, const vec3_t mv3, vec3_t sampleSize )
+{
+	vec3_t total, totalnoshadow, totaldir, baseOrigin, scaledSampleSize;
+	int i, c, numSamples, maxContribution, oldCluster;
+	float oldInhibitRadius, scaledInhibitRadius;
+
+	static const vec3_t SuperSamples[ 8 ] = 
+	{
+		{  0.5,  0.5,  0.5 },
+		{  0.5, -0.5,  0.5 },
+		{ -0.5, -0.5,  0.5 },
+		{ -0.5,  0.5,  0.5 },
+		{  0.5,  0.5, -0.5 },
+		{  0.5, -0.5, -0.5 },
+		{ -0.5, -0.5, -0.5 },
+		{ -0.5,  0.5, -0.5 }
+	};
+	
+	/* init */
+	VectorCopy(trace->origin, baseOrigin);
+	VectorClear(total);
+	VectorClear(totalnoshadow);
+	VectorClear(totaldir);
+	oldCluster = trace->cluster;
+	maxContribution = -1;
+	numSamples = 0;
+
+	/* futher supersampling */
+	if (samples > 2)
+	{
+		VectorScale( sampleSize, 0.5, scaledSampleSize );
+		oldInhibitRadius = trace->inhibitRadius;
+		scaledInhibitRadius = oldInhibitRadius * 0.5;
+	}
+
+	/* gather */
+	if( point3d )
+	{
+		/* gather the 8 points */
+		for( i = 0; i < 8; i++ )
+		{	
+			trace->origin[0] = baseOrigin[0] + mv1[0]*SuperSamples[i][0]*sampleSize[0] + mv2[0]*SuperSamples[i][1]*sampleSize[1] + mv3[0]*SuperSamples[i][2]*sampleSize[2];
+			trace->origin[1] = baseOrigin[1] + mv1[1]*SuperSamples[i][0]*sampleSize[0] + mv2[1]*SuperSamples[i][1]*sampleSize[1] + mv3[1]*SuperSamples[i][2]*sampleSize[2];
+			trace->origin[2] = baseOrigin[2] + mv1[2]*SuperSamples[i][0]*sampleSize[0] + mv2[2]*SuperSamples[i][1]*sampleSize[1] + mv3[2]*SuperSamples[i][2]*sampleSize[2];
+			trace->cluster = ClusterForPoint( trace->origin );
+			if( trace->cluster < 0 )
+				continue;
+			if( samples <= 2 )
+				c = LightContribution( trace, lightflags, point3d );
+			else
+			{
+				trace->inhibitRadius = scaledInhibitRadius;
+				c = LightContributionSuper( trace, lightflags, point3d, samples - 1, mv1, mv2, mv3, scaledSampleSize );
+				trace->inhibitRadius = oldInhibitRadius;
+			}
+			VectorAdd(total, trace->color, total);
+			VectorAdd(totalnoshadow, trace->colorNoShadow, totalnoshadow);
+			VectorMA(totaldir, VectorLength( trace->colorNoShadow ), trace->direction, totaldir);
+			maxContribution = max( c, maxContribution );
+			numSamples += (c <= 0) ? 2 : 1;
+		}
+	}
+	else
+	{
+		/* gather the 4 points */
+		for( i = 0; i < 4; i++ )
+		{
+			trace->origin[0] = baseOrigin[0] + mv1[0]*SuperSamples[i][0]*sampleSize[0] + mv2[0]*SuperSamples[i][1]*sampleSize[1];
+			trace->origin[1] = baseOrigin[1] + mv1[1]*SuperSamples[i][0]*sampleSize[0] + mv2[1]*SuperSamples[i][1]*sampleSize[1];
+			trace->origin[2] = baseOrigin[2] + mv1[2]*SuperSamples[i][0]*sampleSize[0] + mv2[2]*SuperSamples[i][1]*sampleSize[1];
+			trace->cluster = ClusterForPoint( trace->origin );
+			if( trace->cluster < 0 )
+				continue;
+			if( samples <= 2 )
+				c = LightContribution( trace, lightflags, point3d );
+			else
+			{
+				trace->inhibitRadius = scaledInhibitRadius;
+				c = LightContributionSuper( trace, lightflags, point3d, samples - 1, mv1, mv2, mv3, scaledSampleSize );
+				trace->inhibitRadius = oldInhibitRadius;
+			}
+			VectorAdd(total, trace->color, total);
+			VectorAdd(totalnoshadow, trace->colorNoShadow, totalnoshadow);
+			VectorMA(totaldir, VectorLength( trace->colorNoShadow ), trace->direction, totaldir);
+			maxContribution = max( c, maxContribution );
+			numSamples++;
+		}
+	}
+
+	/* average */
+	if( numSamples > 0 )
+	{
+		total[0] /= numSamples;
+		total[1] /= numSamples;
+		total[2] /= numSamples;
+		totalnoshadow[0] /= numSamples;
+		totalnoshadow[1] /= numSamples;
+		totalnoshadow[2] /= numSamples;
+	}
+	VectorCopy(total, trace->color);
+	VectorCopy(totalnoshadow, trace->colorNoShadow);
+	VectorNormalize( totaldir, trace->direction );
+
+	/* restore trace */
+	VectorCopy( baseOrigin, trace->origin );
+	trace->cluster = oldCluster;
+
+	/* return to sender */
+	return 1;
+}
+
+/*
+================================================================================
+
+ LIGHTGRID
+
+================================================================================
+*/
+
+#define GRID_NUM_NORMALS		42
+#define GRID_NUM_OFFSETS		14
+#define	GRID_MAX_CONTRIBUTIONS	32768
+
+vec3_t GridNormalsModel[GRID_NUM_NORMALS] = { {8.72255, 5.42647, -0.04020}, {10.25000, -0.04020, -0.04020}, {8.32059, 3.17549, 5.10490}, {5.42647, -0.04020, 8.72255}, {8.32059, -3.17549, 5.10490}, {8.72255, -5.42647, -0.04020}, {5.10490, 8.32059, 3.17549}, {-0.04020, 8.72255, 5.42647}, {3.17549, 5.10490, 8.32059}, {-3.17549, 5.10490, 8.32059}, {-5.42647, -0.04020, 8.72255}, {-0.04020, -0.04020, 10.25000}, {3.17549, -5.10490, 8.32059}, {-3.17549, -5.10490, 8.32059}, {-0.04020, -8.72255, 5.42647}, {5.10490, -8.32059, 3.17549}, {-0.04020, -10.25000, -0.04020}, {-0.04020, -8.72255, -5.42647}, {5.10490, -8.32059, -3.17549}, {-5.10490, -8.32059, 3.17549}, {-8.72255, -5.42647, -0.04020}, {-5.10490, -8.32059, -3.17549}, {-8.32059, -3.17549, 5.10490}, {-8.32059, 3.17549, 5.10490}, {-8.72255, 5.42647, -0.04020}, {-10.25000, -0.04020, -0.04020}, {-8.32059, 3.17549, -5.10490}, {-5.42647, -0.04020, -8.72255}, {-8.32059, -3.17549, -5.10490}, {-3.17549, -5.10490, -8.32059}, {-0.04020, -0.04020, -10.25000}, {5.42647, -0.04020, -8.72255}, {3.17549, -5.10490, -8.32059}, {-3.17549, 5.10490, -8.32059}, {-0.04020, 8.72255, -5.42647}, {3.17549, 5.10490, -8.32059}, {5.10490, 8.32059, -3.17549}, {8.32059, 3.17549, -5.10490}, {8.32059, -3.17549, -5.10490}, {-0.04020, 10.25000, -0.04020}, {-5.10490, 8.32059, 3.17549}, {-5.10490, 8.32059, -3.17549} };
+
+vec3_t GridNormals[GRID_NUM_NORMALS];
+
+vec3_t GridOffsetsModel[ GRID_NUM_OFFSETS ] =
+{
+	{ 0,  0,  1 },  // up
+	{ 0,  0, -2 },  // down
+	{ 0, -1,  1 },  // left
+	{ 0,  2,  0 },  // right
+	{ 1, -1,  0 },  // forward
+	{-2,  0,  0 },  // backward
+	{ 2, -1,  1 },  // up forward left
+	{ 0,  0, -2 },  // down forward left
+	{ 0,  2,  2 },  // up forward right
+	{ 0,  0, -2 },  // down forward right
+	{-2, -2,  2 },  // up back left
+	{ 0,  0, -2 },  // down back left
+	{ 0,  2,  2 },  // up back right
+	{ 0,  0, -2 }   // down back right
+};
+
+vec3_t GridOffsets[ GRID_NUM_OFFSETS ];
 
 typedef struct
 {
@@ -1130,172 +1279,213 @@ typedef struct
 	vec3_t		color;
 	int			style;
 }
-contribution_t;
+gridContribution_t;
+
+int gridPointsMapped = 0;
+int gridPointsIlluminated = 0;
+int gridPointsOccluded = 0;
+int gridPointsFlooded = 0;
 
 /*
-IlluminateGridPoint2
+AllocateGridArea
+adds a new lightgrid brush
+*/
+
+void AllocateGridArea(vec3_t mins, vec3_t maxs)
+{
+	if ( numGridAreas >= MAX_GRID_AREAS )
+	{
+		Error("MAX_LIGHTGRID_AREAS reached (%i)\n", MAX_GRID_AREAS );
+		return;
+	}
+
+	VectorCopy( mins, gridAreas[ numGridAreas ].mins );
+	VectorCopy( maxs, gridAreas[ numGridAreas ].maxs );
+	numGridAreas++;
+
+	//Sys_Printf("AllocateGridArea: { %f %f %f } { %f %f %f }\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ]);
+}
+
+
+/*
+IlluminateGridPoint
 new version of lightgrid tracer
 - better detection of direction/ambient light
 - fully match lightmap
-todo: support two-color model (so ambient can be different from directional)
+todo: support minlight
 */
-#define GRID_TEST_NORMALS 42
-vec3_t GridNormalsModel[GRID_TEST_NORMALS] = { {8.72255, 5.42647, -0.04020}, {10.25000, -0.04020, -0.04020}, {8.32059, 3.17549, 5.10490}, {5.42647, -0.04020, 8.72255}, {8.32059, -3.17549, 5.10490}, {8.72255, -5.42647, -0.04020}, {5.10490, 8.32059, 3.17549}, {-0.04020, 8.72255, 5.42647}, {3.17549, 5.10490, 8.32059}, {-3.17549, 5.10490, 8.32059}, {-5.42647, -0.04020, 8.72255}, {-0.04020, -0.04020, 10.25000}, {3.17549, -5.10490, 8.32059}, {-3.17549, -5.10490, 8.32059}, {-0.04020, -8.72255, 5.42647}, {5.10490, -8.32059, 3.17549}, {-0.04020, -10.25000, -0.04020}, {-0.04020, -8.72255, -5.42647}, {5.10490, -8.32059, -3.17549}, {-5.10490, -8.32059, 3.17549}, {-8.72255, -5.42647, -0.04020}, {-5.10490, -8.32059, -3.17549}, {-8.32059, -3.17549, 5.10490}, {-8.32059, 3.17549, 5.10490}, {-8.72255, 5.42647, -0.04020}, {-10.25000, -0.04020, -0.04020}, {-8.32059, 3.17549, -5.10490}, {-5.42647, -0.04020, -8.72255}, {-8.32059, -3.17549, -5.10490}, {-3.17549, -5.10490, -8.32059}, {-0.04020, -0.04020, -10.25000}, {5.42647, -0.04020, -8.72255}, {3.17549, -5.10490, -8.32059}, {-3.17549, 5.10490, -8.32059}, {-0.04020, 8.72255, -5.42647}, {3.17549, 5.10490, -8.32059}, {5.10490, 8.32059, -3.17549}, {8.32059, 3.17549, -5.10490}, {8.32059, -3.17549, -5.10490}, {-0.04020, 10.25000, -0.04020}, {-5.10490, 8.32059, 3.17549}, {-5.10490, 8.32059, -3.17549} };
-vec3_t GridNormals[GRID_TEST_NORMALS];
-void IlluminateGridPoint2(int num)
+
+#define GRID_BLOCK_OPTIMIZATION
+void IlluminateGridPoint(trace_t *trace, int num)
 {
-	int						i, x, y, z, mod, step, numContributions;
+	int						i, x, y, z, mod, numContributions;
 	float					d, shade, ambient, ambientLevel;
-	vec3_t					baseOrigin, cheapColor, color;
+	vec3_t					baseOrigin, nudgedOrigin, color;
 	rawGridPoint_t			*gp;
 	bspGridPoint_t			*bgp;
-	contribution_t			contributions[ MAX_CONTRIBUTIONS ];
-	trace_t					trace;
-	float					pointMap[GRID_TEST_NORMALS];
+	gridContribution_t		contributions[ GRID_MAX_CONTRIBUTIONS ];
+	float					addSize, pointMap[GRID_NUM_NORMALS];
+	static const vec3_t     forward = { 1.0f, 0.0f, 0.0f };
+	static const vec3_t     right = { 0.0f, 1.0f, 0.0f };
+	static const vec3_t     up = { 0.0f, 0.0f, 1.0f };
+	qboolean                flood;
+#ifdef GRID_BLOCK_OPTIMIZATION
+	int						l;
+#endif
 	
 	/* get grid points */
 	gp = &rawGridPoints[ num ];
 	bgp = &bspGridPoints[ num ];
+
+	/* flood unmapped points */
+	if( gp->mapped == qfalse )
+	{
+		if( gp->flooded == qfalse )
+			gridPointsOccluded++;
+		gp->flooded = qtrue;
+		return;
+	}
 	
-	/* get grid point origin */
-	mod = num;
+	/* get origin */
+	mod = num; 
 	z = mod / (gridBounds[ 0 ] * gridBounds[ 1 ]);
-	mod -= z * (gridBounds[ 0 ] * gridBounds[ 1 ]);
+	mod -= z * (gridBounds[ 0 ] * gridBounds[ 1 ]); 
 	y = mod / gridBounds[ 0 ];
 	mod -= y * gridBounds[ 0 ];
 	x = mod;
-	trace.origin[ 0 ] = gridMins[ 0 ] + x * gridSize[ 0 ];
-	trace.origin[ 1 ] = gridMins[ 1 ] + y * gridSize[ 1 ];
-	trace.origin[ 2 ] = gridMins[ 2 ] + z * gridSize[ 2 ];
-
-	/* set inhibit sphere */
-	if( gridSize[ 0 ] > gridSize[ 1 ] && gridSize[ 0 ] > gridSize[ 2 ] )
-		trace.inhibitRadius = gridSize[ 0 ] * 0.5f;
-	else if( gridSize[ 1 ] > gridSize[ 0 ] && gridSize[ 1 ] > gridSize[ 2 ] )
-		trace.inhibitRadius = gridSize[ 1 ] * 0.5f;
-	else
-		trace.inhibitRadius = gridSize[ 2 ] * 0.5f;
+	baseOrigin[ 0 ] = gridMins[ 0 ] + x * gridSize[ 0 ];
+	baseOrigin[ 1 ] = gridMins[ 1 ] + y * gridSize[ 1 ];
+	baseOrigin[ 2 ] = gridMins[ 2 ] + z * gridSize[ 2 ];
 	
-	/* find point cluster */
-	trace.cluster = ClusterForPointExt( trace.origin, 0 );
-	if( trace.cluster < 0 )
+	/* trace the point type (illuminated, flooded) */
+	flood = qtrue;
+	trace->inhibitRadius = 0;
+	for( i = 0; i < GRID_NUM_OFFSETS; i++ )
 	{
-		/* try to nudge the origin around to find a valid point */
-		VectorCopy( trace.origin, baseOrigin );
-		for( step = 9; step <= 18; step += 9 )
+		VectorMA( baseOrigin, 2.0, GridOffsets[ i ], nudgedOrigin );
+		VectorCopy( baseOrigin, trace->origin );
+		VectorCopy( nudgedOrigin, trace->end );
+		trace->cluster = ClusterForPoint( trace->origin );
+		SetupTrace( trace );
+		TraceLine( trace );
+		if( trace->opaque == qfalse )
 		{
-			for( i = 0; i < 8; i++ )
-			{
-				VectorCopy( baseOrigin, trace.origin );
-				if( i & 1 )
-					trace.origin[ 0 ] += step;
-				else
-					trace.origin[ 0 ] -= step;
-				
-				if( i & 2 )
-					trace.origin[ 1 ] += step;
-				else
-					trace.origin[ 1 ] -= step;
-				
-				if( i & 4 )
-					trace.origin[ 2 ] += step;
-				else
-					trace.origin[ 2 ] -= step;
-				
-				/* ydnar: changed to find cluster num */
-				trace.cluster = ClusterForPointExt( trace.origin, VERTEX_EPSILON );
-				if( trace.cluster >= 0 )
-					break;
-			}
-			
-			if( i != 8 )
+			flood = qfalse;
+			break;
+		}
+	}
+
+	/* flood bad points later */
+	if( flood == qtrue )
+	{
+		if( gp->flooded == qfalse )
+			gridPointsOccluded++;
+		gp->flooded = qtrue;
+		return;
+	}
+
+	/* set up inhibit sphere */
+	trace->inhibitRadius = (gridSize[ 0 ] + gridSize[ 1 ] + gridSize[ 2 ]) / 3.0f * 0.75f;
+
+	/* find point cluster */
+	trace->cluster = ClusterForPoint( baseOrigin );
+	if( trace->cluster < 0 )
+	{
+		/* try nudge */
+		for( i = 0; i < GRID_NUM_OFFSETS; i++ )
+		{
+			VectorAdd( baseOrigin, GridOffsets[ i ], nudgedOrigin );
+			trace->cluster = ClusterForPoint( nudgedOrigin );
+			if( trace->cluster >= 0 )
 				break;
 		}
-		
-		/* can't find a valid point at all */
-		if( step > 18 )
-			return;
+		/* succesfully nudged */
+		if( i < GRID_NUM_OFFSETS )
+			VectorCopy( nudgedOrigin, baseOrigin );
+	}
+	VectorCopy( baseOrigin, trace->origin );
+
+	/* flood bad clusters later */
+	if( trace->cluster < 0 )
+	{
+		if( gp->flooded == qfalse )
+			gridPointsOccluded++;
+		gp->flooded = qtrue;
+		return;
 	}
 	
-	/* setup trace */
-	trace.entityNum = -1;
-	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
-	trace.twoSided = qfalse;
-	trace.occlusionBias = 0;
-	trace.forceSunlight = qfalse;
-	trace.forceSelfShadow = qfalse;
-	trace.recvShadows = WORLDSPAWN_RECV_SHADOWS;
-	trace.numSurfaces = 0;
-	trace.surfaces = NULL;
-	trace.numLights = 0;
-	trace.lights = NULL;
-	
-	/* clear */
-	VectorClear( color );
-	VectorClear( cheapColor );
-	memset(pointMap, 0, sizeof(float) * GRID_TEST_NORMALS);
+	/* trace lighting for grid point */
+	VectorSet( color, 0, 0, 0 );
+	memset(pointMap, 0, sizeof(float) * GRID_NUM_NORMALS);
 	numContributions = 0;
 
 	/* trace to all the lights, find the major light direction */
-	for( trace.light = lights; trace.light != NULL; trace.light = trace.light->next )
+#ifndef GRID_BLOCK_OPTIMIZATION
+	for( trace->light = lights; trace->light != NULL; trace->light = trace->light->next )
 	{
-		float addSize;
-
+#else
+	for( l = 0; l < trace->numLights; l++ )
+	{
+		trace->light = trace->lights[ l ];
+#endif
 		/* sample light */
-		if( !LightContribution( &trace, LIGHT_GRID, qtrue ) )
+		if( gridSuperSample > 1 )
+		{
+			if (!LightContributionSuper( trace, LIGHT_GRID, qtrue, gridSuperSample, forward, right, up, gridSize ))
+				continue;
+		}
+		else if( !LightContribution( trace, LIGHT_GRID, qtrue ) )
 			continue;
 		
 		/* handle negative light */
-		if( trace.light->flags & LIGHT_NEGATIVE )
-			VectorNegate( trace.color, trace.color );
+		if( trace->light->flags & LIGHT_NEGATIVE )
+			VectorNegate( trace->color, trace->color );
 
 		/* add a contribution */
-		addSize = VectorLength( trace.color );
-		VectorAdd( color, trace.color, color );
-		VectorCopy( trace.color, contributions[ numContributions ].color );
-		VectorCopy( trace.direction, contributions[ numContributions ].dir );
-		contributions[ numContributions ].style = trace.light->style;
+		addSize = VectorLength( trace->color );
+		VectorAdd( color, trace->color, color );
+		VectorCopy( trace->color, contributions[ numContributions ].color );
+		VectorCopy( trace->direction, contributions[ numContributions ].dir );
+		contributions[ numContributions ].style = trace->light->style;
 		numContributions++;
 		
 		/* push average direction around */
-		addSize = VectorLength( trace.color );
-		VectorMA( gp->dir, addSize, trace.direction, gp->dir );
+		addSize = VectorLength( trace->color );
+		VectorMA( gp->dir, addSize, trace->direction, gp->dir );
 
 		/* shade the pointmap (used to calculate ambient lighting) */
-		for( i = 0; i < GRID_TEST_NORMALS; i++)
+		for( i = 0; i < GRID_NUM_NORMALS; i++)
 		{
-			shade = DotProduct( GridNormals[ i ], trace.direction );
+			shade = DotProduct( GridNormals[ i ], trace->direction );
 			if( shade <= 0 )
 				continue;
 			pointMap[ i ] += shade * (addSize / 255.0f);
 		}
 
 		/* stop after a while */
-		if( numContributions >= (MAX_CONTRIBUTIONS - 1) )
-			break;
-		
-		/* ydnar: cheap mode */
-		VectorAdd( cheapColor, trace.color, cheapColor );
-		if( cheapgrid && cheapColor[ 0 ] >= 255.0f && cheapColor[ 1 ] >= 255.0f && cheapColor[ 2 ] >= 255.0f )
+		if( numContributions >= (GRID_MAX_CONTRIBUTIONS - 1) )
 			break;
 	}
+
+	/* store cointributions count */
+	gp->contributions = numContributions;
 	
 	/* normalize to get primary light direction */
 	VectorNormalize( gp->dir, gp->dir );
 
 	/* average pointmap to get minimal ambient component */
 	ambientLevel = 0;
-	for( i = 0; i < GRID_TEST_NORMALS; i++)
-		if (pointMap[ i ] > 0.1)
+	for( i = 0; i < GRID_NUM_NORMALS; i++)
+		if( pointMap[ i ] > 0.1 )
 			ambientLevel += 1;
-	ambientLevel /= GRID_TEST_NORMALS; // 51% of the sphere lit up is 2% ambient (so single lightsource will never generate ambient)
+	ambientLevel /= GRID_NUM_NORMALS; // 51% of the sphere lit up is 2% ambient (so single lightsource will never generate ambient)
 	ambient = max(0, ambientLevel * ambientLevel - 0.1);
 
 	/* now that we have identified the primary light direction, go back and separate all the light into directed and ambient */
 	for( i = 0; i < numContributions; i++ )
 	{
 		/* find appropriate style */
-		if (contributions[ i ].style != 0)
+		if( contributions[ i ].style != 0 )
 			continue;
 
 		/* get relative directed strength */
@@ -1314,102 +1504,54 @@ void IlluminateGridPoint2(int num)
 	//VectorSet( gp->ambient[ 0 ], ambient * 128.0f, ambient * 128.0f, ambient * 128.0f );
 	//VectorSet( gp->directed[ 0 ], 0, 0, 0 );
 
-	//for( j = 0; j < 3; j++ )
-	//	if( color[ j ] < minGridLight[ j ] )
-	//		color[ j ] = minGridLight[ j ];
-
 	/* store off sample */
 	ColorToBytes( gp->ambient[ 0 ], bgp->ambient[ 0 ], 1.0, qfalse );
 	ColorToBytes( gp->directed[ 0 ], bgp->directed[ 0 ], 1.0, qfalse );
-	
-	/* store direction */
 	if( !bouncing )
 		NormalToLatLong( gp->dir, bgp->latLong );
+	gridPointsIlluminated++;
 }
 
-/*
-IlluminateGridPoint
-grid samples are for quickly determining the lighting
-of dynamically placed entities in the world
-*/
-void IlluminateGridPoint(int num)
-{
-	int						i, j, x, y, z, mod, step, numCon, numStyles;
-	float					d;
-	vec3_t					baseOrigin, cheapColor, color;
-	rawGridPoint_t			*gp;
-	bspGridPoint_t			*bgp;
-	contribution_t			contributions[ MAX_CONTRIBUTIONS ];
-	trace_t					trace;
-	
-	/* get grid points */
-	gp = &rawGridPoints[ num ];
-	bgp = &bspGridPoints[ num ];
-	
-	/* get grid origin */
-	mod = num;
-	z = mod / (gridBounds[ 0 ] * gridBounds[ 1 ]);
-	mod -= z * (gridBounds[ 0 ] * gridBounds[ 1 ]);
-	y = mod / gridBounds[ 0 ];
-	mod -= y * gridBounds[ 0 ];
-	x = mod;
-	
-	trace.origin[ 0 ] = gridMins[ 0 ] + x * gridSize[ 0 ];
-	trace.origin[ 1 ] = gridMins[ 1 ] + y * gridSize[ 1 ];
-	trace.origin[ 2 ] = gridMins[ 2 ] + z * gridSize[ 2 ];
+#ifdef GRID_BLOCK_OPTIMIZATION
 
-	/* set inhibit sphere */
-	if( gridSize[ 0 ] > gridSize[ 1 ] && gridSize[ 0 ] > gridSize[ 2 ] )
-		trace.inhibitRadius = gridSize[ 0 ] * 0.5f;
-	else if( gridSize[ 1 ] > gridSize[ 0 ] && gridSize[ 1 ] > gridSize[ 2 ] )
-		trace.inhibitRadius = gridSize[ 1 ] * 0.5f;
-	else
-		trace.inhibitRadius = gridSize[ 2 ] * 0.5f;
-	
-	/* find point cluster */
-	trace.cluster = ClusterForPointExt( trace.origin, 0 );
-	if( trace.cluster < 0 )
-	{
-		/* try to nudge the origin around to find a valid point */
-		VectorCopy( trace.origin, baseOrigin );
-		for( step = 9; step <= 18; step += 9 )
-		{
-			for( i = 0; i < 8; i++ )
-			{
-				VectorCopy( baseOrigin, trace.origin );
-				if( i & 1 )
-					trace.origin[ 0 ] += step;
-				else
-					trace.origin[ 0 ] -= step;
-				
-				if( i & 2 )
-					trace.origin[ 1 ] += step;
-				else
-					trace.origin[ 1 ] -= step;
-				
-				if( i & 4 )
-					trace.origin[ 2 ] += step;
-				else
-					trace.origin[ 2 ] -= step;
-				
-				/* ydnar: changed to find cluster num */
-				trace.cluster = ClusterForPointExt( trace.origin, VERTEX_EPSILON );
-				if( trace.cluster >= 0 )
-					break;
-			}
-			
-			if( i != 8 )
-				break;
-		}
-		
-		/* can't find a valid point at all */
-		if( step > 18 )
-			return;
-	}
-	
+/*
+IlluminateGridBlock()
+illuminates lightgrid block
+*/
+
+void IlluminateGridBlock( int num )
+{
+	int mod, x, y, z, i, j, k, px, py, pz, cluster, *clusters, numClusters;
+	vec3_t mins, maxs, normal, origin;
+	trace_t trace;
+
+	/* get block coordinates */
+	mod = num; 
+	z = mod / (gridBlocks[ 0 ] * gridBlocks[ 1 ]);
+	mod -= z * (gridBlocks[ 0 ] * gridBlocks[ 1 ]); 
+	y = mod / gridBlocks[ 0 ];
+	mod -= y * gridBlocks[ 0 ];
+	x = mod;
+
+	/* get min/max with 1 point margin */
+	mins[ 0 ] = gridMins[ 0 ] + (x - 1) * gridBlockSize[ 0 ] * gridSize[ 0 ];
+	mins[ 1 ] = gridMins[ 1 ] + (y - 1) * gridBlockSize[ 1 ] * gridSize[ 1 ];
+	mins[ 2 ] = gridMins[ 2 ] + (z - 1) * gridBlockSize[ 2 ] * gridSize[ 2 ];
+	maxs[ 0 ] = mins[ 0 ] + (gridBlockSize[ 0 ] + 1) * gridSize[ 0 ];
+	maxs[ 1 ] = mins[ 1 ] + (gridBlockSize[ 1 ] + 1) * gridSize[ 1 ];
+	maxs[ 2 ] = mins[ 2 ] + (gridBlockSize[ 2 ] + 1) * gridSize[ 2 ];
+	VectorSet(normal, 0, 0, 0);
+
+	/* transform block indexes to point indexes */
+	x = x * gridBlockSize[ 0 ];
+	y = y * gridBlockSize[ 1 ];
+	z = z * gridBlockSize[ 2 ];
+
 	/* setup trace */
 	trace.entityNum = -1;
 	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
+	trace.inhibitRadius = 0;
+	trace.twoSided = qfalse;
 	trace.occlusionBias = 0;
 	trace.forceSunlight = qfalse;
 	trace.forceSelfShadow = qfalse;
@@ -1418,179 +1560,179 @@ void IlluminateGridPoint(int num)
 	trace.surfaces = NULL;
 	trace.numLights = 0;
 	trace.lights = NULL;
-	
-	/* clear */
-	numCon = 0;
-	VectorClear( cheapColor );
-	
-	/* trace to all the lights, find the major light direction, and divide the total light between that along the direction and the remaining in the ambient */
-	for( trace.light = lights; trace.light != NULL; trace.light = trace.light->next )
-	{
-		float addSize;
 
-		/* sample light */
-		if( !LightContribution( &trace, LIGHT_GRID, qtrue ) )
-			continue;
-		
-		/* handle negative light */
-		if( trace.light->flags & LIGHT_NEGATIVE )
-			VectorNegate( trace.color, trace.color );
-		
-		/* add a contribution */
-		VectorCopy( trace.color, contributions[ numCon ].color );
-		VectorCopy( trace.direction, contributions[ numCon ].dir );
-		contributions[ numCon ].style = trace.light->style;
-		numCon++;
-		
-		/* push average direction around */
-		addSize = VectorLength( trace.color );
-		VectorMA( gp->dir, addSize, trace.direction, gp->dir );
-
-		/* stop after a while */
-		if( numCon >= (MAX_CONTRIBUTIONS - 1) )
-			break;
-		
-		/* ydnar: cheap mode */
-		VectorAdd( cheapColor, trace.color, cheapColor );
-		if( cheapgrid && cheapColor[ 0 ] >= 255.0f && cheapColor[ 1 ] >= 255.0f && cheapColor[ 2 ] >= 255.0f )
-			break;
-	}
-	
-	/////// Floodlighting for point //////////////////
-	//do our floodlight ambient occlusion loop, and add a single contribution based on the brightest dir
-	if (floodlighty)
+	/* allocate clusters */
+	numClusters = 0;
+	clusters = (int *)safe_malloc(sizeof(int) * gridBlockSize[ 0 ] * gridBlockSize[ 1 ] * gridBlockSize[ 2 ]);
+	for( i = 0; i < gridBlockSize[ 2 ]; i++ )
 	{
-		int q;
-		float addSize,f;
-		vec3_t col,dir;
-		col[0]=col[1]=col[2]=floodlightIntensity;
-		dir[0]=dir[1]=0;
-		dir[2]=1;
-      
-		trace.entityNum = -1;
-		trace.testOcclusion = qtrue;
-		trace.occlusionBias = 0;
-		trace.forceSunlight = qfalse;
-		trace.forceSelfShadow = qfalse;
-		trace.inhibitRadius = DEFAULT_INHIBIT_RADIUS;
-		trace.testAll = qtrue;     
-      
-		for (q=0;q<2;q++)
+		pz = z + i;
+		if (pz >= gridBounds[ 2 ])
+			break;
+		for( j = 0; j < gridBlockSize[ 1 ]; j++ )
 		{
-			if (q==0) //upper hemisphere
-			{
-				trace.normal[0]=0;
-				trace.normal[1]=0;
-				trace.normal[2]=1;
-			}
-			else //lower hemisphere
-			{
-				trace.normal[0]=0;
-				trace.normal[1]=0;
-				trace.normal[2]=-1;
-			}
-
-			f = FloodLightForSample(&trace, floodlightDistance, floodlight_lowquality);
-
-			contributions[ numCon ].color[0]=col[0]*f;
-			contributions[ numCon ].color[1]=col[1]*f;
-			contributions[ numCon ].color[2]=col[2]*f;
-
-			contributions[ numCon ].dir[0]=dir[0];
-			contributions[ numCon ].dir[1]=dir[1];
-			contributions[ numCon ].dir[2]=dir[2];
-
-			contributions[ numCon ].style = 0;
-			numCon++;		
-			/* push average direction around */
-			addSize = VectorLength( col );
-			VectorMA( gp->dir, addSize, dir, gp->dir );
-		}
-	}
-	/////////////////////
-
-	/* normalize to get primary light direction */
-	VectorNormalize( gp->dir, gp->dir );
-	
-	/* now that we have identified the primary light direction, go back and separate all the light into directed and ambient */
-	numStyles = 1;
-	for( i = 0; i < numCon; i++ )
-	{
-		/* get relative directed strength */
-		d = DotProduct( contributions[ i ].dir, gp->dir );
-		if( d < 0.0f )
-			d = 0.0f;
-		
-		/* find appropriate style */
-		for( j = 0; j < numStyles; j++ )
-			if( gp->styles[ j ] == contributions[ i ].style )
+			py = y + j;
+			if (py >= gridBounds[ 1 ])
 				break;
-
-		/* style not found? */
-		if( j >= numStyles )
-		{
-			/* add a new style */
-			if( numStyles < MAX_LIGHTMAPS )
+			for( k = 0; k < gridBlockSize[ 0 ]; k++ )
 			{
-				gp->styles[ numStyles ] = contributions[ i ].style;
-				bgp->styles[ numStyles ] = contributions[ i ].style;
-				numStyles++;
+				px = x + k;
+				if (px >= gridBounds[ 0 ])
+					break;
+				// get cluster
+				origin[ 0 ] = gridMins[ 0 ] + px * gridSize[ 0 ];
+				origin[ 1 ] = gridMins[ 1 ] + py * gridSize[ 1 ];
+				origin[ 2 ] = gridMins[ 2 ] + pz * gridSize[ 2 ];
+				cluster = ClusterForPoint( origin );
+				if (cluster < 0)
+					continue;
+				clusters[ numClusters++ ] = cluster;
 			}
-			/* fallback */
-			else
-				j = 0;
 		}
-
-		/* add the directed color */
-		VectorMA( gp->directed[ j ], d, contributions[ i ].color, gp->directed[ j ] );
-
-		/* (ydnar: nuke this in favor of more dramatic lighting?) */
-		/* (PM: how about actually making it work? d=1 when it got here for single lights/sun :P */
-//		d = 0.25f;
-		/* (Hobbes: always setting it to .25 is hardly any better) */
-		d = 0.25f * (1.0f - d);
-		VectorMA( gp->ambient[ j ], d, contributions[ i ].color, gp->ambient[ j ] );
 	}
-	
-	
-	/* store off sample */
-	for( i = 0; i < MAX_LIGHTMAPS; i++ )
-	{
-		/* do some fudging to keep the ambient from being too low (2003-07-05: 0.25 -> 0.125) */
-		if( !bouncing )
-			VectorMA( gp->ambient[ i ], 0.125f, gp->directed[ i ], gp->ambient[ i ] );
-		
-		/* set minimum light and copy off to bytes */
-		VectorCopy( gp->ambient[ i ], color );
-		for( j = 0; j < 3; j++ )
-			if( color[ j ] < minGridLight[ j ] )
-				color[ j ] = minGridLight[ j ];
 
-		/* vortex: apply grid mix */
-		color[0] += gp->directed[ i ][ 0 ] * gridMix;
-		color[1] += gp->directed[ i ][ 1 ] * gridMix;
-		color[2] += gp->directed[ i ][ 2 ] * gridMix;
-		gp->directed[ i ][ 0 ] *= (1 - gridMix);
-		gp->directed[ i ][ 1 ] *= (1 - gridMix);
-		gp->directed[ i ][ 2 ] *= (1 - gridMix);
+	/* create trace lights */
+	CreateTraceLightsForBounds( qtrue, mins, maxs, normal, numClusters, clusters, LIGHT_GRID, &trace );
 
-		/* vortex: apply gridscale and gridambientscale here */
-		ColorToBytes( color, bgp->ambient[ i ], gridScale*gridAmbientScale, qfalse );
-		ColorToBytes( gp->directed[ i ], bgp->directed[ i ], gridScale, qfalse );
-	}
-	
 	/* debug code */
-	#if 0
-		//%	Sys_FPrintf( SYS_VRB, "%10d %10d %10d ", &gp->ambient[ 0 ][ 0 ], &gp->ambient[ 0 ][ 1 ], &gp->ambient[ 0 ][ 2 ] );
-		Sys_FPrintf( SYS_VRB, "%9d Amb: (%03.1f %03.1f %03.1f) Dir: (%03.1f %03.1f %03.1f)\n",
-			num,
-			gp->ambient[ 0 ][ 0 ], gp->ambient[ 0 ][ 1 ], gp->ambient[ 0 ][ 2 ],
-			gp->directed[ 0 ][ 0 ], gp->directed[ 0 ][ 1 ], gp->directed[ 0 ][ 2 ] );
-	#endif
+	//Sys_Printf("Grid Block %i - %i lights\n", num, trace.numLights );
+
+	/* illuminate grid points */
+	for( i = 0; i < gridBlockSize[ 2 ]; i++ )
+	{
+		pz = z + i;
+		if (pz >= gridBounds[ 2 ])
+			break;
+		for( j = 0; j < gridBlockSize[ 1 ]; j++ )
+		{
+			py = y + j;
+			if (py >= gridBounds[ 1 ])
+				break;
+			for( k = 0; k < gridBlockSize[ 0 ]; k++ )
+			{
+				px = x + k;
+				if (px >= gridBounds[ 0 ])
+					break;
+				IlluminateGridPoint( &trace, (pz * gridBounds[1] + py) * gridBounds[0] + px );
+			}
+		}
+	}
+
+	/* free stuff */
+	FreeTraceLights( &trace );
+	free( clusters );
+}
+
+#else 
+
+void IlluminateGridPointOld( int num )
+{
+	trace_t trace;
+
+	trace.entityNum = -1;
+	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
+	trace.inhibitRadius = 0;
+	trace.twoSided = qfalse;
+	trace.occlusionBias = 0;
+	trace.forceSunlight = qfalse;
+	trace.forceSelfShadow = qfalse;
+	trace.recvShadows = WORLDSPAWN_RECV_SHADOWS;
+	trace.numSurfaces = 0;
+	trace.surfaces = NULL;
+	trace.numLights = 0;
+	trace.lights = NULL;
+
+	IlluminateGridPoint( &trace, num );
+
+}
+
+#endif
+
+/*
+FloodGridPoint
+applies post-illuminate function to a grid point
+*/
+
+void FloodGridPoint(int num)
+{
+	vec3_t avgambient, avgdirected, avgdirection;
+	rawGridPoint_t *gp, *ar, *sr;
+	bspGridPoint_t *bgp;
+	int x, y , z, mod, xw, yw, zw, i, j, k, avgsamples;
+	float f;
+
+	/* get grid point */
+	gp = &rawGridPoints[ num ];
+	bgp = &bspGridPoints[ num ];
+
+	/* early out */
+	if( gp->flooded == qfalse || gp->contributions > 0 )
+		return;
+
+	/* get location */
+	mod = num;
+	z = mod / (gridBounds[ 0 ] * gridBounds[ 1 ]);
+	mod -= z * (gridBounds[ 0 ] * gridBounds[ 1 ]);
+	y = mod / gridBounds[ 0 ];
+	mod -= y * gridBounds[ 0 ];
+	x = mod;
 	
-	/* store direction */
+	/* shift calculated position */
+	xw = yw = zw = 2;
+
+	/* clear samples */
+	VectorClear(avgambient);
+	VectorClear(avgdirected);
+	VectorClear(avgdirection);
+	avgsamples = 0;
+
+	/* get average samples */
+	ar = &rawGridPoints[(z * gridBounds[1] + y) * gridBounds[0] + x];
+	for( k = 0; k < zw; k++ )
+	{
+		if( z + k >= gridBounds[2] )
+			continue;
+		for( j = 0;j < yw;j++ )
+		{
+			if( y + j >= gridBounds[1] )
+				continue;
+			for( i = 0; i < xw; i++ )
+			{
+				if (x + i >= gridBounds[0])
+					continue;		
+				sr = ar + (k * gridBounds[1] + j) * gridBounds[0] + i;
+
+				/* sample from illuminated or filled flooded points */
+				if( (sr->flooded == qfalse || sr->contributions > 0) && sr != gp )
+				{
+					VectorAdd( avgambient, sr->ambient[ 0 ], avgambient );
+					VectorAdd( avgdirected, sr->directed[ 0 ], avgdirected );
+					VectorAdd( avgdirection, sr->dir, avgdirection );
+					avgsamples++;
+				}
+			}
+		}
+	}
+
+	/* can't average? */
+	if( !avgsamples )
+		return;
+	
+	/* average */
+	f = 1.0f / avgsamples;
+	VectorScale( avgambient, f, gp->ambient[ 0 ] );
+	VectorScale( avgdirected, f, gp->directed[ 0 ] );
+	VectorNormalize( avgdirection, gp->dir );
+
+	/* store off averaged sample */
+	ColorToBytes( gp->ambient[ 0 ], bgp->ambient[ 0 ], 1.0, qfalse );
+	ColorToBytes( gp->directed[ 0 ], bgp->directed[ 0 ], 1.0, qfalse );
 	if( !bouncing )
 		NormalToLatLong( gp->dir, bgp->latLong );
+
+	/* mark as flooded, add to stats */
+	gp->contributions = 1;
+	gridPointsFlooded++;
 }
 
 /*
@@ -1600,36 +1742,34 @@ performs lightgrid calculations
 
 void IlluminateGrid( void )
 {
+	int i, numFloodPasses;
+
 	/* set up light envelopes */
 	SetupEnvelopes( qtrue, fastgrid );
 	
 	/* note it */
 	Sys_Printf( "--- IlluminateGrid ---\n" );
 
-	/* vortex: detect grid* worldspawn keys */
-	if (KeyExists(&entities[ 0 ], "gridmix"))
-	{
-		gridMix = min(1, max(0, FloatForKey(&entities[ 0 ], "gridmix")));
-		Sys_Printf( " gridmix = %f (got from worldspawn key)\n", gridMix );
-	}
-	if (KeyExists(&entities[ 0 ], "gridscale"))
-	{
-		gridScale = FloatForKey(&entities[ 0 ], "gridscale");
-		Sys_Printf( " gridscale = %f (got from worldspawn key)\n", gridScale );
-	}
-	if (KeyExists(&entities[ 0 ], "gridambientscale"))
-	{
-		gridAmbientScale = FloatForKey(&entities[ 0 ], "gridambientscale");
-		Sys_Printf( " gridambientscale = %f (got from worldspawn key)\n", gridAmbientScale );
-	}
-
 	/* trace */
-	RunThreadsOnIndividual( numRawGridPoints, qtrue, IlluminateGridPoint2 );
-	Sys_Printf( "%d x %d x %d = %d grid\n", gridBounds[ 0 ], gridBounds[ 1 ], gridBounds[ 2 ], numBSPGridPoints );
+	gridPointsIlluminated = 0;
+	gridPointsOccluded = 0;
+	gridPointsFlooded = 0;
+#ifdef GRID_BLOCK_OPTIMIZATION
+	RunThreadsOnIndividual( numGridBlocks, qtrue, IlluminateGridBlock );
+#else
+	RunThreadsOnIndividual( numRawGridPoints, qtrue, IlluminateGridPointOld );
+#endif
+
+	/* flood (this is a fast operation, so no pacifier) */
+	numFloodPasses = max( max( gridBounds[ 0 ], gridBounds[ 1 ] ), gridBounds[ 2 ] ) + 1;
+	for (i = 0; i < numFloodPasses; i++)
+		RunThreadsOnIndividual( numRawGridPoints, qfalse, FloodGridPoint );
 	
-	/* ydnar: emit statistics on light culling */
-	Sys_FPrintf( SYS_VRB, "%9d grid points envelope culled\n", gridEnvelopeCulled );
-	Sys_FPrintf( SYS_VRB, "%9d grid points bounds culled\n", gridBoundsCulled );
+	/* print stats */
+	Sys_FPrintf( SYS_VRB, "%9d flood passes\n", numFloodPasses );
+	Sys_FPrintf( SYS_VRB, "%9d points illuminated\n", gridPointsIlluminated );
+	Sys_FPrintf( SYS_VRB, "%9d points occluded\n", gridPointsOccluded );
+	Sys_FPrintf( SYS_VRB, "%9d points flooded\n", gridPointsFlooded );
 }
 
 /*
@@ -1639,25 +1779,27 @@ calculates the size of the lightgrid and allocates memory
 
 void SetupGrid( void )
 {
-	int			i, j;
-	vec3_t		maxs, oldGridSize;
-	const char	*value;
-	char		temp[ 64 ];
-	
-	 
+	int			    i, j, x, y, z, mod;
+	vec3_t		    maxs, newsize, origin;
+	const char	    *value;
+	char		    temp[ 64 ];
+
 	/* don't do this if not grid lighting */
 	if( noGridLighting )
 		return;
 	
-	/* ydnar: set grid size */
-	value = ValueForKey( &entities[ 0 ], "gridsize" );
-	if( value[ 0 ] != '\0' )
-		sscanf( value, "%f %f %f", &gridSize[ 0 ], &gridSize[ 1 ], &gridSize[ 2 ] );
-	
+	/* worldspawn-set grid size */
+	if( KeyExists( &entities[ 0 ], "gridsize" ) == qtrue )
+	{
+		value = ValueForKey( &entities[ 0 ], "gridsize" );
+		if( value[ 0 ] != '\0' )
+			if (sscanf( value, "%f %f %f", &newsize[ 0 ], &newsize[ 1 ], &newsize[ 2 ] ))
+				VectorCopy( newsize, gridSize );
+	}
+
 	/* quantize it */
-	VectorCopy( gridSize, oldGridSize );
 	for( i = 0; i < 3; i++ )
-		gridSize[ i ] = gridSize[ i ] >= 8.0f ? floor( gridSize[ i ] ) : 8.0f;
+		gridSize[ i ] = gridSize[ i ] >= 1.0f ? floor( gridSize[ i ] ) : 1.0f;
 	
 	/* ydnar: increase gridSize until grid count is smaller than max allowed */
 	numRawGridPoints = MAX_MAP_LIGHTGRID + 1;
@@ -1679,46 +1821,35 @@ void SetupGrid( void )
 		if( numRawGridPoints > MAX_MAP_LIGHTGRID )
 			gridSize[ j++ % 3 ] += 16.0f;
 	}
+
+	/* count blocks used for batch tracing */
+	gridBlockSize[ 0 ] = max( 4, 128 / gridSize[ 0 ] );
+	gridBlockSize[ 1 ] = max( 4, 128 / gridSize[ 1 ] );
+	gridBlockSize[ 2 ] = max( 4, 128 / gridSize[ 2 ] );
+	gridBlocks[ 0 ] = ceil( (float)gridBounds[ 0 ] / gridBlockSize[ 0 ] );
+	gridBlocks[ 1 ] = ceil( (float)gridBounds[ 1 ] / gridBlockSize[ 1 ] );
+	gridBlocks[ 2 ] = ceil( (float)gridBounds[ 2 ] / gridBlockSize[ 2 ] );
+	numGridBlocks = gridBlocks[ 0 ] * gridBlocks[ 1 ] * gridBlocks[ 2 ];
 	
-	/* print it */
-	Sys_Printf( "Grid size = { %1.0f, %1.0f, %1.0f }\n", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
+	/* print stats */
+	Sys_Printf( "Grid point size = { %1.0f, %1.0f, %1.0f }\n", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
+	Sys_Printf( "Grid dimensions = %ix%ix%i\n", gridBounds[ 0 ], gridBounds[ 1 ], gridBounds[ 2 ] );
+	Sys_Printf( "Grid block = %ix%ix%i (total %ix%ix%i, %i points per block)\n", gridBlockSize[ 0 ], gridBlockSize[ 1 ], gridBlockSize[ 2 ], gridBlocks[ 0 ], gridBlocks[ 1 ], gridBlocks[ 2 ], gridBlockSize[ 0 ] * gridBlockSize[ 1 ] * gridBlockSize[ 2 ] );
 
 	/* build normals used to calculate ambient lighting in new TraceGrid path */
-	{
-		int i;
-		for (i = 0; i < GRID_TEST_NORMALS; i++)
-			VectorNormalize( GridNormalsModel[ i ], GridNormals[ i ] );
-	}
+	for( i = 0; i < GRID_NUM_NORMALS; i++ )
+		VectorNormalize( GridNormalsModel[ i ], GridNormals[ i ] );
 
-	/* vortex: since we are not using surface normal in lightgrid sampling,
-	resulting grid point will be brighter than near lightmap samples for lights with angle attenulation,
-	we can fix that by applying multiplier, here we do calculate it 
-	fixed: moved to LightContribution
-	*/
-	/*
+	/* build grid offsets used for nudging code */
+	for( i = 0; i < GRID_NUM_OFFSETS; i++ )
 	{
-		int i, p;
-		vec3_t n;
-		float c, d;
-		VectorSet(n, 0, 0, 1);
-		c = 0;
-		p = 0;
-		for (i = 0; i < GRID_TEST_NORMALS; i++)
-		{
-			d = DotProduct( n, GridNormals[ i ]);
-			if (d > 0)
-			{
-				c += d;
-				p++;
-			}
-		}
-		GridAngleAttenCoeficient = c / p;
-		Sys_Printf( "Angle attenuation coeficient: %f\n", c );
+		GridOffsets[ i ][ 0 ] = GridOffsetsModel[ i ][ 0 ] * gridSize[ 0 ];
+		GridOffsets[ i ][ 1 ] = GridOffsetsModel[ i ][ 1 ] * gridSize[ 1 ];
+		GridOffsets[ i ][ 2 ] = GridOffsetsModel[ i ][ 2 ] * gridSize[ 2 ];
 	}
-	*/
 	
 	/* different? */
-	if( !VectorCompare( gridSize, oldGridSize ) )
+	if( !VectorCompare( gridSize, gridDefaultSize ) )
 	{
 		sprintf( temp, "%.0f %.0f %.0f", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
 		SetKeyValue( &entities[ 0 ], "gridsize", (const char*) temp );
@@ -1729,17 +1860,18 @@ void SetupGrid( void )
 	numBSPGridPoints = numRawGridPoints;
 	
 	/* allocate lightgrid */
-	rawGridPoints = (rawGridPoint_t *)safe_malloc( numRawGridPoints * sizeof( *rawGridPoints ) );
-	memset( rawGridPoints, 0, numRawGridPoints * sizeof( *rawGridPoints ) );
-	
+	rawGridPoints = (rawGridPoint_t *)safe_malloc( numRawGridPoints * sizeof( rawGridPoint_t ) );
+	memset( rawGridPoints, 0, numRawGridPoints * sizeof( rawGridPoint_t ) );
 	if( bspGridPoints != NULL )
 		free( bspGridPoints );
-	bspGridPoints = (bspGridPoint_t *)safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
-	memset( bspGridPoints, 0, numBSPGridPoints * sizeof( *bspGridPoints ) );
+	bspGridPoints = (bspGridPoint_t *)safe_malloc( numBSPGridPoints * sizeof( bspGridPoint_t ) );
+	memset( bspGridPoints, 0, numBSPGridPoints * sizeof( bspGridPoint_t ) );
 	
-	/* clear lightgrid */
+	/* map lightgrid */
+	gridPointsMapped = 0;
 	for( i = 0; i < numRawGridPoints; i++ )
 	{
+		/* set ambient */
 		VectorCopy( ambientColor, rawGridPoints[ i ].ambient[ j ] );
 		rawGridPoints[ i ].styles[ 0 ] = LS_NORMAL;
 		bspGridPoints[ i ].styles[ 0 ] = LS_NORMAL;
@@ -1748,13 +1880,107 @@ void SetupGrid( void )
 			rawGridPoints[ i ].styles[ j ] = LS_NONE;
 			bspGridPoints[ i ].styles[ j ] = LS_NONE;
 		}
+
+		/* get origin */
+		mod = i;
+		z = mod / (gridBounds[ 0 ] * gridBounds[ 1 ]);
+		mod -= z * (gridBounds[ 0 ] * gridBounds[ 1 ]);
+		y = mod / gridBounds[ 0 ];
+		mod -= y * gridBounds[ 0 ];
+		x = mod;
+		origin[ 0 ] = gridMins[ 0 ] + x * gridSize[ 0 ];
+		origin[ 1 ] = gridMins[ 1 ] + y * gridSize[ 1 ];
+		origin[ 2 ] = gridMins[ 2 ] + z * gridSize[ 2 ];
+
+		/* map grid point */
+		rawGridPoints[ i ].mapped = numGridAreas ? qfalse : qtrue;
+		rawGridPoints[ i ].contributions = 0;
+		rawGridPoints[ i ].flooded = qfalse;
+		for( j = 0; j < numGridAreas; j++ )
+		{
+			/* test bounds */
+			if( gridAreas[ j ].mins[ 0 ] > (origin[ 0 ] + gridSize[ 0 ]) || gridAreas[ j ].maxs[ 0 ] < (origin[ 0 ] - gridSize[ 0 ]) ||
+				gridAreas[ j ].mins[ 1 ] > (origin[ 1 ] + gridSize[ 1 ]) || gridAreas[ j ].maxs[ 1 ] < (origin[ 1 ] - gridSize[ 1 ]) ||
+				gridAreas[ j ].mins[ 2 ] > (origin[ 2 ] + gridSize[ 2 ]) || gridAreas[ j ].maxs[ 2 ] < (origin[ 2 ] - gridSize[ 2 ]) )
+				continue;
+
+			/* mark as mapped */
+			rawGridPoints[ i ].mapped = qtrue;
+			break;
+		}
+
+		/* add to stats */
+		if ( rawGridPoints[ i ].mapped )
+			gridPointsMapped++;
 	}
 	
 	/* note it */
+	Sys_Printf( "%9d grid areas\n", numGridAreas );
+	Sys_Printf( "%9d grid blocks\n", numGridBlocks );
 	Sys_Printf( "%9d grid points\n", numRawGridPoints );
+	Sys_Printf( "%9d grid points mapped (%.2f percent)\n", gridPointsMapped, ((float)gridPointsMapped / numRawGridPoints) * 100 );
+	if( gridSuperSample >= 2 )
+		Sys_Printf( "%9d grid points sampled\n", gridPointsMapped * gridSuperSample * gridSuperSample * gridSuperSample );
+	else
+		Sys_Printf( "%9d grid points sampled\n", gridPointsMapped );
 }
 
 
+/*
+SampleGrid()
+calculates the lighting at point based on illuminated LightGrid
+*/
+
+void SampleGrid(vec3_t origin, vec3_t outambient, vec3_t outdirected, vec3_t outdirection )
+{
+	int i, j, k, index[3];
+	float trans[3], blend1, blend2, blend;
+	rawGridPoint_t *ar, *sr;
+
+	/* init */
+	VectorClear(outambient);
+	VectorClear(outdirected);
+	VectorClear(outdirection);
+
+	/* transform origin into lightGrid space */
+	trans[0] = (origin[0] - gridMins[0]) / gridSize[0];
+	trans[1] = (origin[1] - gridMins[1]) / gridSize[1];
+	trans[2] = (origin[2] - gridMins[2]) / gridSize[2];
+	trans[0] = max(0, min(trans[0], gridBounds[0] - 1));
+	trans[1] = max(0, min(trans[1], gridBounds[1] - 1));
+	trans[2] = max(0, min(trans[2], gridBounds[2] - 1));
+	index[0] = (int)floor(trans[0]);
+	index[1] = (int)floor(trans[1]);
+	index[2] = (int)floor(trans[2]);
+
+	/* now lerp the values */
+	ar = &rawGridPoints[(index[2] * gridBounds[1] + index[1]) * gridBounds[0] + index[0]];
+	for (k = 0;k < 2;k++)
+	{
+		blend1 = (k ? (trans[2] - index[2]) : (1 - (trans[2] - index[2])));
+		if (blend1 < 0.001f || index[2] + k >= gridBounds[2])
+			continue;
+		for (j = 0;j < 2;j++)
+		{
+			blend2 = blend1 * (j ? (trans[1] - index[1]) : (1 - (trans[1] - index[1])));
+			if (blend2 < 0.001f || index[1] + j >= gridBounds[1])
+				continue;
+			for (i = 0;i < 2;i++)
+			{
+				blend = blend2 * (i ? (trans[0] - index[0]) : (1 - (trans[0] - index[0])));
+				if (blend < 0.001f || index[0] + i >= gridBounds[0])
+					continue;			
+				sr = ar + (k * gridBounds[1] + j) * gridBounds[0] + i;
+				VectorMA(outambient, blend * (1.0f / 128.0f), sr->ambient[ 0 ], outambient);
+				VectorMA(outdirected, blend * (1.0f / 128.0f), sr->directed[ 0 ], outdirected);
+				VectorMA(outdirection, blend, sr->dir, outdirection);
+			}
+		}
+	}
+
+	/* renormalize light direction */
+	VectorNormalize(outdirection, outdirection);
+}
 
 /*
 LightWorld()
@@ -1768,18 +1994,9 @@ void LightWorld( void )
 	int			b, bt;
 	qboolean	minVertex, minGrid;
 	const char	*value;
-	
 
-	/* ydnar: smooth normals */
-	if( shade )
-	{
-		Sys_Printf( "--- SmoothNormals ---\n" );
-		SmoothNormals();
-	}
-	
-	/* determine the number of grid points */
-	Sys_Printf( "--- SetupGrid ---\n" );
-	SetupGrid();
+	/* note it */
+	Sys_Printf( "--- LightWorld ---\n" );
 	
 	/* find the optional minimum lighting values */
 	GetVectorForKey( &entities[ 0 ], "_color", color );
@@ -1823,15 +2040,35 @@ void LightWorld( void )
 		if( minGrid == qfalse )
 			VectorScale( color, f, minGridLight );
 	}
-	
+
+	/* show stats */
+	if( ambientColor[ 0 ] || ambientColor[ 1 ] || ambientColor[ 2 ] )
+		Sys_Printf( "Ambient light = ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
+	if( minLight[ 0 ] || minLight[ 1 ] || minLight[ 2 ] )
+		Sys_Printf( "Min light = ( %f %f %f )\n", minLight[ 0 ], minLight[ 1 ], minLight[ 2 ] );
+	if( minVertexLight[ 0 ] || minVertexLight[ 1 ] || minVertexLight[ 2 ] )
+		Sys_Printf( "Min vertex light = ( %f %f %f )\n", minVertexLight[ 0 ], minVertexLight[ 1 ], minVertexLight[ 2 ] );
+	if( minGridLight[ 0 ] || minGridLight[ 1 ] || minGridLight[ 2 ] )
+		Sys_Printf( "Min grid light = ( %f %f %f )\n", minGridLight[ 0 ], minGridLight[ 1 ], minGridLight[ 2 ] );
+
 	/* create world lights */
-	Sys_FPrintf( SYS_VRB, "--- CreateLights ---\n" );
 	CreateEntityLights();
 	CreateSurfaceLights();
 	Sys_Printf( "%9d point lights\n", numPointLights );
 	Sys_Printf( "%9d spotlights\n", numSpotLights );
 	Sys_Printf( "%9d diffuse (area) lights\n", numDiffuseLights );
 	Sys_Printf( "%9d sun/sky lights\n", numSunLights );
+
+	/* smooth normals */
+	if( shade )
+	{
+		Sys_Printf( "--- SmoothNormals ---\n" );
+		SmoothNormals();
+	}
+	
+	/* setup grid */
+	Sys_Printf( "--- SetupGrid ---\n" );
+	SetupGrid();
 	
 	/* calculate lightgrid */
 	if( !noGridLighting )
@@ -1918,13 +2155,12 @@ void LightWorld( void )
 		/* add to lightgrid */
 		if( bouncegrid )
 		{
-			gridEnvelopeCulled = 0;
-			gridBoundsCulled = 0;
-			
 			Sys_Printf( "--- BounceGrid ---\n" );
-			RunThreadsOnIndividual( numRawGridPoints, qtrue, IlluminateGridPoint );
-			Sys_FPrintf( SYS_VRB, "%9d grid points envelope culled\n", gridEnvelopeCulled );
-			Sys_FPrintf( SYS_VRB, "%9d grid points bounds culled\n", gridBoundsCulled );
+#ifdef GRID_BLOCK_OPTIMIZATION
+	RunThreadsOnIndividual( numGridBlocks, qtrue, IlluminateGridBlock );
+#else
+	RunThreadsOnIndividual( numRawGridPoints, qtrue, IlluminateGridPointOld );
+#endif
 		}
 		
 		/* light up my world */
@@ -1978,9 +2214,7 @@ int LightMain( int argc, char **argv )
 	int			i;
 	float		f;
 	char		mapSource[ MAX_OS_PATH ];
-	const char	*value;
-	
-	
+
 	/* note it */
 	Sys_Printf( "--- Light ---\n" );
 	Sys_Printf( "--- GameSpecific ---\n" );
@@ -2003,12 +2237,6 @@ int LightMain( int argc, char **argv )
 
 	lightmapExposure = game->lightmapExposure;
 	Sys_Printf( " lightning exposure: %f\n", lightmapExposure );
-
-	gridScale = game->gridScale;
-	Sys_Printf( " lightgrid scale: %f\n", gridScale );
-
-	gridAmbientScale = game->gridAmbientScale;
-	Sys_Printf( " lightgrid ambient scale: %f\n", gridAmbientScale );
 
 	noStyles = game->noStyles;
 	if (noStyles == qtrue)
@@ -2051,7 +2279,7 @@ int LightMain( int argc, char **argv )
 	/* process commandline arguments */
 	for( i = 1; i < (argc - 1); i++ )
 	{
-		/* lightsource scaling */
+		/* point lightsource scaling */
 		if( !strcmp( argv[ i ], "-point" ) || !strcmp( argv[ i ], "-pointscale" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2060,6 +2288,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* area lightsource scaling */
 		else if( !strcmp( argv[ i ], "-area" ) || !strcmp( argv[ i ], "-areascale" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2068,6 +2297,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* sky lightsource scaling */
 		else if( !strcmp( argv[ i ], "-sky" ) || !strcmp( argv[ i ], "-skyscale" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2076,6 +2306,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* bound light scaling */
 		else if( !strcmp( argv[ i ], "-bouncescale" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2083,7 +2314,8 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Bounce (radiosity) light scaled by %f to %f\n", f, bounceScale );
 			i++;
 		}
-		
+	
+		/* all lights scaling */
 		else if( !strcmp( argv[ i ], "-scale" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2095,22 +2327,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 
-		else if( !strcmp( argv[ i ], "-gridscale" ) )
-		{
-			f = atof( argv[ i + 1 ] );
-			gridScale *= f;
-			Sys_Printf( "Grid lightning scaled by %f (*%f)\n", gridScale, f );
-			i++;
-		}
-
-		else if( !strcmp( argv[ i ], "-gridambientscale" ) )
-		{
-			f = atof( argv[ i + 1 ] );
-			gridAmbientScale *= f;
-			Sys_Printf( "Grid ambient lightning scaled by %f (*%f)\n", gridAmbientScale, f );
-			i++;
-		}
-
+		/* vertex lighting scaling */
 		else if( !strcmp( argv[ i ], "-vertexscale" ) )
 		{
 			vertexScale = atof( argv[ i + 1 ] );
@@ -2118,6 +2335,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* lighting gamma */
 		else if( !strcmp( argv[ i ], "-gamma" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2126,6 +2344,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* lighting exposure */
 		else if( !strcmp( argv[ i ], "-exposure" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2136,6 +2355,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* lighting substraction */
 		else if( !strcmp( argv[ i ], "-compensate" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2146,6 +2366,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 
+		/* lighting brightness */
 		else if( !strcmp( argv[ i ], "-brightness" ) )
 		{
 			f = atof( argv[ i + 1 ] );
@@ -2154,7 +2375,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
-		/* ydnar switches */
+		/* global illumination */
 		else if( !strcmp( argv[ i ], "-bounce" ) )
 		{
 			bounce = atoi( argv[ i + 1 ] );
@@ -2165,6 +2386,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* lightmap/lightgrid supersampling */
 		else if( !strcmp( argv[ i ], "-supersample" ) || !strcmp( argv[ i ], "-super" ) )
 		{
 			superSample = atoi( argv[ i + 1 ] );
@@ -2175,6 +2397,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* lightmap adaptive supersampling */
 		else if( !strcmp( argv[ i ], "-samples" ) )
 		{
 			lightSamples = atoi( argv[ i + 1 ] );
@@ -2185,18 +2408,14 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 
+		/* lightmap filter (blur) */
 		else if( !strcmp( argv[ i ], "-filter" ) )
 		{
 			filter = qtrue;
 			Sys_Printf( "Lightmap filtering enabled\n" );
 		}
 		
-		else if( !strcmp( argv[ i ], "-dark" ) )
-		{
-			dark = qtrue;
-			Sys_Printf( "Dark lightmap seams enabled\n" );
-		}
-		
+		/* phong shading */
 		else if( !strcmp( argv[ i ], "-shadeangle" ) )
 		{
 			shadeAngleDegrees = atof( argv[ i + 1 ] );
@@ -2210,6 +2429,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* subdivision threshold */
 		else if( !strcmp( argv[ i ], "-thresh" ) )
 		{
 			subdivideThreshold = atof( argv[ i + 1 ] );
@@ -2220,6 +2440,7 @@ int LightMain( int argc, char **argv )
 			i++;
 		}
 		
+		/* lightmap approximation with vertex lighting */
 		else if( !strcmp( argv[ i ], "-approx" ) )
 		{
 			approximateTolerance = atoi( argv[ i + 1 ] );
@@ -2229,6 +2450,71 @@ int LightMain( int argc, char **argv )
 				Sys_Printf( "Approximating lightmaps within a byte tolerance of %d\n", approximateTolerance );
 			i++;
 		}
+
+		/* ambient light */
+		else if( !strcmp( argv[ i ], "-ambient" ) )
+		{
+			i++;
+			if( strstr(argv[ i ], " ") )
+				sscanf(argv[ i ], "%f %f %f", &ambientColor[ 0 ], &ambientColor[ 1 ], &ambientColor[ 2 ]); 
+			else
+				ambientColor[ 0 ] = ambientColor[ 1 ] = ambientColor[ 2 ] = atof(argv[ i ]);
+			Sys_Printf( "Ambient lighting set to ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
+		}
+
+		/* min light */
+		else if( !strcmp( argv[ i ], "-minlight" ) )
+		{
+			i++;
+			if( strstr(argv[ i ], " ") )
+				sscanf(argv[ i ], "%f %f %f", &minLight[ 0 ], &minLight[ 1 ], &minLight[ 2 ]); 
+			else
+				minLight[ 0 ] = minLight[ 1 ] = minLight[ 2 ] = atof(argv[ i ]);
+			Sys_Printf( "Min lighting set to ( %f %f %f )\n", minLight[ 0 ], minLight[ 1 ], minLight[ 2 ] );
+			VectorCopy( minLight, minVertexLight );
+			VectorCopy( minLight, minGridLight );
+		}
+
+		/* min vertex light */
+		else if( !strcmp( argv[ i ], "-minvertex" ) )
+		{
+			i++;
+			if( strstr(argv[ i ], " ") )
+				sscanf(argv[ i ], "%f %f %f", &minVertexLight[ 0 ], &minVertexLight[ 1 ], &minVertexLight[ 2 ]); 
+			else
+				minVertexLight[ 0 ] = minVertexLight[ 1 ] = minVertexLight[ 2 ] = atof(argv[ i ]);
+			Sys_Printf( "Min vertex lighting set to ( %f %f %f )\n", minVertexLight[ 0 ], minVertexLight[ 1 ], minVertexLight[ 2 ] );
+		}
+
+		/* min grid light */
+		else if( !strcmp( argv[ i ], "-mingrid" ) )
+		{
+			i++;
+			if( strstr(argv[ i ], " ") )
+				sscanf(argv[ i ], "%f %f %f", &minGridLight[ 0 ], &minGridLight[ 1 ], &minGridLight[ 2 ]); 
+			else
+				minGridLight[ 0 ] = minGridLight[ 1 ] = minGridLight[ 2 ] = atof(argv[ i ]);
+			Sys_Printf( "Min grid lighting set to ( %f %f %f )\n", minGridLight[ 0 ], minGridLight[ 1 ], minGridLight[ 2 ] );
+		}
+
+		/* lightgrid */
+		else if( !strcmp( argv[ i ], "-gridsize" ) )
+		{
+			i++;
+			sscanf(argv[ i ], "%f %f %f", &gridSize[ 0 ], &gridSize[ 1 ], &gridSize[ 2 ]); 
+			Sys_Printf( "Lightgrid size set to { %f %f %f }\n", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
+		}
+		else if( !strcmp( argv[ i ], "-gridsupersample" ) || !strcmp( argv[ i ], "-gridsuper" ) )
+		{
+			i++;
+			gridSuperSample = atoi( argv[ i ] );
+			if( gridSuperSample < 1 )
+				gridSuperSample = 1;
+			else if( gridSuperSample > 1 )
+				Sys_Printf( "Lightgrid supersampling enabled with %d sample(s) per grid point\n", (gridSuperSample * gridSuperSample * gridSuperSample) );
+		}
+
+		/* deluxemapping */
 		else if( !strcmp( argv[ i ], "-deluxe" ) || !strcmp( argv[ i ], "-deluxemap" ) )
 		{
 			deluxemap = qtrue;
@@ -2249,12 +2535,13 @@ int LightMain( int argc, char **argv )
 			deluxemap = qfalse;
 			Sys_Printf( "Disabling generating of deluxemaps for average light direction\n" );
 		}
+
+		/* external lightmaps */
 		else if( !strcmp( argv[ i ], "-external" ) )
 		{
 			externalLightmaps = qtrue;
 			Sys_Printf( "Storing all lightmaps externally\n" );
 		}
-
 		else if( !strcmp( argv[ i ], "-lightmapsize" ) )
 		{
 			lmCustomSize = atoi( argv[ i + 1 ] );
@@ -2276,14 +2563,14 @@ int LightMain( int argc, char **argv )
 			}
 		}
 
-		/* -lightmapsrgb: generate lightmap in sRGB colorspace */
+		/* generate lightmap in sRGB colorspace */
 		else if( !strcmp( argv[ i ], "-lightmapsrgb" ) )
 		{
 			lightmapsRGB = qtrue;
 			Sys_Printf( "Generating lightmaps in sRGB colorspace\n" );
 		}
 
-		/* -nosrgb: disable sRGB (force all textues linear) */
+		/* disable sRGB (force all textues linear) */
 		else if( !strcmp( argv[ i ], "-nosrgb" ) )
 		{
 			lightmapsRGB = qfalse;
@@ -2393,19 +2680,6 @@ int LightMain( int argc, char **argv )
 		{
 			fastbounce = qtrue;
 			Sys_Printf( "Fast bounce mode enabled\n" );
-		}
-		
-		else if( !strcmp( argv[ i ], "-cheap" ) )
-		{
-			cheap = qtrue;
-			cheapgrid = qtrue;
-			Sys_Printf( "Cheap mode enabled\n" );
-		}
-
-		else if( !strcmp( argv[ i ], "-cheapgrid" ) )
-		{
-			cheapgrid = qtrue;
-			Sys_Printf( "Cheap grid mode enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-normalmap" ) )
@@ -2827,9 +3101,7 @@ int LightMain( int argc, char **argv )
 	ParseEntities();
 	
 	/* load map file */
-	value = ValueForKey( &entities[ 0 ], "_keepLights" );
-	if( value[ 0 ] != '1' )
-		LoadMapFile( mapSource, qtrue, qfalse );
+	LoadMapFile( mapSource, (IntForKey( &entities[ 0 ], "_keepLights" ) > 0) ? qfalse : qtrue, qtrue, qfalse );
 	
 	/* set the entity/model origins and init yDrawVerts */
 	SetEntityOrigins();
@@ -2881,4 +3153,3 @@ int LightMain( int argc, char **argv )
 	/* return to sender */
 	return 0;
 }
-

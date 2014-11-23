@@ -475,10 +475,13 @@ void BeginMapShaderFile( const char *mapFile )
 	
 	/* append ../scripts/q3map2_<mapname>.shader */
 	sprintf( mapShaderFile, "%s/../%s/q3map2_%s.shader", base, game->shaderPath, mapName );
-	Sys_FPrintf( SYS_VRB, "Map has shader script %s\n", mapShaderFile );
+	if( FileExists( mapShaderFile ) )
+	{
+		Sys_FPrintf( SYS_VRB, "Map has shader script %s, removing...\n", mapShaderFile );
 	
-	/* remove it */
-	remove( mapShaderFile );
+		/* remove it */
+		remove( mapShaderFile );
+	}
 	
 	/* stop making warnings about missing images */
 	warnImage = qfalse;
@@ -1746,7 +1749,7 @@ static void ParseShaderFile( const char *filename )
 					si->vertexScale = atof( token );
 				}
 
-				/* q3map_vertexUsePointSample - use cheap gridlight-style omnidirectional point sample instead of full-featured default sample */
+				/* q3map_vertexUsePointSample - use lightgrid-style omnidirectional point sample instead of lightmap-style sample */
 				else if( !Q_stricmp( token, "q3map_vertexPointSample" ) )
 				{
 					si->vertexPointSample = qtrue;

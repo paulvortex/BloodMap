@@ -179,6 +179,11 @@ int	numthreads = -1;
 CRITICAL_SECTION crit;
 static int enter;
 
+void ThreadStats (void)
+{
+	Sys_Printf ("%i threads\n", numthreads);
+}
+
 void ThreadSetDefault (void)
 {
 	SYSTEM_INFO info;
@@ -190,7 +195,6 @@ void ThreadSetDefault (void)
 		if (numthreads < 1 || numthreads > MAX_THREADS)
 			numthreads = 1;
 	}
-	Sys_Printf ("%i threads\n", numthreads);
 }
 
 void ThreadLock (void)

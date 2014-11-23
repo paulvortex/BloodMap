@@ -1310,7 +1310,7 @@ void StitchSurfaceLightmaps( void )
 			f = numCandidates;
 			stitched = &stitchLightmaps[ numCandidates++ ];
 			stitched->lm = b;
-			stitched->stitchRadius = 0.5f * (a->actualSampleSize < b->actualSampleSize ? a->actualSampleSize : b->actualSampleSize);
+			stitched->stitchRadius = 0.75f * (a->actualSampleSize < b->actualSampleSize ? a->actualSampleSize : b->actualSampleSize);
 			stitched->mins[ 0 ] = b->mins[ 0 ] - stitched->stitchRadius;
 			stitched->mins[ 1 ] = b->mins[ 1 ] - stitched->stitchRadius;
 			stitched->mins[ 2 ] = b->mins[ 2 ] - stitched->stitchRadius;
@@ -3208,6 +3208,7 @@ void StoreSurfaceLightmaps( void )
 	Sys_Printf( "--- CleanupExternalLightmaps ---\n");
 
 	/* delete uncompressed lightmaps */
+	f = 0;
 	for( i = 0; 1; i++ )
 	{
 		any_deleted = qfalse;
@@ -3216,6 +3217,7 @@ void StoreSurfaceLightmaps( void )
 		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
 		if( FileExists( filename ) == qtrue )
 		{
+			f++;
 			remove( filename );
 			any_deleted = qtrue;
 		}
@@ -3224,6 +3226,7 @@ void StoreSurfaceLightmaps( void )
 		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, i );
 		if( FileExists( filename ) == qtrue )
 		{
+			f++;
 			remove( filename );
 			any_deleted = qtrue;
 		}
@@ -3232,6 +3235,7 @@ void StoreSurfaceLightmaps( void )
 		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".jpg", dirname, i );
 		if( FileExists( filename ) == qtrue )
 		{
+			f++;
 			remove( filename );
 			any_deleted = qtrue;
 		}
@@ -3239,11 +3243,13 @@ void StoreSurfaceLightmaps( void )
 		if (!any_deleted)
 			break;
 	}
+	Sys_Printf( "%9d files deleted\n", f );
 
 	/* delete compressed lightmaps */
 	Sys_Printf( "--- CleanupCompressedLightmaps ---\n");
 
 	/* todo: parametrize somehow with game definitions */
+	f = 0;
 	for( i = 0; 1; i++ )
 	{
 		/* get game path */
@@ -3258,8 +3264,10 @@ void StoreSurfaceLightmaps( void )
 			break;
 
 		/* delete it */
+		f++;
 		remove( filename );
 	}
+	Sys_Printf( "%9d files deleted\n", f );
 
 	
 	/* -----------------------------------------------------------------
