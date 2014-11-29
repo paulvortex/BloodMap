@@ -737,6 +737,7 @@ typedef struct shaderInfo_s
 	qb_t				clipModel;						/* ydnar: solid model hack */
 	qb_t				noVertexLight;					/* ydnar: leave vertex color alone */
 	qb_t                noSmooth;                       /* vortex: doesnt allow vertex normal smoothing */
+	qb_t                lightmapNoStitch;               /* vortex: doesnt allow lightmap stitching */
 	
 	byte				styleMarker;					/* ydnar: light styles hack */
 	

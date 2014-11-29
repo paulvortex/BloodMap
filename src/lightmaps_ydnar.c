@@ -1121,7 +1121,7 @@ void SetupSurfaceLightmaps( void )
 		if (lm->brightness <= 0.0)
 			lm->brightness = 1.0;
 		lm->filterRadius = info->si->lmFilterRadius;
-		lm->stitchRadius = info->lightmapStitch;
+		lm->stitchRadius = (info->si->lightmapNoStitch == qtrue) ? -1 : info->lightmapStitch;
 		VectorCopy(info->si->floodlightRGB, lm->floodlightRGB);
 		lm->floodlightDistance = info->si->floodlightDistance;
 		lm->floodlightIntensity = info->si->floodlightIntensity;
@@ -1292,6 +1292,8 @@ void StitchSurfaceLightmaps( void )
 		
 		/* get lightmap a */
 		a = &rawLightmaps[ i ];
+		if (a->stitchRadius <= 0)
+			continue;
 		
 		/* walk rest of lightmaps */
 		numCandidates = 0;

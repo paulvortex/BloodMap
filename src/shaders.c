@@ -2192,6 +2192,10 @@ static void ParseShaderFile( const char *filename )
 				else if( !Q_stricmp( token, "q3map_nosmooth" ) )
 					si->noSmooth = qtrue;
 
+				/* vortex: prevent lightmap stitching */
+				else if( !Q_stricmp( token, "q3map_lightmapNoStitch" ) )
+					si->lightmapNoStitch = qtrue;
+
 				/* q3map_notjunc */
 				else if( !Q_stricmp( token, "q3map_notjunc" ) )
 					si->notjunc = qtrue;
