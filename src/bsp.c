@@ -177,8 +177,8 @@ StitchBrushFaces() - vortex
 performs a bugfixing of brush faces
 */
 
-#define STITCH_DISTANCE         0.1f    /* lower than min grid */
-#define STITCH_NORMAL_EPSILON   0.1f    /* if triangle normal is changed above this, vertex is rolled back */
+#define STITCH_DISTANCE         0.05f    /* lower than min grid */
+#define STITCH_NORMAL_EPSILON   0.05f    /* if triangle normal is changed above this, vertex is rolled back */
 #define STITCH_MAX_TRIANGLES    64      /* max triangles formed from a stiched vertex to be checked */
 //#define STITCH_USE_TRIANGLE_NORMAL_CHECK
 
@@ -1188,6 +1188,19 @@ int BSPMain( int argc, char **argv )
  			i++;
 			Sys_Printf( "Lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
  		}
+		else if( !strcmp( argv[ i ], "-lightmapsize" ) )
+		{
+			lmCustomSize = atoi( argv[ i + 1 ] );
+			
+			/* must be a power of 2 and greater than 2 */
+			if( ((lmCustomSize - 1) & lmCustomSize) || lmCustomSize < 2 )
+			{
+				Sys_Printf( "WARNING: Lightmap size must be a power of 2, greater or equal to 2 pixels.\n" );
+				lmCustomSize = game->lightmapSize;
+			}
+			i++;
+			Sys_Printf( "Default lightmap size set to %d x %d pixels\n", lmCustomSize, lmCustomSize );
+		}
 		else if( !strcmp( argv[ i ],  "-custinfoparms") )
 		{
 			Sys_Printf( "Custom info parms enabled\n" );
@@ -1223,8 +1236,12 @@ int BSPMain( int argc, char **argv )
 			maxLMSurfaceVerts = atoi( argv[ i + 1 ] );
 			if( maxLMSurfaceVerts < 3 )
 				maxLMSurfaceVerts = 3;
+			Sys_Printf( "Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
 			if( maxLMSurfaceVerts > maxSurfaceVerts )
+			{
 				maxSurfaceVerts = maxLMSurfaceVerts;
+				Sys_Printf( "Maximum surface vertex count set to %d\n", maxSurfaceVerts );
+			}
  			i++;
 			Sys_Printf( "Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
  		}
