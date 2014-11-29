@@ -1358,7 +1358,7 @@ static void SubdivideFace_r( entity_t *e, brush_t *brush, side_t *side, winding_
 	int					i;
 	int					axis;
 	vec3_t				bounds[ 2 ];
-	const float			epsilon = 0.1;
+	const float			epsilon = 0.0;
 	int					subFloor, subCeil;
 	winding_t			*frontWinding, *backWinding;
 	mapDrawSurface_t	*ds;
@@ -2507,9 +2507,26 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 				memcpy( dv2, &temp, sizeof( bspDrawVert_t ) );
 			}
 		}
-		
+
 		/* invert facing */
 		VectorScale( ds->lightmapVecs[ 2 ], -1.0f, ds->lightmapVecs[ 2 ] );
+	}
+
+	/* vortex: q3map_textureSize support for patches */
+	if( ds->shaderInfo->shaderImage != NULL && (ds->shaderInfo->shaderImage->width != ds->shaderInfo->shaderWidth || ds->shaderInfo->shaderImage->height != ds->shaderInfo->shaderHeight ) )
+	{
+		bspDrawVert_t *dv;
+		float S = ds->shaderInfo->shaderImage->width / (float)ds->shaderInfo->shaderWidth;
+		float T = ds->shaderInfo->shaderImage->height / (float)ds->shaderInfo->shaderHeight;
+		for( j = 0; j < ds->patchHeight; j++ )
+		{
+			for( i = 0; i < ds->patchWidth; i++ )
+			{
+				dv = &ds->verts[ j * ds->patchWidth + i ];
+				dv->st[0] *= S;
+				dv->st[1] *= T;
+			}
+		}
 	}
 
 	/* allocate a new surface */
