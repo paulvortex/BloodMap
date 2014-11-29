@@ -3115,7 +3115,7 @@ int LightMain( int argc, char **argv )
 	/* initialize the surface facet tracing */
 	SetupTraceNodes();
 
-	/* allocae raw lightmaps */
+	/* allocate raw lightmaps */
 	AllocateSurfaceLightmaps();
 
 	/* light the world */
