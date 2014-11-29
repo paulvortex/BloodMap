@@ -495,7 +495,7 @@ attempts to create a valid tri-strip w/o degenerate triangles from a brush face 
 based on SurfaceAsTriStrip()
 */
 
-#define MAX_INDEXES		1024
+#define MAX_INDEXES		32768
 
 void StripFaceSurface( mapDrawSurface_t *ds, qboolean onlyCreateIndexes ) 
 {
@@ -1378,6 +1378,10 @@ adds a drawvert to a surface unless an existing vert matching already exists
 returns the index of that vert (or < 0 on failure)
 */
 
+#define ADD_META_VERT_ORIGIN_EPSILON 0.001f
+#define ADD_META_VERT_COLOR_EPSILON 0.01f
+#define ADD_META_VERT_NORMAL_EPSILON 0.01f
+
 ThreadMutex AddMetaVertToSurfaceMutex = { qfalse };
 int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincident )
 {
@@ -1391,9 +1395,9 @@ int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincid
 		dv2 = &ds->verts[ i ];
 		
 		/* compare xyz and normal */
-		if( !VectorEqual( dv1->xyz, dv2->xyz ) )
+		if( !VectorCompareExt( dv1->xyz, dv2->xyz, ADD_META_VERT_ORIGIN_EPSILON ) )
 			continue;
-		if( VectorCompare( dv1->normal, dv2->normal ) == qfalse )
+		if( !VectorCompareExt( dv1->normal, dv2->normal, ADD_META_VERT_NORMAL_EPSILON ) )
 			continue;
 
 		/* good enough at this point */
@@ -1402,7 +1406,7 @@ int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincid
 		/* compare texture coordinates and color */
 		if( dv1->st[ 0 ] != dv2->st[ 0 ] || dv1->st[ 1 ] != dv2->st[ 1 ] )
 			continue;
-		if( dv1->color[ 0 ][ 3 ] != dv2->color[ 0 ][ 3 ] )
+		if( fabs((float)(dv1->color[ 0 ][ 3 ] - dv2->color[ 0 ][ 3 ])) > ADD_META_VERT_COLOR_EPSILON )
 			continue;
 		
 		/* found a winner */
