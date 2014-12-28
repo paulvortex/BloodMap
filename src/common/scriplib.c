@@ -72,9 +72,9 @@ void AddScriptToStack (const char *filename, int index)
   else
   {
     if (index > 0)
-      Sys_FPrintf ( SYS_VRB, "entering %s (%d)\n", script->filename, index+1);
+      Sys_FPrintf ( SYS_VRB, "         %s (%d)\n", script->filename, index+1);
     else
-      Sys_FPrintf ( SYS_VRB, "entering %s\n", script->filename);
+      Sys_FPrintf ( SYS_VRB, "         %s\n", script->filename);
   }
 
   script->line = 1;

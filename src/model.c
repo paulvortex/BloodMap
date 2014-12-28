@@ -221,7 +221,7 @@ InsertModel() - ydnar
 adds a picomodel into the bsp
 */
 
-void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, float lightmapStitch, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes )
+void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, int mapEntityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t ambient, vec3_t colormod, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes )
 {
 	int					i, j, k, s, numSurfaces;
 	m4x4_t				identity, nTransform;
@@ -281,13 +281,14 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		/* allocate a surface (ydnar: gs mods) */
 		ds = AllocDrawSurface( SURFACE_TRIANGLES );
 		ds->entityNum = entityNum;
+		ds->mapEntityNum = mapEntityNum;
 		ds->castShadows = castShadows;
 		ds->recvShadows = recvShadows;
 		ds->noAlphaFix = noAlphaFix;
 		ds->skybox = skybox;
 		if (added_surfaces != NULL)
 			*added_surfaces += 1;
-		
+
 		/* get shader name */
 		/* vortex: support .skin files */
 		picoShaderName = PicoGetSurfaceShaderNameForSkin( surface, skin );
@@ -349,10 +350,18 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		if( lightmapScale > 0.0f )
 			ds->lightmapScale = lightmapScale;
 
-		/* set lightmap stitch */
-		if( lightmapStitch >= 0.0f )
-			ds->lightmapStitch = lightmapStitch;
-		
+		/* set lightmap axis */
+		if (lightmapAxis != NULL)
+			VectorCopy( lightmapAxis, ds->lightmapAxis );
+
+		/* set minlight/ambient/colormod */
+		if (minlight != NULL)
+			VectorCopy( minlight, ds->minlight );
+		if (ambient != NULL)
+			VectorCopy( ambient, ds->ambient );
+		if (colormod != NULL)
+			VectorCopy( colormod, ds->colormod );
+
 		/* set vertical texture projection */
 		if ( vertTexProj > 0 )
 			ds->vertTexProj = vertTexProj;
@@ -363,7 +372,7 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		memset( ds->verts, 0, ds->numVerts * sizeof( ds->verts[ 0 ] ) );
 		if (added_verts != NULL)
 			*added_verts += ds->numVerts;
-		
+
 		ds->numIndexes = PicoGetSurfaceNumIndexes( surface );
 		ds->indexes = (int *)safe_malloc( ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
 		memset( ds->indexes, 0, ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
@@ -569,6 +578,7 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 					/* build a brush */
 					buildBrush = AllocBrush( 48 );
 					buildBrush->entityNum = mapEntityNum;
+					buildBrush->mapEntityNum = mapEntityNum;
 					buildBrush->original = buildBrush;
 					buildBrush->contentShader = si;
 					buildBrush->compileFlags = si->compileFlags;
@@ -728,11 +738,11 @@ void AddTriangleModels( int entityNum )
 	const char		*target, *model, *value;
 	char			shader[ MAX_QPATH ];
 	shaderInfo_t	*celShader;
-	float			temp, baseLightmapScale, baseLightmapStitch, lightmapScale, lightmapStitch, uvScale, pushVertexes;
+	float			temp, baseLightmapScale, lightmapScale, uvScale, pushVertexes;
 	int				baseSmoothNormals, smoothNormals;
 	int				baseVertTexProj, vertTexProj;
 	qboolean        noAlphaFix, skybox;
-	vec3_t			origin, scale, angles;
+	vec3_t			origin, scale, angles, baseLightmapAxis, lightmapAxis, baseMinlight, baseAmbient, baseColormod, minlight, ambient, colormod;
 	m4x4_t			transform;
 	epair_t			*ep;
 	remap_t			*remap, *remap2;
@@ -757,11 +767,14 @@ void AddTriangleModels( int entityNum )
 	/* vortex: get lightmap scaling value for this entity */
 	GetEntityLightmapScale( e, &baseLightmapScale, 0);
 
-	/* vortex: get lightmap stitching for this entity */
-	GetEntityLightmapStitch( e, &baseLightmapStitch, -1);
+	/* vortex: get lightmap axis for this entity */
+	GetEntityLightmapAxis( e, baseLightmapAxis, NULL );
 
 	/* vortex: per-entity normal smoothing */
 	GetEntityNormalSmoothing( e, &baseSmoothNormals, 0);
+
+	/* vortex: per-entity _minlight, _ambient, _color, _colormod */
+	GetEntityMinlightAmbientColor( e, NULL, baseMinlight, baseAmbient, baseColormod, qtrue );
 
 	/* vortex: vertical texture projection */
 	baseVertTexProj = IntForKey(e, "_vtcproj");
@@ -905,11 +918,17 @@ void AddTriangleModels( int entityNum )
 		/* vortex: get lightmap scaling value for this entity */
 		GetEntityLightmapScale( e2, &lightmapScale, baseLightmapScale);
 
-		/* vortex: get lightmap stitching for this entity */
-		GetEntityLightmapStitch( e2, &lightmapStitch, baseLightmapStitch);
+		/* vortex: get lightmap axis for this entity */
+		GetEntityLightmapAxis( e2, lightmapAxis, baseLightmapAxis );
 
 		/* vortex: per-entity normal smoothing */
 		GetEntityNormalSmoothing( e2, &smoothNormals, baseSmoothNormals);
+
+		/* vortex: per-entity _minlight, _ambient, _color, _colormod */
+		VectorCopy( baseMinlight, minlight );
+		VectorCopy( baseAmbient, ambient );
+		VectorCopy( baseColormod, colormod );
+		GetEntityMinlightAmbientColor( e2, NULL, minlight, ambient, colormod, qfalse );
 
 		/* vortex: vertical texture projection */
 		vertTexProj = IntForKey(e2, "_vp");
@@ -927,7 +946,7 @@ void AddTriangleModels( int entityNum )
 		pushVertexes += FloatForKey( e2, "_pv2" ); // vortex: set by decorator
 
 		/* insert the model */
-		InsertModel( (char*) model, frame, skin, transform, uvScale, remap, celShader, entityNum, castShadows, recvShadows, spawnFlags, lightmapScale, lightmapStitch, 0, smoothNormals, vertTexProj, noAlphaFix, pushVertexes, skybox, &added_surfaces, &added_triangles, &added_verts, &added_brushes );
+		InsertModel( (char*) model, frame, skin, transform, uvScale, remap, celShader, entityNum, e2->mapEntityNum, castShadows, recvShadows, spawnFlags, lightmapScale, lightmapAxis, minlight, ambient, colormod, 0, smoothNormals, vertTexProj, noAlphaFix, pushVertexes, skybox, &added_surfaces, &added_triangles, &added_verts, &added_brushes );
 		
 		/* free shader remappings */
 		while( remap != NULL )

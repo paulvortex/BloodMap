@@ -392,13 +392,14 @@ void FinishRawLightmap( int num )
 	if( lm->superLuxels[ 0 ] == NULL )
 		lm->superLuxels[ 0 ] = (float *)safe_malloc( size );
 	memset( lm->superLuxels[ 0 ], 0, size );
+	
 		
-	/* allocate origin map storage */
+	/* allocate sampled origin map storage */
 	size = lm->sw * lm->sh * SUPER_ORIGIN_SIZE * sizeof( float );
 	if( lm->superOrigins == NULL )
 		lm->superOrigins = (float *)safe_malloc( size );
 	memset( lm->superOrigins, 0, size );
-		
+
 	/* allocate normal map storage */
 	size = lm->sw * lm->sh * SUPER_NORMAL_SIZE * sizeof( float );
 	if( lm->superNormals == NULL )
@@ -419,7 +420,19 @@ void FinishRawLightmap( int num )
 	sc = lm->superClusters;
 	for( i = 0; i < size; i++ )
 		(*sc++) = CLUSTER_UNMAPPED;
-		
+
+	/* allocate real origins storage */
+	size = lm->sw * lm->sh * SUPER_TRIORIGIN_SIZE * sizeof( float );
+	if( lm->superTriorigins == NULL )
+		lm->superTriorigins = (float *)safe_malloc( size );
+	memset( lm->superTriorigins, 0, size );
+
+	/* allocate triangle normals storage */
+	size = lm->sw * lm->sh * SUPER_TRINORMAL_SIZE * sizeof( float );
+	if( lm->superTrinormals == NULL )
+		lm->superTrinormals = (float *)safe_malloc( size );
+	memset( lm->superTrinormals, 0, size );
+
 	/* deluxemap allocation */
 	if( deluxemap )
 	{
@@ -528,6 +541,8 @@ qboolean AddPatchToRawLightmap( int num, rawLightmap_t *lm )
 		lm->w = ds->patchWidth;
 	if( lm->w > lm->customWidth )
 		lm->w = lm->customWidth;
+	if( lm->w > lmMaxSurfaceSize )
+		lm->w = lmMaxSurfaceSize;
 	sBasis = (float) (lm->w - 1) / (float) (ds->patchWidth - 1);
 	
 	/* determine lightmap height */
@@ -539,6 +554,8 @@ qboolean AddPatchToRawLightmap( int num, rawLightmap_t *lm )
 		lm->h = ds->patchHeight;
 	if( lm->h > lm->customHeight )
 		lm->h = lm->customHeight;
+	if( lm->h > lmMaxSurfaceSize )
+		lm->h = lmMaxSurfaceSize;
 	tBasis = (float) (lm->h - 1) / (float) (ds->patchHeight - 1);
 	
 	/* free the temporary mesh */
@@ -596,7 +613,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 	vec3_t				mins, maxs, origin, faxis, size, exactSize, delta, normalized, vecs[ 2 ];
 	vec4_t				plane;
 	bspDrawVert_t		*verts;
-	
+	qboolean            translucent;
 	
 	/* get surface and info  */
 	ds = &bspDrawSurfaces[ num ];
@@ -613,17 +630,23 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 		if( VectorCompare( info->axis, lm->axis ) == qfalse )
 			return qfalse;
 		
-		/* match identical attributes */
+		/* match identical attributes */	
 		if( info->sampleSize != lm->sampleSize ||
-			info->entityNum != lm->entityNum ||
 			info->recvShadows != lm->recvShadows ||
 			info->si->lmCustomWidth != lm->customWidth ||
 			info->si->lmCustomHeight != lm->customHeight ||
 			info->si->lmBrightness != lm->brightness ||
 			info->si->lmFilterRadius != lm->filterRadius ||
-			info->si->splotchFix != lm->splotchFix )
+			info->si->splotchFix != lm->splotchFix || 
+			info->si->aoScale != lm->aoScale ||
+			info->si->aoGainScale != lm->aoGainScale )
 			return qfalse;
-		
+
+		/* must be identical translucent state */
+		translucent = (info->si->compileFlags & C_TRANSLUCENT) ? qtrue : qfalse;
+		if (lm->translucent != translucent)
+			return qfalse;
+
 		/* surface bounds must intersect with raw lightmap bounds */
 		for( i = 0; i < 3; i++ )
 		{
@@ -634,8 +657,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 		}
 		
 		/* plane check (fixme: allow merging of nonplanars) */
-		/* vortex: this needs testing */
-		if( info->si->lmMergable == qfalse && info->shadeAngle == 0.0f)
+		if( info->si->lightmapMergable == qfalse )
 		{
 			if( info->plane == NULL || lm->plane == NULL )
 				return qfalse;
@@ -675,7 +697,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
  		size[ i ] = (maxs[ i ] - mins[ i ]) / sampleSize + 1.0f;
 		
 		/* hack (god this sucks) */
-		if( size[ i ] > lm->customWidth || size[ i ] > lm->customHeight )
+		if( size[ i ] > lm->customWidth || size[ i ] > lm->customHeight || size[ i ] > lmMaxSurfaceSize )
 		{
 			i = -1;
 			sampleSize += 1.0f;
@@ -900,13 +922,13 @@ static int CompareSurfaceInfo( const void *a, const void *b )
 	return 0;
 }
 
-
-
 /*
 SetupSurfaceLightmaps()
 creates lightmaps for every surface in the bsp that needs one
 this depends on yDrawVerts being allocated
 */
+
+ThreadMutex IlluminateMutex;
 
 void SetupSurfaceLightmaps( void )
 {
@@ -922,7 +944,7 @@ void SetupSurfaceLightmaps( void )
 	
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- SetupSurfaceLightmaps ---\n");
-	
+
 	/* determine supersample amount */
 	if( superSample < 1 )
 		superSample = 1;
@@ -1105,38 +1127,32 @@ void SetupSurfaceLightmaps( void )
 		numRawLightmaps++;
 	
 		/* set it up */
+		lm->translucent = (info->si->compileFlags & C_TRANSLUCENT) ? qtrue : qfalse;
 		lm->splotchFix = info->si->splotchFix ? qtrue : qfalse;
 		lm->firstLightSurface = numLightSurfaces;
 		lm->numLightSurfaces = 0;
-		if (sampleScale)
-			lm->sampleSize = (int)floor((float)info->sampleSize * sampleScale);
-		else
-			lm->sampleSize = info->sampleSize;
-		if (lm->sampleSize <= 0.0f)
-			lm->sampleSize = 1.0f;
+		lm->sampleSize = info->sampleSize;
 		lm->actualSampleSize = lm->sampleSize;
+		lm->sampleOffset = info->si->lightmapSampleOffset;
 		lm->entityNum = info->entityNum;
 		lm->recvShadows = info->recvShadows;
 		lm->brightness = info->si->lmBrightness;
-		if (lm->brightness <= 0.0)
-			lm->brightness = 1.0;
 		lm->filterRadius = info->si->lmFilterRadius;
-		lm->stitchRadius = (info->si->lightmapNoStitch == qtrue) ? -1 : info->lightmapStitch;
+		lm->stitch = (info->si->lightmapNoStitch == qtrue) ? qfalse : (stitch == qtrue || info->si->lightmapForceStitch == qtrue) ? qtrue : qfalse;
 		VectorCopy(info->si->floodlightRGB, lm->floodlightRGB);
 		lm->floodlightDistance = info->si->floodlightDistance;
 		lm->floodlightIntensity = info->si->floodlightIntensity;
 		lm->floodlightDirectionScale = info->si->floodlightDirectionScale;
 		lm->aoScale = info->si->aoScale;
 		lm->aoGainScale = info->si->aoGainScale;
-
+		lm->shadeAngle = info->shadeAngle;
 		VectorCopy( info->axis, lm->axis );
 		lm->plane = info->plane;	
 		VectorCopy( info->mins, lm->mins );
 		VectorCopy( info->maxs, lm->maxs );
-		
 		lm->customWidth = info->si->lmCustomWidth;
 		lm->customHeight = info->si->lmCustomHeight;
-		
+
 		/* add the surface to the raw lightmap */
 		AddSurfaceToRawLightmap( num, lm );
 		info->lm = lm;
@@ -1171,6 +1187,16 @@ void SetupSurfaceLightmaps( void )
 			}
 		}
 		// lightmap finish code moved to AllocateRawLightmaps()
+	}
+
+	/* apply lightmap sample scale */
+	for(i = 0; i < numRawLightmaps; i++)
+	{
+		lm = &rawLightmaps[ i ];
+		if (sampleScale)
+			lm->sampleSize = lm->sampleSize * sampleScale;
+		if (lm->sampleSize <= 0.0f)
+			lm->sampleSize = 1.0f;
 	}
 
 	/* print time */
@@ -1245,190 +1271,492 @@ void AllocateSurfaceLightmaps(void)
 StitchSurfaceLightmaps()
 stitches lightmap edges
 2002-11-20 update: use this func only for stitching nonplanar patch lightmap seams
-2014-06-20 vortex: re-enabled, cleaned up, fixed bugs
+2014-06-20 vortex: re-enabled, cleaned up, fixed bugs, multithreaded
 */
 
-#define MAX_STITCH_CANDIDATES	256
-#define MAX_STITCH_LUXELS		8192
+#define MAX_STITCH_CANDIDATES	1024
+#define MAX_STITCH_LUXELS       16
+#define GROW_STITCH_LUXELS      32768
+
+typedef struct
+{
+	int            lightmap;
+	int            lightmapSize;
+	int            xy;
+	int            cluster;
+	int            stitchLightmaps[MAX_STITCH_LUXELS];
+	int            stitchXy[MAX_STITCH_LUXELS];
+	int            numLuxels;
+}stitchLuxel_t;
+stitchLuxel_t *stitchLuxels = NULL;
+int numStitchLuxels = 0;
+int maxStitchLuxels = 0;
 
 typedef struct
 {
 	rawLightmap_t *lm;
-	float         stitchRadius;
-	vec3_t        mins;
-	vec3_t        maxs;
-}stitchLightmap_t;
-stitchLightmap_t stitchLightmaps[ MAX_STITCH_CANDIDATES ];
+	int            lmIndex;
+	float          stitchRadius;
+	float          shadeAngle;
+	vec3_t         mins;
+	vec3_t         maxs;
+	vec3_t        *rowmins;
+	vec3_t        *rowmaxs;
+}stitchCandidate_t;
+
+/*
+AddStitchLuxels() - vortex
+adds a luxel stitch
+*/
+
+void AddStitchLuxels( int lightmap, int lightmapSize, int xy, int cluster, int *stitchLightmaps, int *stitchXy, int numLuxels )
+{
+	stitchLuxel_t *newLuxel;
+	int luxelNum;
+
+	/* grow */
+	ThreadMutexLock(&LightmapGrowStitchMutex);
+	if( numStitchLuxels >= maxStitchLuxels )
+	{
+		maxStitchLuxels += GROW_STITCH_LUXELS;
+		newLuxel = (stitchLuxel_t *)safe_malloc(sizeof(stitchLuxel_t) * maxStitchLuxels);
+		if( stitchLuxels != NULL )
+		{
+			memcpy( newLuxel, stitchLuxels, sizeof(stitchLuxel_t) * numStitchLuxels );
+			free( stitchLuxels );
+		}
+		stitchLuxels = newLuxel;
+	}
+	luxelNum = numStitchLuxels++;
+	numLuxelsStitched = numStitchLuxels;
+	ThreadMutexUnlock(&LightmapGrowStitchMutex);
+
+	/* add */
+	newLuxel = &stitchLuxels[luxelNum];
+	memset(newLuxel, 0, sizeof(stitchLuxel_t));
+	newLuxel->lightmap = lightmap;
+	newLuxel->lightmapSize = lightmapSize;
+	newLuxel->xy = xy;
+	newLuxel->cluster = cluster;
+	memcpy(newLuxel->stitchLightmaps, stitchLightmaps, sizeof(int) * numLuxels);
+	memcpy(newLuxel->stitchXy, stitchXy, sizeof(int) * numLuxels);
+	newLuxel->numLuxels = numLuxels;
+}
+
+/*
+StitchRawLightmap()
+stitch single lightmap
+*/
+
+void StitchRawLightmap( int rawLightmapNum )
+{
+	int	j, x, y, x2, y2, as, bs, *cluster, *cluster2, numCandidates, numLuxels, stitchLightmaps[ MAX_STITCH_LUXELS ], stitchXy[ MAX_STITCH_LUXELS ];
+	float *luxel, *luxel2, *origin, *origin2, *normal, *normal2, stitchRadius, shadeAngle, *mins, *maxs, minLightAmt, f;
+	stitchCandidate_t candidates[ MAX_STITCH_CANDIDATES ], *candidate;
+	rawLightmap_t *lm, *a, *b;
+	vec3_t dist;
+
+	/* get min light amount */
+	minLightAmt = VectorLength( minLight );
+
+	/* get lightmap */
+	a = &rawLightmaps[ rawLightmapNum ];
+
+	/* get size */
+	as = a->sh * a->sw;
+
+	/* get smoothing angle */
+	shadeAngle = DEG2RAD(a->shadeAngle);
+	if( shadeAngle == 0 )
+		shadeAngle = DEG2RAD( 66 );
+	if( shadeAngle < 0 )
+		shadeAngle = 0;
+
+	/* get candidates */
+	numCandidates = 0;
+	for( j = 0; j < numRawLightmaps && numCandidates < MAX_STITCH_CANDIDATES; j++ )
+	{
+		/* get lightmap b */
+		b = &rawLightmaps[ j ];
+		if (j == rawLightmapNum || !b->stitch)
+			continue;
+		bs = b->sh * b->sw; 
+
+		/* stitch small lightmaps from big ones */
+		if (as > bs)
+			continue;
+
+		/* stitch translucent lightmaps from opaque ones */
+		if (a->translucent < b->translucent)
+			continue;
+
+		/* test bounding box */
+		if( a->mins[ 0 ] > b->maxs[ 0 ] || a->maxs[ 0 ] < b->mins[ 0 ] ||
+			a->mins[ 1 ] > b->maxs[ 1 ] || a->maxs[ 1 ] < b->mins[ 1 ] ||
+			a->mins[ 2 ] > b->maxs[ 2 ] || a->maxs[ 2 ] < b->mins[ 2 ] )
+			continue;
+
+		/* add candidate */
+		candidate = &candidates[ numCandidates++ ];
+		candidate->lm = b;
+		candidate->lmIndex = j;
+
+		/* calc stitch radius */
+		candidate->stitchRadius = 1.10f * (a->actualSampleSize < b->actualSampleSize ? a->actualSampleSize : b->actualSampleSize);
+
+		/* get smoothing angle */
+		candidate->shadeAngle = DEG2RAD(b->shadeAngle);
+		if (candidate->shadeAngle == 0)
+			candidate->shadeAngle = DEG2RAD( 66 );
+		if (candidate->shadeAngle < 0)
+			candidate->shadeAngle = 0;
+
+		/* calc bbox */
+		candidate->mins[ 0 ] = b->mins[ 0 ] - candidate->stitchRadius;
+		candidate->mins[ 1 ] = b->mins[ 1 ] - candidate->stitchRadius;
+		candidate->mins[ 2 ] = b->mins[ 2 ] - candidate->stitchRadius;
+		candidate->maxs[ 0 ] = b->maxs[ 0 ] + candidate->stitchRadius;
+		candidate->maxs[ 1 ] = b->maxs[ 1 ] + candidate->stitchRadius;
+		candidate->maxs[ 2 ] = b->maxs[ 2 ] + candidate->stitchRadius;
+
+		/* calc row boxes */
+		lm = b;
+		candidate->rowmins = (vec3_t *)safe_malloc(sizeof(vec3_t) * lm->sh);
+		candidate->rowmaxs = (vec3_t *)safe_malloc(sizeof(vec3_t) * lm->sh);
+		for( y2 = 0; y2 < lm->sh; y2++ )
+		{
+			/* get row bounds */
+			mins = candidate->rowmins[ y2 ];
+			maxs = candidate->rowmaxs[ y2 ];
+
+			/* calc bounds */
+			ClearBounds( mins, maxs );
+			for( x2 = 0; x2 < lm->sw; x2++ )
+			{
+				/* get luxel */
+				cluster2 = SUPER_CLUSTER( x2, y2 );
+				if( *cluster2 < 0 )
+					continue;
+				luxel2 = SUPER_LUXEL( 0, x2, y2 );
+				if (luxel2[ 3 ] <= 0.0f)
+					continue;
+				if (VectorLength( luxel2 ) <= minLightAmt)
+					continue;
+
+				/* add to bounds */
+				origin = SUPER_TRIORIGIN( x2, y2 );
+				AddPointToBounds(origin, mins, maxs );
+			}
+
+			/* add some hull */
+			mins[ 0 ] -= candidate->stitchRadius;
+			mins[ 1 ] -= candidate->stitchRadius;
+			mins[ 2 ] -= candidate->stitchRadius;
+			maxs[ 0 ] += candidate->stitchRadius;
+			maxs[ 1 ] += candidate->stitchRadius;
+			maxs[ 2 ] += candidate->stitchRadius;
+		}
+	}
+
+	/* no candidates */
+	if ( numCandidates <= 0 )
+		return;
+
+	/* walk luxels */
+	for( y = 0; y < a->sh; y++ )
+	{
+		for( x = 0; x < a->sw; x++ )
+		{
+			/* get luxel */
+			lm = a;
+			cluster = SUPER_CLUSTER( x, y );
+			
+			/* do not stitch unmapped luxel */
+			if( *cluster == CLUSTER_UNMAPPED )
+				continue;
+
+			/* get particulars */
+			luxel = SUPER_LUXEL( 0, x, y );
+			origin = SUPER_TRIORIGIN( x, y );
+			normal = SUPER_TRINORMAL( x, y );
+
+			/* walk candidate lightmaps */
+			numLuxels = 0;
+			for( j = 0; j < numCandidates; j++ )
+			{
+				/* get candidate */
+				candidate = &candidates[ j ];
+
+				/* test bounding box */
+				if( origin[ 0 ] < candidate->mins[ 0 ] || origin[ 0 ] > candidate->maxs[ 0 ] ||
+					origin[ 1 ] < candidate->mins[ 1 ] || origin[ 1 ] > candidate->maxs[ 1 ] ||
+					origin[ 2 ] < candidate->mins[ 2 ] || origin[ 2 ] > candidate->maxs[ 2 ] )
+					continue;
+
+				/* walk candidate luxels */
+				lm = candidate->lm;
+				stitchRadius = candidate->stitchRadius;
+				for( y2 = 0; y2 < lm->sh; y2++ )
+				{
+					/* test row bounds */
+					mins = candidate->rowmins[ y2 ];
+					maxs = candidate->rowmaxs[ y2 ];
+					if( origin[ 0 ] < mins[ 0 ] || origin[ 0 ] > maxs[ 0 ] ||
+						origin[ 1 ] < mins[ 1 ] || origin[ 1 ] > maxs[ 1 ] ||
+						origin[ 2 ] < mins[ 2 ] || origin[ 2 ] > maxs[ 2 ] )
+						continue;
+
+					/* walk row */
+					for( x2 = 0; x2 < lm->sw; x2++ )
+					{
+						/* test bounds */
+						origin2 = SUPER_TRIORIGIN( x2, y2 );
+						if ( fabs(origin[0] - origin2[0]) > stitchRadius ||
+							 fabs(origin[1] - origin2[1]) > stitchRadius ||
+							 fabs(origin[2] - origin2[2]) > stitchRadius)
+							continue;
+
+						/* get luxel */
+						cluster2 = SUPER_CLUSTER( x2, y2 );
+						if( *cluster2 < 0 )
+							continue;
+						luxel2 = SUPER_LUXEL( 0, x2, y2 );
+						if (luxel2[ 3 ] <= 0.0f)
+							continue;
+						if (VectorLength( luxel2 ) <= minLightAmt)
+							continue;
+
+						/* test radius */
+						VectorSubtract( origin, origin2, dist );
+						if( VectorLength( dist ) > stitchRadius )
+							continue;
+
+						/* test normal */
+						if( *cluster > 0 )
+						{
+							normal2 = SUPER_TRINORMAL( x2, y2 );
+							f = DotProduct( normal, normal2 );
+							if (f < 0)
+								continue;
+							if( acos( f ) >= max(shadeAngle, candidate->shadeAngle) )
+								continue;
+						}
+
+						/* add to average */	
+						stitchLightmaps[ numLuxels ] = candidate->lmIndex;
+						stitchXy[ numLuxels++ ] = LUXEL_XY( x2, y2 );
+						if (numLuxels >= MAX_STITCH_LUXELS)
+							goto luxelsOut;
+					}
+				}
+			}
+luxelsOut:
+
+			/* add to stitch queue */
+			if( numLuxels > 0)
+			{
+				lm = a;
+				AddStitchLuxels( rawLightmapNum, as, LUXEL_XY( x, y ), *cluster, stitchLightmaps, stitchXy, numLuxels );
+			}
+		}
+	}
+
+	/* free candidates */
+	for( j = 0; j < numCandidates; j++ )
+	{
+		candidate = &candidates[ j ];
+		free(candidate->rowmins);
+		free(candidate->rowmaxs);
+	}
+}
+
+/*
+StitchLuxelsCompare()
+compare function for qsort()
+*/
+
+int StitchLuxelsCompare( const void *elem1, const void *elem2 ) 
+{
+	stitchLuxel_t *luxel1, *luxel2;
+
+	luxel1 = (stitchLuxel_t *)elem1;
+	luxel2 = (stitchLuxel_t *)elem2;
+	
+	/* small lightmaps stitched before large ones */
+	if (luxel1->lightmapSize < luxel2->lightmapSize)
+		return 1;
+	if (luxel1->lightmapSize > luxel2->lightmapSize)
+		return -1;
+
+	/* nocluster luxels are stitched AFTER regular ones */
+	if (luxel1->cluster < 0 && luxel2->cluster >= 0)
+		return 1;
+	if (luxel1->cluster >= 0 && luxel2->cluster < 0)
+		return -1;
+
+	/* compare lightmap */
+	if (luxel1->lightmap < luxel2->lightmap)
+		return -1;
+	if (luxel1->lightmap > luxel2->lightmap)
+		return 1;
+
+	/* compare indexes */
+	if (luxel1->xy < luxel2->xy)
+		return -1;
+	if (luxel1->xy > luxel2->xy)
+		return 1;
+	return 0;
+}
+
+/*
+StitchSurfaceLightmaps()
+does the job
+*/
 
 void StitchSurfaceLightmaps( void )
 {
-	int				  i, j, x, y, x2, y2, *cluster, *cluster2, numStitched, numCandidates, numLuxels, f, fOld, start;
-	float			  *luxel, *luxel2, *origin, *origin2, *normal, *normal2, average[ 3 ], totalColor, scale, *luxels[ MAX_STITCH_LUXELS ];
-	rawLightmap_t	  *lm, *a, *b;
-	stitchLightmap_t *stitched;
+	int i, j, ls, f, fOld, start, *cluster, numStitches = 0;
+	rawLightmap_t *lm;
+	stitchLuxel_t *stitch;
+	vec3_t average;
+	float *luxel, scale;
 
 	/* disabled? */
 	if( noStitch )
 		return;
 
-	/* note it */
-	Sys_Printf( "--- StitchSurfaceLightmaps ---\n");
+	/* nothing to stitch */
+	if( stitchLuxels == NULL )
+		return;
 
-	/* init pacifier */
-	fOld = -1;
+	/* apply stitch */
+	Sys_Printf( "--- StitchLightmaps ---\n");
 	start = I_FloatTime();
-	
-	/* walk the list of raw lightmaps */
-	numStitched = 0;
-	for( i = 0; i < numRawLightmaps; i++ )
+	fOld = -1;
+	if (stitchLuxels != NULL)
 	{
-		/* print pacifier */
-		f = 10 * i / numRawLightmaps;
-		if( f != fOld )
-		{
-			fOld = f;
-			Sys_Printf( "%i...", f );
-		}
-		
-		/* get lightmap a */
-		a = &rawLightmaps[ i ];
-		if (a->stitchRadius <= 0)
-			continue;
-		
-		/* walk rest of lightmaps */
-		numCandidates = 0;
-		for( j = i + 1; j < numRawLightmaps && numCandidates < MAX_STITCH_CANDIDATES; j++ )
-		{
-			/* get lightmap b */
-			b = &rawLightmaps[ j ];
+		/* sort */
+		qsort( stitchLuxels, numStitchLuxels, sizeof( stitchLuxel_t ), StitchLuxelsCompare );
 
-			/* test bounding box */
-			if( a->mins[ 0 ] > b->maxs[ 0 ] || a->maxs[ 0 ] < b->mins[ 0 ] ||
-				a->mins[ 1 ] > b->maxs[ 1 ] || a->maxs[ 1 ] < b->mins[ 1 ] ||
-				a->mins[ 2 ] > b->maxs[ 2 ] || a->maxs[ 2 ] < b->mins[ 2 ] )
-				continue;
-
-			/* add candidate */
-			f = numCandidates;
-			stitched = &stitchLightmaps[ numCandidates++ ];
-			stitched->lm = b;
-			stitched->stitchRadius = 0.75f * (a->actualSampleSize < b->actualSampleSize ? a->actualSampleSize : b->actualSampleSize);
-			stitched->mins[ 0 ] = b->mins[ 0 ] - stitched->stitchRadius;
-			stitched->mins[ 1 ] = b->mins[ 1 ] - stitched->stitchRadius;
-			stitched->mins[ 2 ] = b->mins[ 2 ] - stitched->stitchRadius;
-			stitched->maxs[ 0 ] = b->maxs[ 0 ] + stitched->stitchRadius;
-			stitched->maxs[ 1 ] = b->maxs[ 1 ] + stitched->stitchRadius;
-			stitched->maxs[ 2 ] = b->maxs[ 2 ] + stitched->stitchRadius;
-		}
-		
-		/* walk luxels */
-		for( y = 0; y < a->sh; y++ )
+		/* apply stitching */
+		for( i = 0; i < numStitchLuxels; i++)
 		{
-			for( x = 0; x < a->sw; x++ )
+			stitch = &stitchLuxels[i];
+
+			/* print pacifier */
+			f = 10 * i / numStitchLuxels;
+			if( f != fOld )
 			{
-				/* skip unmapped or unlit luxels */
-				lm = a;
-				cluster = SUPER_CLUSTER( x, y );
-				if (*cluster < 0)
-					continue;
-				luxel = SUPER_LUXEL( 0, x, y );
-				if (luxel[ 3 ] <= 0)
-					continue;
-				
-				/* get particulars */
-				origin = SUPER_ORIGIN( x, y );
-				normal = SUPER_NORMAL( x, y );
-				
-				/* walk candidate list */
-				for( j = 0; j < numCandidates; j++ )
+				fOld = f;
+				Sys_FPrintf(SYS_VRB, "%d...", f );
+			}
+
+			/* apply stitch */
+			if( debugStitch )
+			{
+				// stitch debug:
+				// purple - luxels which are stiched
+				// green - luxels which are stitched from
+				// yellow - luxels which are both stitched and stitched from
+
+				/* stitch base luxel */
+				lm = &rawLightmaps[ stitch->lightmap ];
+				luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+				VectorSet( luxel, 255, 0, 255 );
+
+				/* stitch neighbors */
+				for (j = 0; j < stitch->numLuxels; j++)
 				{
-					stitched = &stitchLightmaps[ j ];
-					b = stitched->lm;
-
-					/* test bounding box */
-					if( origin[ 0 ] < stitched->mins[ 0 ] || origin[ 0 ] > stitched->maxs[ 0 ] ||
-						origin[ 1 ] < stitched->mins[ 1 ] || origin[ 1 ] > stitched->maxs[ 1 ] ||
-						origin[ 2 ] < stitched->mins[ 2 ] || origin[ 2 ] > stitched->maxs[ 2 ] )
-						continue;
-
-					/* get candidate */
-					lm = b;
-
-					/* walk candidate luxels */
-					numLuxels = 0;
-					VectorCopy( luxel, average );
-					totalColor = 1.0f;
-					for( y2 = 0; y2 < b->sh && numLuxels < MAX_STITCH_LUXELS; y2++ )
+					lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
+					luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
+					if (luxel[0] != 255 || luxel[1] != 255 || luxel[2] != 0)
 					{
-						for( x2 = 0; x2 < b->sw && numLuxels < MAX_STITCH_LUXELS; x2++ )
-						{
-							/* test bounds */
-							origin2 = SUPER_ORIGIN( x2, y2 );
-							if( fabs( origin[ 0 ] - origin2[ 0 ] ) > stitched->stitchRadius ||
-								fabs( origin[ 1 ] - origin2[ 1 ] ) > stitched->stitchRadius ||
-								fabs( origin[ 2 ] - origin2[ 2 ] ) > stitched->stitchRadius )
-								continue;
-
-							/* test normal */
-							normal2 = SUPER_NORMAL( x2, y2 );
-							if( DotProduct( normal, normal2 ) < 0.5f )
-								continue;
-
-							/* get luxel */
-							cluster2 = SUPER_CLUSTER( x2, y2 );
-							luxel2 = SUPER_LUXEL( 0, x2, y2 );
-
-							/* handle debug */
-							if( debugStitch )
-								VectorSet( luxel2, 255, 0, 255 );
-							
-							/* add luxel to average process */
-							luxels[ numLuxels++ ] = luxel2;
-
-							/* add to average */
-							if (*cluster2 != CLUSTER_UNMAPPED && luxel2[ 3 ] > 0.0f)
-							{
-								VectorAdd( average, luxel2, average );
-								totalColor += 1.0;
-							}
-						}
+						if (luxel[0] != 255 || luxel[1] != 0 || luxel[2] != 255)
+							VectorSet( luxel, 0, 255, 0 );
+						else
+							VectorSet( luxel, 255, 255, 0 );
 					}
-					
-					/* early out */
-					if( numLuxels == 0 )
-						continue;
-
-					/* average */
-					scale = 1.0f / totalColor;
-					VectorScale( average, scale, average );
-					VectorCopy( average, luxel );
-					//for( y2 = 0; y2 < numLuxels; y2++)
-					//{
-					//	luxel2 = luxels[ y2 ];
-					//	VectorCopy( average, luxel2 );
-					//}
-					luxel[ 3 ] = 1.0f;
-					numStitched++;
+					numStitches++;
 				}
 			}
+			else
+			{
+				/* average */
+				if ( stitch->cluster < 0)
+				{
+					VectorClear(average);
+					ls = 0;
+				}
+				else
+				{
+					lm = &rawLightmaps[ stitch->lightmap ];
+					luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+					VectorCopy(luxel, average);
+					ls = 1;
+				}
+				for (j = 0; j < stitch->numLuxels; j++)
+				{
+					lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
+					luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
+					cluster = SUPER_CLUSTER_XY( stitch->stitchXy[ j ] );
+					if( *cluster < 0 )
+						continue;
+					VectorAdd(average, luxel, average);
+					numStitches++;
+				}
+				scale = 1.0f / (ls + stitch->numLuxels);
+
+				/* stitch luxel */
+				lm = &rawLightmaps[ stitch->lightmap ];
+				luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+				luxel[ 3 ] = 1.0f;
+				VectorScale( average, scale, average );
+				VectorCopy( average, luxel );
+
+				/* stitch neighbours together (only at half power) */
+				for (j = 0; j < stitch->numLuxels; j++)
+				{
+					lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
+					luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
+					luxel[ 3 ] = 1.0f;
+					VectorAdd( luxel, average, luxel );
+					VectorScale( luxel, 0.5, luxel );
+				}
+			}
+
+			/* flood unmapped cluster */
+			lm = &rawLightmaps[ stitch->lightmap ];
+			if ( stitch->cluster < 0)
+			{
+				cluster = SUPER_CLUSTER_XY( stitch->xy );
+				*cluster = CLUSTER_FLOODED;
+			}
+			luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+			luxel[ 3 ] = 1.0f;
 		}
+
+		/* free stitch queue */
+		free( stitchLuxels );
+		numStitchLuxels = 0;
+		maxStitchLuxels = 0;
+		stitchLuxels = NULL;
 	}
-	
+	Sys_FPrintf(SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+
 	/* emit statistics */
-	Sys_Printf( " (%i)\n", (int) (I_FloatTime() - start) );
-	Sys_FPrintf( SYS_VRB, "%9d luxels stitched\n", numStitched );
+	Sys_Printf( "%9d stitches\n", numStitches );
+	Sys_Printf( "%7.2f average stitches per luxel\n", (float)numStitches / numLuxelsStitched );
 }
-
-
 
 /*
 CompareBSPLuxels()
 compares two surface lightmaps' bsp luxels, ignoring occluded luxels
 */
 
-#define SOLID_EPSILON		0.0625
-#define LUXEL_TOLERANCE		0.0025
-#define LUXEL_COLOR_FRAC	0.001302083	/* 1 / 3 / 256 */
+#define SOLID_EPSILON		   0.0625
+#define LUXEL_TOLERANCE		   0.0025
+#define LUXEL_COLOR_FRAC	   0.001302083	/* 1 / 3 / 256 */
+#define LUXEL_CRITICAL_DELTA   3.0 /* vortex: was 3.0 */
 
 static qboolean CompareBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, int bNum )
 {
@@ -1437,10 +1765,9 @@ static qboolean CompareBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, 
 	double			delta, total, rd, gd, bd;
 	float			*aLuxel, *bLuxel;
 	
-	
 	/* styled lightmaps will never be collapsed to non-styled lightmaps when there is _minlight */
 	if( (minLight[ 0 ] || minLight[ 1 ] || minLight[ 2 ]) &&
-		((aNum == 0 && bNum != 0) || (aNum != 0 && bNum == 0)) )
+		((aNum == 0 && bNum != 0) || (aNum != 0 && bNum == 0)))
 		return qfalse;
 	
 	/* basic tests */
@@ -1459,7 +1786,7 @@ static qboolean CompareBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, 
 		bd = fabs( a->solidColor[ aNum ][ 2 ] - b->solidColor[ bNum ][ 2 ] );
 		
 		/* compare color */
-		if( rd > SOLID_EPSILON || gd > SOLID_EPSILON|| bd > SOLID_EPSILON )
+		if( rd > SOLID_EPSILON || gd > SOLID_EPSILON || bd > SOLID_EPSILON )
 			return qfalse;
 		
 		/* okay */
@@ -1494,7 +1821,7 @@ static qboolean CompareBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, 
 			bd = fabs( aLuxel[ 2 ] - bLuxel[ 2 ] );
 			
 			/* 2003-09-27: compare individual luxels */
-			if( rd > 3.0 || gd > 3.0 || bd > 3.0 )
+			if( rd > LUXEL_CRITICAL_DELTA || gd > LUXEL_CRITICAL_DELTA || bd > LUXEL_CRITICAL_DELTA )
 				return qfalse;
 			
 			/* compare (fixme: take into account perceptual differences) */
@@ -1511,8 +1838,6 @@ static qboolean CompareBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, 
 	/* made it this far, they must be identical (or close enough) */
 	return qtrue;
 }
-
-
 
 /*
 MergeBSPLuxels()
@@ -2261,6 +2586,11 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 						for ( i = 0; i < 3; i++ )
 							pixel[ i ] = (byte)( 127.5f + direction[ i ] );
 					}
+					else
+					{
+						for ( i = 0; i < 3; i++ )
+							pixel[ i ] = 0;
+					}
 				}
 			}
 		}
@@ -2315,6 +2645,188 @@ static int CompareRawLightmap( const void *a, const void *b )
 }
 
 /*
+SubsamplePixelForFloodLightmapBorders_r
+flood empty lightmap pixel with nearest ones 
+*/
+int SubsamplePixelForFloodLightmapBorders_r(outLightmap_t *olm, int x, int y, int subsamples, vec3_t outDirSample, vec3_t outLightSample)
+{
+	byte *texLight, *texDir, *pixLight, *pixDir;
+	vec3_t lightSample, dirSample;
+	float totalColor, scale;
+
+	/* opaque pixel */
+	pixDir = olm->bspDirBytes + (y * olm->customWidth + x) * 3;
+	if (pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0)
+	{
+		pixLight = olm->bspLightBytes + (y * olm->customWidth + x) * 3;
+		VectorAdd( outDirSample, pixDir, outDirSample );
+		VectorAdd( outLightSample, pixLight, outLightSample );
+		return 1.0f;
+	}
+
+	/* gather samples from nearest pixels */
+	texLight = olm->bspLightBytes;
+	texDir = olm->bspDirBytes;
+	VectorClear( dirSample );
+	VectorClear( lightSample );
+	totalColor = 0.0f;
+
+	/* sample top */
+	if ( y > 0 )
+	{
+		/* left top */
+		if ( x > 0 )
+		{
+			if (subsamples > 1)
+				totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x - 1, y - 1, subsamples - 1, dirSample, lightSample);
+			else
+			{
+				pixDir = texDir + ((y - 1) * olm->customWidth + x - 1) * 3;
+				if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+				{
+					pixLight = texLight + ((y - 1) * olm->customWidth + x - 1) * 3;
+					VectorAdd( dirSample, pixDir, dirSample );
+					VectorAdd( lightSample, pixLight, lightSample );
+					totalColor++;
+				}
+			}
+		}
+
+		/* center top */
+		if (subsamples > 1)
+			totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x, y - 1, subsamples - 1, dirSample, lightSample);
+		else
+		{
+			pixDir = texDir + ((y - 1) * olm->customWidth + x) * 3;
+			if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+			{
+				pixLight = texLight + ((y - 1) * olm->customWidth + x) * 3;
+				VectorAdd( dirSample, pixDir, dirSample );
+				VectorAdd( lightSample, pixLight, lightSample );
+				totalColor++;
+			}
+		}
+
+		/* right top */
+		if ( (x + 1) < olm->customWidth )
+		{
+			if (subsamples > 1)
+				totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x + 1, y - 1, subsamples - 1, dirSample, lightSample);
+			else
+			{
+				pixDir = texDir + ((y - 1) * olm->customWidth + x + 1) * 3;
+				if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+				{
+					pixLight = texLight + ((y - 1) * olm->customWidth + x + 1) * 3;
+					VectorAdd( dirSample, pixDir, dirSample );
+					VectorAdd( lightSample, pixLight, lightSample );
+					totalColor++;
+				}
+			}
+		}
+	}
+
+	/* sample left */
+	if ( x > 0 )
+	{
+		if (subsamples > 1)
+			totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x - 1, y, subsamples - 1, dirSample, lightSample);
+		else
+		{
+			pixDir = texDir + (y * olm->customWidth + x - 1) * 3;
+			if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+			{
+				pixLight = texLight + (y * olm->customWidth + x - 1) * 3;
+				VectorAdd( dirSample, pixDir, dirSample );
+				VectorAdd( lightSample, pixLight, lightSample );
+				totalColor++;
+			}
+		}
+	}
+
+	/* sample right */
+	if ( (x + 1) < olm->customWidth )
+	{
+		if (subsamples > 1)
+			totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x + 1, y, subsamples - 1, dirSample, lightSample);
+		else
+		{
+			pixDir = texDir + (y * olm->customWidth + x + 1) * 3;
+			if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+			{
+				pixLight = texLight + (y * olm->customWidth + x + 1) * 3;
+				VectorAdd( dirSample, pixDir, dirSample );
+				VectorAdd( lightSample, pixLight, lightSample );
+				totalColor++;
+			}
+		}
+	}
+
+	/* sample bottom */
+	if ( (y + 1) < olm->customHeight )
+	{
+		/* left top */
+		if ( x > 0 )
+		{
+			if (subsamples > 1)
+				totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x - 1, y + 1, subsamples - 1, dirSample, lightSample);
+			else
+			{
+				pixDir = texDir + ((y + 1) * olm->customWidth + x - 1) * 3;
+				if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+				{
+					pixLight = texLight + ((y + 1) * olm->customWidth + x - 1) * 3;
+					VectorAdd( dirSample, pixDir, dirSample );
+					VectorAdd( lightSample, pixLight, lightSample );
+					totalColor++;
+				}
+			}
+		}
+
+		/* center top */
+		if (subsamples > 1)
+			totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x, y + 1, subsamples - 1, dirSample, lightSample);
+		else
+		{
+			pixDir = texDir + ((y + 1) * olm->customWidth + x) * 3;
+			if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+			{
+				pixLight = texLight + ((y + 1) * olm->customWidth + x) * 3;
+				VectorAdd( dirSample, pixDir, dirSample );
+				VectorAdd( lightSample, pixLight, lightSample );
+				totalColor++;
+			}
+		}
+
+		/* right top */
+		if ( (x + 1) < olm->customWidth )
+		{
+			if (subsamples > 1)
+				totalColor += SubsamplePixelForFloodLightmapBorders_r(olm, x, y + 1, subsamples - 1, dirSample, lightSample);
+			else
+			{
+				pixDir = texDir + ((y + 1) * olm->customWidth + x + 1) * 3;
+				if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
+				{
+					pixLight = texLight + ((y + 1) * olm->customWidth + x + 1) * 3;
+					VectorAdd( dirSample, pixDir, dirSample );
+					VectorAdd( lightSample, pixLight, lightSample );
+					totalColor++;
+				}
+			}
+		}
+	}
+
+	/* subsample */
+	if ( totalColor == 0 )
+		return 0.0f;
+	scale = (1.0f / totalColor);
+	VectorMA( outDirSample, scale, dirSample, outDirSample );
+	VectorMA( outLightSample, scale, lightSample, outLightSample );
+	return 1.0f;
+}
+
+/*
 FloodLightmapBorders()
 flood empty lightmap pixels with nearest ones 
 this fixes black seams on lightmap edges and also makes lightmaps
@@ -2323,9 +2835,9 @@ more friendly to block compression techniques
 
 void FloodLightmapBorders( outLightmap_t *olm )
 {
-	byte *texLight, *texDir, *pixLight, *pixDir, *sampledLightTex, *sampledDirTex;
+	byte *pixLight, *pixDir, *sampledLightTex, *sampledDirTex;
 	vec3_t lightSample, dirSample; 
-	int x, y, samples, pass, size;
+	int x, y, size, passes;
 
 	/* we use deluxemap for coverage info */
 	if ( !olm->bspDirBytes )
@@ -2335,14 +2847,12 @@ void FloodLightmapBorders( outLightmap_t *olm )
 	size = olm->customHeight * olm->customWidth * 3 * sizeof(byte);
 	sampledLightTex = (byte *)safe_malloc( size );
 	sampledDirTex = (byte *)safe_malloc( size );
-	
-	/* multiple passes cover 4x4 block compression */
-	texLight = olm->bspLightBytes;
-	texDir = olm->bspDirBytes;
-	for ( pass = 0; pass < 4; pass++ )
+
+	/* multiple passes */
+	for( passes = 0; passes < 4; passes++)
 	{
-		memcpy( sampledLightTex, texLight, size );
-		memcpy( sampledDirTex, texDir, size );
+		memcpy( sampledLightTex, olm->bspLightBytes, size );
+		memcpy( sampledDirTex, olm->bspDirBytes, size );
 
 		/* walk all pixels */
 		for( y = 0; y < olm->customHeight; y++ )
@@ -2350,135 +2860,22 @@ void FloodLightmapBorders( outLightmap_t *olm )
 			for( x = 0; x < olm->customWidth; x++ )
 			{
 				/* only process empty pixels */
-				pixDir = texDir + (y * olm->customWidth + x) * 3;
+				pixDir = olm->bspDirBytes + (y * olm->customWidth + x) * 3;
 				if (pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0)
 					continue;
 
-				/* gather samples from nearest pixels */
-				samples = 0;
-				VectorClear( lightSample );
-				VectorClear( dirSample );
-
-				/* sample top */
-				if ( y > 0 )
-				{
-					/* left top */
-					if ( x > 0 )
-					{
-						pixDir = texDir + ((y - 1) * olm->customWidth + x - 1) * 3;
-						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-						{
-							pixLight = texLight + ((y - 1) * olm->customWidth + x - 1) * 3;
-							VectorAdd( dirSample, pixDir, dirSample );
-							VectorAdd( lightSample, pixLight, lightSample );
-							samples++;
-						}
-					}
-
-					/* center top */
-					pixDir = texDir + ((y - 1) * olm->customWidth + x) * 3;
-					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-					{
-						pixLight = texLight + ((y - 1) * olm->customWidth + x) * 3;
-						VectorAdd( dirSample, pixDir, dirSample );
-						VectorAdd( lightSample, pixLight, lightSample );
-						samples++;
-					}
-
-					/* right top */
-					if ( (x + 1) < olm->customWidth )
-					{
-						pixDir = texDir + ((y - 1) * olm->customWidth + x + 1) * 3;
-						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-						{
-							pixLight = texLight + ((y - 1) * olm->customWidth + x + 1) * 3;
-							VectorAdd( dirSample, pixDir, dirSample );
-							VectorAdd( lightSample, pixLight, lightSample );
-							samples++;
-						}
-					}
-				}
-
-				/* sample left */
-				if ( x > 0 )
-				{
-					pixDir = texDir + (y * olm->customWidth + x - 1) * 3;
-					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-					{
-						pixLight = texLight + (y * olm->customWidth + x - 1) * 3;
-						VectorAdd( dirSample, pixDir, dirSample );
-						VectorAdd( lightSample, pixLight, lightSample );
-						samples++;
-					}
-				}
-
-				/* sample right */
-				if ( (x + 1) < olm->customWidth )
-				{
-					pixDir = texDir + (y * olm->customWidth + x + 1) * 3;
-					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-					{
-						pixLight = texLight + (y * olm->customWidth + x + 1) * 3;
-						VectorAdd( dirSample, pixDir, dirSample );
-						VectorAdd( lightSample, pixLight, lightSample );
-						samples++;
-					}
-				}
-
-				/* sample bottom */
-				if ( (y + 1) < olm->customHeight )
-				{
-					/* left top */
-					if ( x > 0 )
-					{
-						pixDir = texDir + ((y + 1) * olm->customWidth + x - 1) * 3;
-						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-						{
-							pixLight = texLight + ((y + 1) * olm->customWidth + x - 1) * 3;
-							VectorAdd( dirSample, pixDir, dirSample );
-							VectorAdd( lightSample, pixLight, lightSample );
-							samples++;
-						}
-					}
-
-					/* center top */
-					pixDir = texDir + ((y + 1) * olm->customWidth + x) * 3;
-					if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-					{
-						pixLight = texLight + ((y + 1) * olm->customWidth + x) * 3;
-						VectorAdd( dirSample, pixDir, dirSample );
-						VectorAdd( lightSample, pixLight, lightSample );
-						samples++;
-					}
-
-					/* right top */
-					if ( (x + 1) < olm->customWidth )
-					{
-						pixDir = texDir + ((y + 1) * olm->customWidth + x + 1) * 3;
-						if ( pixDir[0] != 0 || pixDir[1] != 0 || pixDir[2] != 0 )
-						{
-							pixLight = texLight + ((y + 1) * olm->customWidth + x + 1) * 3;
-							VectorAdd( dirSample, pixDir, dirSample );
-							VectorAdd( lightSample, pixLight, lightSample );
-							samples++;
-						}
-					}
-				}
-
 				/* subsample */
-				if ( !samples )
+				VectorClear( dirSample );
+				VectorClear( lightSample );
+				if (SubsamplePixelForFloodLightmapBorders_r(olm, x, y, 1, dirSample, lightSample) <= 0)
 					continue;
 
+				/* store */
 				pixLight = sampledLightTex + (y * olm->customWidth + x) * 3;
-				pixDir = sampledDirTex + (y * olm->customWidth + x) * 3;
-				if ( samples > 1 )
-				{
-					VectorScale( dirSample, 1.0f / (float)samples, dirSample );
-					VectorScale( lightSample, 1.0f / (float)samples, lightSample );
-				}
 				pixLight[0] = min( 255, (byte)floor(lightSample[0] + 0.5f) );
 				pixLight[1] = min( 255, (byte)floor(lightSample[1] + 0.5f) );
 				pixLight[2] = min( 255, (byte)floor(lightSample[2] + 0.5f) );
+				pixDir = sampledDirTex + (y * olm->customWidth + x) * 3;
 				pixDir[0] = min( 255, (byte)floor(dirSample[0] + 0.5f) );
 				pixDir[1] = min( 255, (byte)floor(dirSample[1] + 0.5f) );
 				pixDir[2] = min( 255, (byte)floor(dirSample[2] + 0.5f) );
@@ -2486,11 +2883,11 @@ void FloodLightmapBorders( outLightmap_t *olm )
 		}
 
 		/* store sampled */
-		memcpy( texLight, sampledLightTex, size );
-		memcpy( texDir, sampledDirTex, size );
+		memcpy( olm->bspLightBytes, sampledLightTex, size );
+		memcpy( olm->bspDirBytes, sampledDirTex, size );
 	}
 
-	/* clean up */
+	/* cleanup */
 	free( sampledLightTex );
 	free( sampledDirTex );
 }
@@ -2650,7 +3047,7 @@ void StoreSurfaceLightmaps( void )
 									VectorAdd( sample, luxel, sample );
 									samples += luxel[ 3 ];
 								}
-								
+
 								/* handle occluded or unmapped luxels */
 								else
 								{
@@ -2920,7 +3317,7 @@ void StoreSurfaceLightmaps( void )
 
 	if( !bouncing )
 	{
-		if( deluxemap && deluxemode == 1)
+		if( deluxemap && deluxemode == 1 )
 		{
 			vec3_t	worldUp, myNormal, myTangent, myBinormal;
 			float dist;
@@ -3528,7 +3925,7 @@ void StoreSurfaceLightmaps( void )
 		}
 		
 		/* surfaces with styled lightmaps and a style marker get a custom generated shader (fixme: make this work with external lightmaps) */
-		if( olm != NULL && lm != NULL && lm->styles[ 1 ] != LS_NONE && game->load != LoadRBSPFile )	//%	info->si->styleMarker > 0 )
+		if( noStyles == qfalse && olm != NULL && lm != NULL && lm->styles[ 1 ] != LS_NONE && game->load != LoadRBSPFile )	//%	info->si->styleMarker > 0 )
 		{
 			qboolean	dfEqual;
 			char		key[ 32 ], styleStage[ 512 ], styleStages[ 4096 ], rgbGen[ 128 ], alphaGen[ 128 ];

@@ -1017,6 +1017,7 @@ static void ParseBrush( qboolean onlyLights, qboolean onlyLightBrushes, qboolean
 	buildBrush->portalareas[ 0 ] = -1;
 	buildBrush->portalareas[ 1 ] = -1;
 	buildBrush->entityNum = numMapEntities - 1;
+	buildBrush->mapEntityNum = mapEntityNum;
 	buildBrush->brushNum = entitySourceBrushes;
 	
 	/* if there are mirrored planes, the entire brush is invalid */
@@ -1075,7 +1076,6 @@ void MoveBrushesToWorld( entity_t *ent )
 	brush_t		*b, *next;
 	parseMesh_t	*pm;
 
-	
 	/* move brushes */
 	for( b = ent->brushes; b != NULL; b = next )
 	{
@@ -1083,6 +1083,7 @@ void MoveBrushesToWorld( entity_t *ent )
 		next = b->next;
 		
 		/* link opaque brushes to head of list, translucent brushes to end */
+		b->entityNum = 0;
 		if( b->opaque || entities[ 0 ].lastBrush == NULL )
 		{
 			b->next = entities[ 0 ].brushes;
@@ -1102,8 +1103,11 @@ void MoveBrushesToWorld( entity_t *ent )
 	/* ydnar: move colormod brushes */
 	if( ent->colorModBrushes != NULL )
 	{
+		for( b = ent->colorModBrushes; b != NULL; b = b->nextColorModBrush )
+			b->entityNum = 0;
+
 		for( b = ent->colorModBrushes; b->nextColorModBrush != NULL; b = b->nextColorModBrush );
-		
+
 		b->nextColorModBrush = entities[ 0 ].colorModBrushes;
 		entities[ 0 ].colorModBrushes = ent->colorModBrushes;
 		
@@ -1113,6 +1117,9 @@ void MoveBrushesToWorld( entity_t *ent )
 	/* move patches */
 	if( ent->patches != NULL )
 	{
+		for( pm = ent->patches; pm != NULL; pm = pm->next )
+			pm->entityNum = 0;
+
 		for( pm = ent->patches; pm->next != NULL; pm = pm->next );
 		
 		pm->next = entities[ 0 ].patches;
@@ -1389,7 +1396,8 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 {
 	epair_t			*ep;
 	const char		*classname, *value;
-	float			lightmapScale, lightmapStitch;
+	float			lightmapScale;
+	vec3_t          lightmapAxis;
 	int			    smoothNormals;
 	int				vertTexProj;
 	char			shader[ MAX_QPATH ];
@@ -1399,7 +1407,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	qboolean		funcGroup;
 	char			castShadows, recvShadows;
 	qboolean		forceNonSolid, forceNoClip, forceNoTJunc;
-	
+	vec3_t          minlight, ambient, colormod;
 	
 	/* eof check */
 	if( !GetToken( qtrue ) )
@@ -1530,11 +1538,14 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	/* vortex: get lightmap scaling value for this entity */
 	GetEntityLightmapScale( mapEnt, &lightmapScale, 0);
 
-	/* vortex: per-entity lightmap stitch */
-	GetEntityLightmapStitch( mapEnt, &lightmapStitch, -1);
+	/* vortex: get lightmap axis for this entity */
+	GetEntityLightmapAxis( mapEnt, lightmapAxis, NULL );
 
 	/* vortex: per-entity normal smoothing */
 	GetEntityNormalSmoothing( mapEnt, &smoothNormals, 0);
+
+	/* vortex: per-entity _minlight, _ambient, _color, _colormod */
+	GetEntityMinlightAmbientColor( mapEnt, NULL, minlight, ambient, colormod, qtrue );
 
 	/* vortex: vertical texture projection */
 	if( strcmp( "", ValueForKey( mapEnt, "_vtcproj" ) ) || strcmp( "", ValueForKey( mapEnt, "_vp" ) ) )
@@ -1568,14 +1579,18 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	for( brush = mapEnt->brushes; brush != NULL; brush = brush->next )
 	{
 		brush->entityNum = mapEnt->mapEntityNum;
+		brush->mapEntityNum = mapEnt->mapEntityNum;
 		brush->castShadows = castShadows;
 		brush->recvShadows = recvShadows;
 		brush->lightmapScale = lightmapScale;
-		brush->lightmapStitch = lightmapStitch; /* vortex */
+		VectorCopy( lightmapAxis, brush->lightmapAxis ); /* vortex */
 		brush->smoothNormals = smoothNormals; /* vortex */
 		brush->noclip = forceNoClip; /* vortex */
-		brush->notjunc = forceNoTJunc; /* vortex */
+		brush->noTJunc = forceNoTJunc; /* vortex */
 		brush->vertTexProj = vertTexProj; /* vortex */
+		VectorCopy( minlight, brush->minlight ); /* vortex */
+		VectorCopy( ambient, brush->ambient ); /* vortex */
+		VectorCopy( colormod, brush->colormod ); /* vortex */
 		brush->celShader = celShader;
 		if (forceNonSolid == qtrue)
 		{
@@ -1588,12 +1603,17 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	for( patch = mapEnt->patches; patch != NULL; patch = patch->next )
 	{
 		patch->entityNum = mapEnt->mapEntityNum;
+		patch->mapEntityNum = mapEnt->mapEntityNum;
 		patch->castShadows = castShadows;
 		patch->recvShadows = recvShadows;
 		patch->lightmapScale = lightmapScale;
+		VectorCopy( lightmapAxis, patch->lightmapAxis ); /* vortex */
 		patch->smoothNormals = smoothNormals; /* vortex */
 		patch->vertTexProj = vertTexProj; /* vortex */
 		patch->celShader = celShader;
+		VectorCopy( minlight, patch->minlight ); /* vortex */
+		VectorCopy( ambient, patch->ambient ); /* vortex */
+		VectorCopy( colormod, patch->colormod ); /* vortex */
 	}
 	
 	/* ydnar: gs mods: set entity bounds */

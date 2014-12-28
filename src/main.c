@@ -57,7 +57,14 @@ cleanup routine
 
 static void ExitQ3Map( void )
 {
-	BSPFilesCleanup();
+	if( bspDrawVerts != NULL )
+		free( bspDrawVerts );
+	if( bspDrawSurfaces != NULL )
+		free( bspDrawSurfaces );
+	if( bspLightBytes != NULL )
+		free( bspLightBytes );
+	if( bspGridPoints != NULL )
+		free( bspGridPoints );
 	if( mapDrawSurfs != NULL )
 		free( mapDrawSurfs );
 }

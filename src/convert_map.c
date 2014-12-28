@@ -298,6 +298,7 @@ static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origi
 	/* allocate a build brush */
 	buildBrush = AllocBrush( 512 );
 	buildBrush->entityNum = 0;
+	buildBrush->mapEntityNum = 0;
 	buildBrush->original = buildBrush;
 	
 	/* go through each brush in the model */

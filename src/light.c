@@ -1359,7 +1359,7 @@ void IlluminateGridPoint(trace_t *trace, int num)
 	
 	/* trace the point type (illuminated, flooded) */
 	flood = qtrue;
-	trace->inhibitRadius = 0;
+	trace->inhibitRadius = 0.125f;
 	for( i = 0; i < GRID_NUM_OFFSETS; i++ )
 	{
 		VectorMA( baseOrigin, 2.0, GridOffsets[ i ], nudgedOrigin );
@@ -1550,7 +1550,7 @@ void IlluminateGridBlock( int num )
 	/* setup trace */
 	trace.entityNum = -1;
 	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
-	trace.inhibitRadius = 0;
+	trace.inhibitRadius = 0.125f;
 	trace.twoSided = qfalse;
 	trace.occlusionBias = 0;
 	trace.forceSunlight = qfalse;
@@ -1631,7 +1631,7 @@ void IlluminateGridPointOld( int num )
 
 	trace.entityNum = -1;
 	trace.testOcclusion = (!noTrace && !noTraceGrid) ? qtrue : qfalse;
-	trace.inhibitRadius = 0;
+	trace.inhibitRadius = 0.125f;
 	trace.twoSided = qfalse;
 	trace.occlusionBias = 0;
 	trace.forceSunlight = qfalse;
@@ -1992,53 +1992,30 @@ void LightWorld( void )
 	vec3_t		color;
 	float		f;
 	int			b, bt;
-	qboolean	minVertex, minGrid;
-	const char	*value;
+	qboolean    minVertex, minGrid;
 
 	/* note it */
 	Sys_Printf( "--- LightWorld ---\n" );
 	
-	/* find the optional minimum lighting values */
-	GetVectorForKey( &entities[ 0 ], "_color", color );
-	if( VectorIsNull( color ) )
-		VectorSet( color, 1.0, 1.0, 1.0 );
-	
-	/* ambient */
-	f = FloatForKey( &entities[ 0 ], "_ambient" );
-	if( f == 0.0f )
-		f = FloatForKey( &entities[ 0 ], "ambient" );
-	VectorScale( color, f, ambientColor );
-	
-	/* minvertexlight */
-	minVertex = qfalse;
-	value = ValueForKey( &entities[ 0 ], "_minvertexlight" );
-	if( value[ 0 ] != '\0' )
+	/* get minlight/ambient */
+	GetEntityMinlightAmbientColor( &entities[ 0 ], color, ambientColor, minLight, NULL, qtrue );
+	VectorCopy( minLight, minVertexLight );
+	VectorCopy( minLight, minGridLight );
+
+	/* _minvertexlight */
+	if( KeyExists( &entities[ 0 ], "_minvertexlight" ) )
 	{
 		minVertex = qtrue;
-		f = atof( value );
+		f = FloatForKey( &entities[ 0 ], "_minvertexlight" );
 		VectorScale( color, f, minVertexLight );
 	}
 	
-	/* mingridlight */
-	minGrid = qfalse;
-	value = ValueForKey( &entities[ 0 ], "_mingridlight" );
-	if( value[ 0 ] != '\0' )
+	/* _mingridlight */
+	if( KeyExists( &entities[ 0 ], "_mingridlight" ) )
 	{
 		minGrid = qtrue;
-		f = atof( value );
+		f = FloatForKey( &entities[ 0 ], "_mingridlight" );
 		VectorScale( color, f, minGridLight );
-	}
-	
-	/* minlight */
-	value = ValueForKey( &entities[ 0 ], "_minlight" );
-	if( value[ 0 ] != '\0' )
-	{
-		f = atof( value );
-		VectorScale( color, f, minLight );
-		if( minVertex == qfalse )
-			VectorScale( color, f, minVertexLight );
-		if( minGrid == qfalse )
-			VectorScale( color, f, minGridLight );
 	}
 
 	/* show stats */
@@ -2046,9 +2023,9 @@ void LightWorld( void )
 		Sys_Printf( "Ambient light = ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
 	if( minLight[ 0 ] || minLight[ 1 ] || minLight[ 2 ] )
 		Sys_Printf( "Min light = ( %f %f %f )\n", minLight[ 0 ], minLight[ 1 ], minLight[ 2 ] );
-	if( minVertexLight[ 0 ] || minVertexLight[ 1 ] || minVertexLight[ 2 ] )
+	if( minVertex )
 		Sys_Printf( "Min vertex light = ( %f %f %f )\n", minVertexLight[ 0 ], minVertexLight[ 1 ], minVertexLight[ 2 ] );
-	if( minGridLight[ 0 ] || minGridLight[ 1 ] || minGridLight[ 2 ] )
+	if( minGrid )
 		Sys_Printf( "Min grid light = ( %f %f %f )\n", minGridLight[ 0 ], minGridLight[ 1 ], minGridLight[ 2 ] );
 
 	/* create world lights */
@@ -2109,6 +2086,13 @@ void LightWorld( void )
 	RunThreadsOnIndividual( numRawLightmaps, qtrue, IlluminateRawLightmap );
 	Sys_Printf( "%9d luxels illuminated\n", numLuxelsIlluminated );
 	
+	/* filter lightmaps */
+	Sys_Printf( "--- FilterRawLightmap ---\n" );
+	ThreadMutexInit(&LightmapGrowStitchMutex);
+	RunThreadsOnIndividual( numRawLightmaps, qtrue, FilterRawLightmap );
+	Sys_Printf( "%9d luxels marked for stitching\n", numLuxelsStitched );
+	ThreadMutexDelete(&LightmapGrowStitchMutex);
+
 	/* stitch lightmaps */
 	StitchSurfaceLightmaps();
 
@@ -2173,18 +2157,17 @@ void LightWorld( void )
 		Sys_Printf( "--- IlluminateRawLightmap ---\n" );
 		RunThreadsOnIndividual( numRawLightmaps, qtrue, IlluminateRawLightmap );
 		Sys_Printf( "%9d luxels illuminated\n", numLuxelsIlluminated );
-		Sys_Printf( "%9d vertexes illuminated\n", numVertsIlluminated );
+
+		/* filter lightmaps */
+		Sys_Printf( "--- FilterRawLightmap ---\n" );
+		ThreadMutexInit(&LightmapGrowStitchMutex);
+		RunThreadsOnIndividual( numRawLightmaps, qtrue, FilterRawLightmap );
+		Sys_Printf( "%9d luxels marked for stitching\n", numLuxelsStitched );
+		ThreadMutexDelete(&LightmapGrowStitchMutex);
 		
 		/* stitch lightmaps */
 		StitchSurfaceLightmaps();
 
-		/* debug luxels */
-		if( debugLightmap )
-		{
-			Sys_Printf( "--- DebugRawLightmap ---\n" );
-			RunThreadsOnIndividual( numRawLightmaps, qtrue, DebugRawLightmap );
-		}
-		
 		/* illuminate vertexes */
 		Sys_Printf( "--- IlluminateVertexes ---\n" );
 		RunThreadsOnIndividual( numBSPDrawSurfaces, qtrue, IlluminateVertexes );
@@ -2562,6 +2545,12 @@ int LightMain( int argc, char **argv )
 				Sys_Printf( "Storing all lightmaps externally\n" );
 			}
 		}
+		else if( !strcmp( argv[ i ], "-maxsurfacelightmapsize" ) )
+		{
+			lmMaxSurfaceSize = atoi( argv[ i + 1 ] );
+			i++;
+			Sys_Printf( "Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
+		}
 
 		/* generate lightmap in sRGB colorspace */
 		else if( !strcmp( argv[ i ], "-lightmapsrgb" ) )
@@ -2694,11 +2683,6 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Converting brush faces to triangle soup\n" );
 		}
 
-		else if( !strcmp( argv[ i ], "-broadmerge" ) )
-		{
-			broadMerge = qtrue;
-			Sys_Printf( "Reducing drawsurfaces count by extensive merging\n" );
-		}
 		else if( !strcmp( argv[ i ], "-debug" ) )
 		{
 			debug = qtrue;
@@ -2741,6 +2725,12 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Luxel stitching debugging enabled\n" );
 		}
 
+		else if( !strcmp( argv[ i ], "-debugrawlightmap" ) )
+		{
+			debugRawLightmap = qtrue;
+			Sys_Printf( "Raw lightmaps debugging enabled\n" );
+		}
+
 		else if( !strcmp( argv[ i ], "-debugdeluxe" ) )
 		{
 			deluxemap = qtrue;
@@ -2751,7 +2741,7 @@ int LightMain( int argc, char **argv )
 		else if( !strcmp( argv[ i ], "-debuglightmap" ) )
 		{
 			debugLightmap = qtrue;
-			Sys_Printf( "Lightmap debugging enabled, generating additional drawsurfs for luxels\n" );
+			Sys_Printf( "Lightmap debugging enabled, generating %mapname%_luxels.ase\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debuggrid" ) )
@@ -2829,8 +2819,8 @@ int LightMain( int argc, char **argv )
 		}
 		else if( !strcmp( argv[ i ], "-stitch" ) )
 		{
-			noStitch = qfalse;
-			Sys_Printf( "Enable lightmap stitching\n" );
+			stitch = qtrue;
+			Sys_Printf( "Enable stitching on all lightmaps\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nostitch" ) )
 		{
@@ -2888,29 +2878,29 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Low Quality FloodLighting enabled\n" );
 		}
 		
-		/* r7: dirtmapping */
-		else if( !strcmp( argv[ i ], "-dirty" ) )
+		/* dirtmapping / ambient occlusion */
+		else if( !strcmp( argv[ i ], "-dirty" ) || !strcmp( argv[ i ], "-ao" ) )
 		{
 			dirty = qtrue;
 			Sys_Printf( "Dirtmapping enabled\n" );
 		}
-		else if( !strcmp( argv[ i ], "-nodirt" ) )
+		else if( !strcmp( argv[ i ], "-nodirt" ) || !strcmp( argv[ i ], "-noao" ) )
 		{
 			nodirt = qtrue;
 			Sys_Printf( "Dirtmapping disabled\n" );
 		}
-		else if( !strcmp( argv[ i ], "-dirtdebug" ) || !strcmp( argv[ i ], "-debugdirt" ) )
+		else if( !strcmp( argv[ i ], "-dirtdebug" ) || !strcmp( argv[ i ], "-debugdirt" ) || !strcmp( argv[ i ], "-debugao" ) || !strcmp( argv[ i ], "-aodebug" ) )
 		{
 			dirtDebug = qtrue;
 			Sys_Printf( "Dirtmap debugging enabled\n" );
 		}
-		else if( !strcmp( argv[ i ], "-dirtmode" ) )
+		else if( !strcmp( argv[ i ], "-dirtmode" ) || !strcmp( argv[ i ], "-aomode" ) )
 		{
 			dirtMode = (dirtMode_t)atoi( argv[ i + 1 ] );
 			Sys_Printf( "Dirtmap mode set to '%s'\n", DirtModeName(&dirtMode) );
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtdepth" ) )
+		else if( !strcmp( argv[ i ], "-dirtdepth" ) || !strcmp( argv[ i ], "-aodepth" ) )
 		{
 			dirtDepth = atof( argv[ i + 1 ] );
 			if( dirtDepth <= 0.0f )
@@ -2918,7 +2908,7 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Dirtmapping depth set to %.1f\n", dirtDepth );
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtdepthexponent" ) )
+		else if( !strcmp( argv[ i ], "-dirtdepthexponent" ) || !strcmp( argv[ i ], "-aodepthexponent" ) )
 		{
 			dirtDepthExponent = atof( argv[ i + 1 ] );
 			if( dirtDepthExponent <= 0.0f )
@@ -2926,7 +2916,7 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Dirtmapping depth exponent set to %.1f\n", dirtDepthExponent );
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtscale" ) )
+		else if( !strcmp( argv[ i ], "-dirtscale" ) || !strcmp( argv[ i ], "-aoscale" ) )
 		{
 			dirtScale = atof( argv[ i + 1 ] );
 			if( dirtScale <= 0.0f )
@@ -2934,13 +2924,13 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Dirtmapping scale set to %.1f\n", dirtScale );
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtscalemask" ) )
+		else if( !strcmp( argv[ i ], "-dirtscalemask" ) || !strcmp( argv[ i ], "-aoscalemask" ) )
 		{
 			sscanf(argv[ i + 1], "%f %f %f", &dirtScaleMask[0], &dirtScaleMask[1], &dirtScaleMask[2]); 
 			Sys_Printf( "Dirtmapping scale mask set to %1.1f %1.1f %1.1f\n", dirtScaleMask[0], dirtScaleMask[1], dirtScaleMask[2]);
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtgain" ) )
+		else if( !strcmp( argv[ i ], "-dirtgain" ) || !strcmp( argv[ i ], "-aogain" ))
 		{
 			dirtGain = atof( argv[ i + 1 ] );
 			if( dirtGain <= 0.0f )
@@ -2948,13 +2938,13 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( "Dirtmapping gain set to %.1f\n", dirtGain );
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtgainmask" ) )
+		else if( !strcmp( argv[ i ], "-dirtgainmask" ) || !strcmp( argv[ i ], "-aogainmask" ) )
 		{
 			sscanf(argv[ i + 1], "%f %f %f", &dirtGainMask[0], &dirtGainMask[1], &dirtGainMask[2]); 
 			Sys_Printf( "Dirtmapping gain mask set to %1.1f %1.1f %1.1f\n", dirtGainMask[0], dirtGainMask[1], dirtGainMask[2]);
 			i++;
 		}
-		else if( !strcmp( argv[ i ], "-dirtfilter" ) )
+		else if( !strcmp( argv[ i ], "-dirtfilter" ) || !strcmp( argv[ i ], "-aofilter" ) )
 		{
 			dirtFilter = (dirtFilter_t)atoi( argv[ i + 1 ] );
 			Sys_Printf( "Dirtmapping filter set to '%s'\n", DirtFilterName(&dirtFilter) );
@@ -3025,11 +3015,21 @@ int LightMain( int argc, char **argv )
 
 	}
 
+	/* disable lightstyles is build do not support it */
+#if MAX_LIGHTMAPS == 1
+	noStyles = qtrue;
+	Sys_Printf( "Light styles are disabled in this build\n" );
+#endif
+
 	/* set up lightmap debug state */
-	if (debugSurfaces || debugAxis || debugCluster || debugOrigin || dirtDebug || normalmap || debugGrid)
+	if (debugSurfaces || debugAxis || debugCluster || debugOrigin || dirtDebug || normalmap || debugGrid || debugRawLightmap)
 		lightmapDebugState = qtrue;
 	else
 		lightmapDebugState = qfalse;
+
+	/* set up lmMaxSurfaceSize */
+	if (lmMaxSurfaceSize == 0)
+		lmMaxSurfaceSize = lmCustomSize;
 
 	/* calculate static parms gamma/exposure/compensate */
 	lightmapInvGamma = 1.0f / lightmapGamma;
@@ -3120,9 +3120,17 @@ int LightMain( int argc, char **argv )
 
 	/* light the world */
 	LightWorld();
-	
+
 	/* ydnar: store off lightmaps */
 	StoreSurfaceLightmaps();
+
+	/* vortex: generate debug surfaces for luxels */
+	if( debugLightmap )
+	{
+		StripExtension( mapSource );
+		DefaultExtension( mapSource, "_luxels.ase" );
+		WriteRawLightmapsFile( mapSource );
+	}
 
 	/* vortex: set deluxeMaps key */
 	if (deluxemap)

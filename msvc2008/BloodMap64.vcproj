@@ -283,10 +283,6 @@
 				RelativePath=".\..\src\shaders.c"
 				>
 			</File>
-			<File
-				RelativePath=".\..\src\surface_extra.c"
-				>
-			</File>
 			<Filter
 				Name="bsp"
 				Filter=".c"
@@ -341,6 +337,10 @@
 				</File>
 				<File
 					RelativePath=".\..\src\surface.c"
+					>
+				</File>
+				<File
+					RelativePath=".\..\src\surface_extra.c"
 					>
 				</File>
 				<File

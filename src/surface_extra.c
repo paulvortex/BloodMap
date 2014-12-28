@@ -50,12 +50,13 @@ typedef struct surfaceExtra_s
 	shaderInfo_t			*si;
 	int						parentSurfaceNum;
 	int						entityNum;
+	int                     mapEntityNum; /* mapfile entity (i.e. misc_model or func_group) */
 	char					castShadows, recvShadows;
 	float					sampleSize;
 	float					longestCurve;
 	vec3_t					lightmapAxis;
 	float                   shadeAngle;
-	float                   lightmapStitch;
+	qboolean                lightmapStitch, unused1;
 }
 surfaceExtra_t;
 
@@ -64,7 +65,7 @@ surfaceExtra_t;
 int							numSurfaceExtras = 0;
 int							maxSurfaceExtras = 0;
 surfaceExtra_t				*surfaceExtras;
-surfaceExtra_t				seDefault = { NULL, NULL, -1, 0, WORLDSPAWN_CAST_SHADOWS, WORLDSPAWN_RECV_SHADOWS, 0, 0, { 0, 0, 0 } };
+surfaceExtra_t				seDefault = { NULL, NULL, -1, 0, 0, WORLDSPAWN_CAST_SHADOWS, WORLDSPAWN_RECV_SHADOWS, 0, 0, { 0, 0, 0 } };
 
 
 
@@ -137,12 +138,13 @@ void SetSurfaceExtra( mapDrawSurface_t *ds, int num )
 	se->si = ds->shaderInfo;
 	se->parentSurfaceNum = ds->parent != NULL ? ds->parent->outputNum : -1;
 	se->entityNum = ds->entityNum;
+	se->mapEntityNum = ds->mapEntityNum;
 	se->castShadows = ds->castShadows;
 	se->recvShadows = ds->recvShadows;
 	se->sampleSize = ds->sampleSize;
 	se->longestCurve = ds->longestCurve;
 	se->shadeAngle = ds->smoothNormals;
-	se->lightmapStitch = ds->lightmapStitch;
+	se->lightmapStitch = (ds->shaderInfo->lightmapNoStitch == qtrue) ? qfalse : qtrue;
 	VectorCopy( ds->lightmapAxis, se->lightmapAxis );
 	
 	/* debug code */
@@ -184,6 +186,11 @@ int GetSurfaceExtraEntityNum( int num )
 	return se->entityNum;
 }
 
+int GetSurfaceExtraMapEntityNum( int num )
+{
+	surfaceExtra_t	*se = GetSurfaceExtra( num );
+	return se->mapEntityNum;
+}
 
 char GetSurfaceExtraCastShadows( int num )
 {
@@ -225,7 +232,7 @@ float GetSurfaceExtraShadeAngle( int num )
 	return se->shadeAngle;
 }
 
-float GetSurfaceExtraLightmapStitch( int num )
+qboolean GetSurfaceExtraLightmapStitch( int num )
 {
 	surfaceExtra_t	*se = GetSurfaceExtra( num );
 	return se->lightmapStitch;
@@ -298,6 +305,10 @@ void WriteSurfaceExtraFile( const char *path )
 			/* entity number */
 			if( se->entityNum != seDefault.entityNum )
 				fprintf( sf, "\tentity %d\n", se->entityNum );
+
+			/* map entity number */
+			if( se->mapEntityNum != seDefault.mapEntityNum )
+				fprintf( sf, "\tmapEntity %d\n", se->mapEntityNum );
 			
 			/* cast shadows */
 			if( se->castShadows != seDefault.castShadows || se == &seDefault )
@@ -324,8 +335,8 @@ void WriteSurfaceExtraFile( const char *path )
 				fprintf( sf, "\tshadeAngle %f\n", se->shadeAngle );
 		
 			/* lightmap stitching */
-			if( se->lightmapStitch != 0.0f )
-				fprintf( sf, "\tlightmapStitch %f\n", se->lightmapStitch );
+			if( se->lightmapStitch == qtrue )
+				fprintf( sf, "\tlightmapStitch 1\n" );
 		
 		/* close braces */
 		fprintf( sf, "}\n\n" );
@@ -361,6 +372,7 @@ void LoadSurfaceExtraFile( const char *path )
 	Sys_Printf( "Loading %s\n", srfPath );
 	size = LoadFile( srfPath, (void**) &buffer );
 	if( size <= 0 )
+
 	{
 		Sys_Printf( "WARNING: Unable to find surface file %s, using defaults.\n", srfPath );
 		return;
@@ -421,6 +433,13 @@ void LoadSurfaceExtraFile( const char *path )
 				GetToken( qfalse );
 				se->entityNum = atoi( token );
 			}
+
+			/* map entity number */
+			else if( !Q_stricmp( token, "mapEntity" ) )
+			{
+				GetToken( qfalse );
+				se->mapEntityNum = atoi( token );
+			}
 			
 			/* cast shadows */
 			else if( !Q_stricmp( token, "castShadows" ) )
@@ -465,7 +484,7 @@ void LoadSurfaceExtraFile( const char *path )
 			else if( !Q_stricmp( token, "lightmapStitch" ) )
 			{
 				GetToken( qfalse );
-				se->lightmapStitch = atof( token );
+				se->lightmapStitch = qtrue;
 			}
 
 			/* ignore all other tokens on the line */

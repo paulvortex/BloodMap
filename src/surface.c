@@ -63,6 +63,7 @@ mapDrawSurface_t *AllocDrawSurface( surfaceType_t type )
 	ds->fogNum = defaultFogNum;				/* ydnar 2003-02-12 */
 	ds->outputNum = -1;						/* ydnar 2002-08-13 */
 	ds->surfaceNum = numMapDrawSurfs - 1;	/* ydnar 2003-02-16 */
+	VectorSet(ds->colormod, 1, 1, 1);
 	
 	return ds;
 }
@@ -589,43 +590,46 @@ void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
 		}
 		
 		/* the shader can specify an explicit lightmap axis */
-		if( si->lightmapAxis[ 0 ] || si->lightmapAxis[ 1 ] || si->lightmapAxis[ 2 ] )
-			VectorCopy( si->lightmapAxis, ds->lightmapAxis );
-		else if( ds->type == SURFACE_FORCED_META || ds->type == SURFACE_TRIANGLES )
-			VectorClear( ds->lightmapAxis );
-		else if( ds->planar )
-			CalcLightmapAxis( plane, ds->lightmapAxis );
-		else
+		if ( ds->lightmapAxis[ 0 ] == ds->lightmapAxis[ 1 ] && ds->lightmapAxis[ 0 ] == ds->lightmapAxis[ 2 ] && ds->lightmapAxis[ 0 ] == 0 )
 		{
-			/* find best lightmap axis */
-			for( bestAxis = 0; bestAxis < 6; bestAxis++ )
+			if( si->lightmapAxis[ 0 ] || si->lightmapAxis[ 1 ] || si->lightmapAxis[ 2 ] )
+				VectorCopy( si->lightmapAxis, ds->lightmapAxis );
+			else if( ds->type == SURFACE_FORCED_META || ds->type == SURFACE_TRIANGLES )
+				VectorClear( ds->lightmapAxis );
+			else if( ds->planar )
+				CalcLightmapAxis( plane, ds->lightmapAxis );
+			else
 			{
-				for( i = 0; i < ds->numVerts && bestAxis < 6; i++ )
+				/* find best lightmap axis */
+				for( bestAxis = 0; bestAxis < 6; bestAxis++ )
 				{
-					//% Sys_Printf( "Comparing %1.3f %1.3f %1.3f to %1.3f %1.3f %1.3f\n",
-					//% 	ds->verts[ i ].normal[ 0 ], ds->verts[ i ].normal[ 1 ], ds->verts[ i ].normal[ 2 ],
-					//% 	axii[ bestAxis ][ 0 ], axii[ bestAxis ][ 1 ], axii[ bestAxis ][ 2 ] );
-					if( DotProduct( ds->verts[ i ].normal, axii[ bestAxis ] ) < 0.25f )	/* fixme: adjust this tolerance to taste */
+					for( i = 0; i < ds->numVerts && bestAxis < 6; i++ )
+					{
+						//% Sys_Printf( "Comparing %1.3f %1.3f %1.3f to %1.3f %1.3f %1.3f\n",
+						//% 	ds->verts[ i ].normal[ 0 ], ds->verts[ i ].normal[ 1 ], ds->verts[ i ].normal[ 2 ],
+						//% 	axii[ bestAxis ][ 0 ], axii[ bestAxis ][ 1 ], axii[ bestAxis ][ 2 ] );
+						if( DotProduct( ds->verts[ i ].normal, axii[ bestAxis ] ) < 0.25f )	/* fixme: adjust this tolerance to taste */
+							break;
+					}
+					
+					if( i == ds->numVerts )
 						break;
 				}
 				
-				if( i == ds->numVerts )
-					break;
-			}
-			
-			/* set axis if possible */
-			if( bestAxis < 6 )
-			{
+				/* set axis if possible */
+				if( bestAxis < 6 )
+				{
+					//% if( ds->type == SURFACE_PATCH )
+					//% 	Sys_Printf( "Mapped axis %d onto patch\n", bestAxis );
+					VectorCopy( axii[ bestAxis ], ds->lightmapAxis );
+				}
+				
+				/* debug code */
 				//% if( ds->type == SURFACE_PATCH )
-				//% 	Sys_Printf( "Mapped axis %d onto patch\n", bestAxis );
-				VectorCopy( axii[ bestAxis ], ds->lightmapAxis );
+				//% 	Sys_Printf( "Failed to map axis %d onto patch\n", bestAxis );
 			}
-			
-			/* debug code */
-			//% if( ds->type == SURFACE_PATCH )
-			//% 	Sys_Printf( "Failed to map axis %d onto patch\n", bestAxis );
 		}
-		
+
 		/* get lightmap sample size */
 		if( ds->sampleSize <= 0 )
 		{
@@ -895,6 +899,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	lastDrawSurface = numMapDrawSurfs - 1;
 	ds = AllocDrawSurface( SURFACE_FACE );
 	ds->entityNum = b->entityNum;
+	ds->mapEntityNum = b->entityNum;
 	ds->castShadows = b->castShadows;
 	ds->recvShadows = b->recvShadows;
 	
@@ -907,10 +912,13 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	ds->sideRef = AllocSideRef( s, NULL );
 	ds->fogNum = -1;
 	ds->lightmapScale = b->lightmapScale;
-	ds->lightmapStitch = b->lightmapStitch; /* vortex */
+	VectorCopy(b->lightmapAxis, ds->lightmapAxis);
+	VectorCopy(b->minlight, ds->minlight);
+	VectorCopy(b->ambient, ds->ambient);
+	VectorCopy(b->colormod, ds->colormod);
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : b->smoothNormals; /* vortex */
 	ds->noClip = b->noclip; /* vortex */
-	ds->noTJunc = b->notjunc; /* vortex */
+	ds->noTJunc = b->noTJunc; /* vortex */
 	ds->vertTexProj = b->vertTexProj; /* vortex */
 	ds->numVerts = w->numpoints;
 	ds->verts = (bspDrawVert_t *)safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
@@ -1119,12 +1127,17 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	/* ydnar: gs mods */
 	ds = AllocDrawSurface( SURFACE_PATCH );
 	ds->entityNum = p->entityNum;
+	ds->mapEntityNum = p->entityNum;
 	ds->castShadows = p->castShadows;
 	ds->recvShadows = p->recvShadows;
-	
+	VectorCopy( p->lightmapAxis, ds->lightmapAxis );
 	ds->shaderInfo = si;
 	ds->mapMesh = p;
 	ds->lightmapScale = p->lightmapScale;	/* ydnar */
+	VectorCopy( p->lightmapAxis, ds->lightmapAxis );
+	VectorCopy( p->minlight, ds->minlight );
+	VectorCopy( p->ambient, ds->ambient );
+	VectorCopy( p->colormod, ds->colormod );
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : p->smoothNormals; /* vortex: patch really need this? */
 	ds->vertTexProj = p->vertTexProj; /* vortex */
 	ds->patchWidth = mesh->width;
@@ -1257,6 +1270,7 @@ mapDrawSurface_t *DrawSurfaceForFlare( int entNum, vec3_t origin, vec3_t normal,
 	/* allocate drawsurface */
 	ds = AllocDrawSurface( SURFACE_FLARE );
 	ds->entityNum = entNum;
+	ds->mapEntityNum = entNum;
 	
 	/* set it up */
 	if( flareShader != NULL && flareShader[ 0 ] != '\0' )
@@ -1312,6 +1326,7 @@ mapDrawSurface_t *DrawSurfaceForShader( char *shader )
 	/* create a new surface */
 	ds = AllocDrawSurface( SURFACE_SHADER );
 	ds->entityNum = 0;
+	ds->mapEntityNum = 0;
 	ds->shaderInfo = ShaderInfoForShader( shader );
 	
 	/* return to sender */
@@ -2897,6 +2912,8 @@ static void MakeDebugPortalSurfs_r( node_t *node, shaderInfo_t *si )
 			
 			/* allocate a drawsurface */
 			ds = AllocDrawSurface( SURFACE_FACE );
+			ds->entityNum = 0;
+			ds->mapEntityNum = 0;
 			ds->shaderInfo = si;
 			ds->planar = qtrue;
 			ds->sideRef = AllocSideRef( p->side, NULL );
@@ -2994,6 +3011,8 @@ void MakeFogHullSurfs( entity_t *e, tree_t *tree, char *shader )
 	
 	/* allocate a drawsurface */
 	ds = AllocDrawSurface( SURFACE_FOGHULL );
+	ds->entityNum = 0;
+	ds->mapEntityNum = 0;
 	ds->shaderInfo = si;
 	ds->fogNum = -1;
 	ds->numVerts = 8;
@@ -3166,7 +3185,7 @@ int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, surfaceModel_t *model, b
 			}
 			
 			/* insert the model */
-			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, ds->lightmapStitch, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0, ds->skybox, NULL, NULL, NULL, NULL );
+			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->mapEntityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, ds->minlight, ds->ambient, ds->colormod, NULL, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0, ds->skybox, NULL, NULL, NULL, NULL );
 			
 			/* return to sender */
 			return 1;

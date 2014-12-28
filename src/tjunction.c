@@ -644,7 +644,7 @@ void FixTJunctions( entity_t *ent )
 		/* get surface and early out if possible */
 		ds = &mapDrawSurfs[ i ];
 		si = ds->shaderInfo;
-		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->notjunc || ds->numVerts == 0 )
+		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->noTJunc || ds->numVerts == 0 )
 			continue;
 		
 		/* ydnar: gs mods: handle the various types of surfaces */
@@ -688,7 +688,7 @@ void FixTJunctions( entity_t *ent )
 		/* get surface and early out if possible */
 		ds = &mapDrawSurfs[ i ];
 		si = ds->shaderInfo;
-		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->notjunc || ds->noTJunc || ds->numVerts == 0 || ds->type != SURFACE_FACE )
+		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->noTJunc || ds->noTJunc || ds->numVerts == 0 || ds->type != SURFACE_FACE )
 			continue;
 		
 		/* ydnar: gs mods: handle the various types of surfaces */

@@ -345,6 +345,7 @@ void ParsePatch( qboolean onlyLights )
 	
 	/* ydnar: add entity/brush numbering */
 	pm->entityNum = mapEnt->mapEntityNum;
+	pm->mapEntityNum = mapEnt->mapEntityNum;
 	pm->brushNum = entitySourceBrushes;
 	
 	/* set shader */

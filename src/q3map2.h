@@ -241,8 +241,8 @@ constants
 
 #define MAX_TRACE_TEST_NODES	4096
 
-#define LUXEL_EPSILON			0.125f
-#define VERTEX_EPSILON			-0.125f
+#define LUXEL_EPSILON			0.0f
+#define VERTEX_EPSILON			0.0f
 
 #define MIN_LIGHTMAP_SAMPLE_SIZE	    0.1f
 #define DEFAULT_LIGHTMAP_SAMPLE_SIZE	16.0f
@@ -262,24 +262,38 @@ constants
 #define SUPER_LUXEL_SIZE		4
 #define SUPER_ORIGIN_SIZE		3
 #define SUPER_NORMAL_SIZE		4
-#define SUPER_DELUXEL_SIZE		3
+#define SUPER_DELUXEL_SIZE		4
 #define BSP_DELUXEL_SIZE		3
 #define BSP_NORMAL_SIZE         3
 #define SUPER_FLOODLIGHT_SIZE	4
+#define SUPER_TRIORIGIN_SIZE	3
+#define SUPER_TRINORMAL_SIZE	3
 
-#define VERTEX_LUXEL( s, v )	(vertexLuxels[ s ] + ((v) * VERTEX_LUXEL_SIZE))
+#define VERTEX_LUXEL( s, v )    (vertexLuxels[ s ] + ((v) * VERTEX_LUXEL_SIZE))
 #define RAD_VERTEX_LUXEL( s, v )(radVertexLuxels[ s ] + ((v) * VERTEX_LUXEL_SIZE))
-#define BSP_LUXEL( s, x, y )	(lm->bspLuxels[ s ] + ((((y) * lm->w) + (x)) * BSP_LUXEL_SIZE))
-#define RAD_LUXEL( s, x, y )	(lm->radLuxels[ s ] + ((((y) * lm->w) + (x)) * RAD_LUXEL_SIZE))
-#define SUPER_LUXEL( s, x, y )	(lm->superLuxels[ s ] + ((((y) * lm->sw) + (x)) * SUPER_LUXEL_SIZE))
-#define SUPER_DELUXEL( x, y )	(lm->superDeluxels + ((((y) * lm->sw) + (x)) * SUPER_DELUXEL_SIZE))
-#define BSP_DELUXEL( x, y )		(lm->bspDeluxels + ((((y) * lm->w) + (x)) * BSP_DELUXEL_SIZE))
-#define BSP_NORMAL( x, y )		(lm->bspNormals + ((((y) * lm->w) + (x)) * BSP_NORMAL_SIZE))
-#define SUPER_CLUSTER( x, y )	(lm->superClusters + (((y) * lm->sw) + (x)))
-#define SUPER_ORIGIN( x, y )	(lm->superOrigins + ((((y) * lm->sw) + (x)) * SUPER_ORIGIN_SIZE))
-#define SUPER_NORMAL( x, y )	(lm->superNormals + ((((y) * lm->sw) + (x)) * SUPER_NORMAL_SIZE))
-#define SUPER_DIRT( x, y )		(lm->superNormals + ((((y) * lm->sw) + (x)) * SUPER_NORMAL_SIZE) + 3)	/* stash dirtyness in normal[ 3 ] */
-#define SUPER_FLOODLIGHT(x, y )	(lm->superFloodLight + ((((y) * lm->sw) + (x)) * SUPER_FLOODLIGHT_SIZE))
+#define BSP_LUXEL( s, x, y )    (lm->bspLuxels[ s ] + ((((y) * lm->w) + (x)) * BSP_LUXEL_SIZE))
+#define RAD_LUXEL( s, x, y )    (lm->radLuxels[ s ] + ((((y) * lm->w) + (x)) * RAD_LUXEL_SIZE))
+#define BSP_DELUXEL( x, y )     (lm->bspDeluxels + ((((y) * lm->w) + (x)) * BSP_DELUXEL_SIZE))
+#define BSP_NORMAL( x, y )      (lm->bspNormals + ((((y) * lm->w) + (x)) * BSP_NORMAL_SIZE))
+#define SUPER_LUXEL( s, x, y )  (lm->superLuxels[ s ] + ((((y) * lm->sw) + (x)) * SUPER_LUXEL_SIZE))
+#define SUPER_DELUXEL( x, y )   (lm->superDeluxels + ((((y) * lm->sw) + (x)) * SUPER_DELUXEL_SIZE))
+#define SUPER_CLUSTER( x, y )   (lm->superClusters + (((y) * lm->sw) + (x)))
+#define SUPER_ORIGIN( x, y )    (lm->superOrigins + ((((y) * lm->sw) + (x)) * SUPER_ORIGIN_SIZE))
+#define SUPER_NORMAL( x, y )    (lm->superNormals + ((((y) * lm->sw) + (x)) * SUPER_NORMAL_SIZE))
+#define SUPER_DIRT( x, y )      (lm->superNormals + ((((y) * lm->sw) + (x)) * SUPER_NORMAL_SIZE) + 3)	/* stash dirtyness in normal[ 3 ] */
+#define SUPER_FLOODLIGHT( x, y )(lm->superFloodLight + ((((y) * lm->sw) + (x)) * SUPER_FLOODLIGHT_SIZE))
+#define SUPER_TRIORIGIN( x, y ) (lm->superTriorigins + ((((y) * lm->sw) + (x)) * SUPER_TRIORIGIN_SIZE))
+#define SUPER_TRINORMAL( x, y ) (lm->superTrinormals + ((((y) * lm->sw) + (x)) * SUPER_TRINORMAL_SIZE))
+ 
+/* vortex: linear luxel access */
+#define LUXEL_XY( x, y )        (((y) * lm->sw) + (x))  
+#define SUPER_LUXEL_XY( s, i )  (lm->superLuxels[ s ] + (i * SUPER_LUXEL_SIZE))
+#define SUPER_DELUXEL_XY( i )   (lm->superDeluxels + (i * SUPER_DELUXEL_SIZE))
+#define SUPER_CLUSTER_XY( i )   (lm->superClusters + i)
+#define SUPER_ORIGIN_XY( i )    (lm->superOrigins + (i * SUPER_ORIGIN_SIZE))
+#define SUPER_NORMAL_XY( i )    (lm->superNormals + (i * SUPER_NORMAL_SIZE))
+#define SUPER_TRIORIGIN_XY( i )rsw (lm->superTriorigins + (i * SUPER_TRIORIGIN_SIZE))
+#define SUPER_TRINORMAL_XY( i ) (lm->superTrinormals + (i * SUPER_TRINORMAL_SIZE))
 
 /* -------------------------------------------------------------------------------
 
@@ -289,14 +303,14 @@ abstracted bsp file
 
 #define EXTERNAL_LIGHTMAP		"lm_%04d"
 
-#define MAX_LIGHTMAPS			2			/* RBSP */ /* VorteX: disable lightstyles */
+#define MAX_LIGHTMAPS			1			/* RBSP */ /* VorteX: disable lightstyles */
 #define MAX_LIGHT_STYLES		64
 #define	MAX_SWITCHED_LIGHTS		32
 #define LS_NORMAL				0x00
 #define LS_UNUSED				0xFE
 #define	LS_NONE					0xFF
 
-#define MAX_LIGHTMAP_SHADERS	256
+#define MAX_LIGHTMAP_SHADERS	8192 /* vortex: was 256 */
 
 /* ok to increase these at the expense of more memory */
 #define	MAX_MAP_MODELS			0x1000		// vortex: was 0x400
@@ -508,10 +522,6 @@ general types
 
 ------------------------------------------------------------------------------- */
 
-/* ydnar: for smaller structs */
-typedef char	qb_t;
-
-
 /* ydnar: for q3map_tcMod */
 typedef float	tcMod_t[ 3 ][ 3 ];
 
@@ -699,48 +709,54 @@ typedef struct shaderInfo_s
 	
 	vec3_t				mins, maxs;						/* ydnar: for particle studio vertexDeform move support */
 	
-	qb_t				legacyTerrain;					/* ydnar: enable legacy terrain crutches */
-	qb_t				indexed;						/* ydnar: attempt to use indexmap (terrain alphamap style) */
-	qb_t				forceMeta;						/* ydnar: force metasurface path */
-	qb_t				noMeta;							/* vortex: disable metasurface path */
-	qb_t				noClip;							/* ydnar: don't clip into bsp, preserve original face winding */
-	qb_t                noBSP;                          /* vortex: prevent adding brush faces to BSP tree */
-	qb_t				noFast;							/* ydnar: supress fast lighting for surfaces with this shader */
-	qb_t				invert;							/* ydnar: reverse facing */
-	qb_t				nonplanar;						/* ydnar: for nonplanar meta surface merging */
-	qb_t				tcGen;							/* ydnar: has explicit texcoord generation */
+	qboolean			legacyTerrain;					/* ydnar: enable legacy terrain crutches */
+	qboolean			indexed;						/* ydnar: attempt to use indexmap (terrain alphamap style) */
+	qboolean			invert;							/* ydnar: reverse facing */
+	qboolean			nonplanar;						/* ydnar: for nonplanar meta surface merging */
+	qboolean			tcGen;							/* ydnar: has explicit texcoord generation */
+	qboolean			forceMeta;						/* ydnar: force metasurface path */
+	qboolean			forceSunlight;					/* force sun light at this surface even tho we might not calculate shadows in vertex lighting */
+	qboolean			noMeta;							/* vortex: disable metasurface path */
+	qboolean			noClip;							/* ydnar: don't clip into bsp, preserve original face winding */
+	qboolean            noBSP;                          /* vortex: prevent adding brush faces to BSP tree */
+	qboolean			noFast;							/* ydnar: supress fast lighting for surfaces with this shader */
+	qboolean			noTJunc;						/* don't use this surface for tjunction fixing */
+	qboolean			noFog;							/* ydnar: supress fogging */
+	qboolean			noVertexLight;					/* ydnar: leave vertex color alone */
+	qboolean            noSmooth;                       /* vortex: doesnt allow vertex normal smoothing */
+	qboolean			fixVertexAlpha;					/* vortex: automatic vertexalpha fixer*/
+	qboolean			splotchFix;						/* ydnar: filter splotches on lightmaps */
+	qboolean			hasPasses;						/* false if the shader doesn't define any rendering passes */
+	qboolean			globalTexture;					/* don't normalize texture repeats */
+	qboolean			twoSided;						/* cull none */
+	qboolean			autosprite;						/* autosprite shaders will become point lights instead of area lights */
+	qboolean			polygonOffset;					/* ydnar: don't face cull this or against this */
+	qboolean			patchShadows;					/* have patches casting shadows when using -light for this surface */
+	qboolean			vertexShadows;					/* shadows will be casted at this surface even when vertex lit */
+	qboolean            vertexPointSample;              /* vertex lightning used gridlight's point sample instead of full featured */
+	qboolean			fogParms;						/* ydnar: has fogparms */
+	qboolean			clipModel;						/* ydnar: solid model hack */
+	qboolean            lightmapNoStitch;               /* vortex: doesnt allow lightmap stitching */
+	qboolean            lightmapForceStitch;            /* vortex: enable lightmap stitching (if no -stitch set) */
+	qboolean			lightmapMergable;				/* ydnar */
+	byte				styleMarker;					/* ydnar: light styles hack */
+	byte				lightStyle;		
+	qboolean			custom;
+	qboolean			finished;
+	qboolean			unused1;
+	qboolean			unused2;
+
 	vec3_t				vecs[ 2 ];						/* ydnar: explicit texture vectors for [0,1] texture space */
 	tcMod_t				mod;							/* ydnar: q3map_tcMod matrix for djbob :) */
 	vec3_t				lightmapAxis;					/* ydnar: explicit lightmap axis projection */
 	colorMod_t			*colorMod;						/* ydnar: q3map_rgb/color/alpha/Set/Mod support */
-	qb_t				fixVertexAlpha;					/* vortex: automatic vertexalpha fixer*/
-	int					fixVertexAlphaLayers[2];
+
+	int					fixVertexAlphaLayers[2];        /* vortex: indexes for fixVertexAlpha layers */
 
 	int					furNumLayers;					/* ydnar: number of fur layers */
 	float				furOffset;						/* ydnar: offset of each layer */
 	float				furFade;						/* ydnar: alpha fade amount per layer */
 
-	qb_t				splotchFix;						/* ydnar: filter splotches on lightmaps */
-	
-	qb_t				hasPasses;						/* false if the shader doesn't define any rendering passes */
-	qb_t				globalTexture;					/* don't normalize texture repeats */
-	qb_t				twoSided;						/* cull none */
-	qb_t				autosprite;						/* autosprite shaders will become point lights instead of area lights */
-	qb_t				polygonOffset;					/* ydnar: don't face cull this or against this */
-	qb_t				patchShadows;					/* have patches casting shadows when using -light for this surface */
-	qb_t				vertexShadows;					/* shadows will be casted at this surface even when vertex lit */
-	qb_t                vertexPointSample;              /* vertex lightning used gridlight's point sample instead of full featured */
-	qb_t				forceSunlight;					/* force sun light at this surface even tho we might not calculate shadows in vertex lighting */
-	qb_t				notjunc;						/* don't use this surface for tjunction fixing */
-	qb_t				fogParms;						/* ydnar: has fogparms */
-	qb_t				noFog;							/* ydnar: supress fogging */
-	qb_t				clipModel;						/* ydnar: solid model hack */
-	qb_t				noVertexLight;					/* ydnar: leave vertex color alone */
-	qb_t                noSmooth;                       /* vortex: doesnt allow vertex normal smoothing */
-	qb_t                lightmapNoStitch;               /* vortex: doesnt allow lightmap stitching */
-	
-	byte				styleMarker;					/* ydnar: light styles hack */
-	
 	float				vertexScale;					/* vertex light scale */
 	float               vertexOcclusionBias;            /* vortex: bias the occlusion point (if trace hit position within this radius from sample, we are not shadowed) */
 
@@ -766,27 +782,19 @@ typedef struct shaderInfo_s
 	
 	vec3_t				color;							/* normalized color */
 	vec3_t				averageColor;
-	byte				lightStyle;		
-
-	/* vortex: per-surface floodlight */
-	float				floodlightDirectionScale;
-	vec3_t				floodlightRGB; 
-	float				floodlightIntensity;
-	float				floodlightDistance;
 	
-	qb_t				lmMergable;						/* ydnar */
+	float				floodlightDirectionScale;       /* vortex: per-surface floodlight */
+	vec3_t				floodlightRGB;                  /* vortex: per-surface floodlight */ 
+	float				floodlightIntensity;            /* vortex: per-surface floodlight */
+	float				floodlightDistance;             /* vortex: per-surface floodlight */
+
 	int					lmCustomWidth, lmCustomHeight;	/* ydnar */
 	float				lmBrightness;					/* ydnar */
 	float				lmFilterRadius;					/* ydnar: lightmap filtering/blurring radius for this shader (default: 0) */
-
 	int					shaderWidth, shaderHeight;		/* ydnar */
 	float				stFlat[ 2 ];
-	
 	vec3_t				fogDir;							/* ydnar */
-	
 	char				*shaderText;					/* ydnar */
-	qb_t				custom;
-	qb_t				finished;
 }
 shaderInfo_t;
 
@@ -871,7 +879,7 @@ typedef struct brush_s
 	struct brush_s		*nextColorModBrush;	/* ydnar: colorMod volume brushes go here */
 	struct brush_s		*original;			/* chopped up brushes will reference the originals */
 	
-	int					entityNum, brushNum;/* editor numbering */
+	int					entityNum, mapEntityNum, brushNum;/* editor numbering */
 	int					outputNum;			/* set when the brush is written to the file list */
 	
 	/* ydnar: for shadowcasting entities */
@@ -883,18 +891,21 @@ typedef struct brush_s
 	
 	/* ydnar: gs mods */
 	float				lightmapScale;
-	float				lightmapStitch;
+	vec3_t              lightmapAxis;
 	int					smoothNormals;
 	int					vertTexProj;
 	vec3_t				eMins, eMaxs;
 	indexMap_t			*im;
+	vec3_t              ambient;      /* vortex: ambient (lightmapping/vertexlight) */
+	vec3_t              minlight;     /* vortex: minlight (lightmapping/vertexlight) */
+	vec3_t              colormod;     /* vortex: colormod (lightmapping/vertexlight) */
 
 	int					contentFlags;
 	int					compileFlags; /* ydnar */
 	qboolean			detail;
-	qboolean			nonsolid; /* vortex: render-only brush */
-	qboolean            noclip; /* vortex: don't clip faces by BSP tree */
-	qboolean            notjunc; /* vortex: disable T-junction fixing */
+	qboolean			nonsolid;     /* vortex: render-only brush */
+	qboolean            noclip;       /* vortex: don't clip faces by BSP tree */
+	qboolean            noTJunc;      /* vortex: disable T-junction fixing */
 	qboolean			opaque;
 
 	int					portalareas[ 2 ];
@@ -928,7 +939,7 @@ typedef struct parseMesh_s
 {
 	struct parseMesh_s	*next;
 	
-	int					entityNum, brushNum;	/* ydnar: editor numbering */
+	int					entityNum, mapEntityNum, brushNum;	/* ydnar: editor numbering */
 	
 	/* ydnar: for shadowcasting entities */
 	int					castShadows;
@@ -940,11 +951,15 @@ typedef struct parseMesh_s
 	
 	/* ydnar: gs mods */
 	float				lightmapScale;
+	vec3_t              lightmapAxis;
 	int					smoothNormals; /* VorteX: per-entity normal smoothing (with func_group support) */
 	int					vertTexProj;
 	vec3_t				eMins, eMaxs;
 	indexMap_t			*im;
-	
+	vec3_t              ambient;       /* vortex: ambient (lightmapping/vertexlight) */
+	vec3_t              minlight;      /* vortex: minlight (lightmapping/vertexlight) */
+	vec3_t              colormod;      /* vortex: colormod (lightmapping/vertexlight) */
+
 	/* grouping */
 	qboolean			grouped;
 	float				longestCurve;
@@ -1038,12 +1053,14 @@ typedef struct mapDrawSurface_s
 	
 	/* ydnar: gs mods */
 	float				lightmapScale;
-	float				lightmapStitch;
 	int					smoothNormals;
 	int					vertTexProj;
 	qboolean			noAlphaFix;
 	qboolean            noClip;
 	qboolean            noTJunc;
+	vec3_t              minlight;
+	vec3_t              ambient;
+	vec3_t              colormod; 
 
 	/* ydnar: surface classification */
 	vec3_t				mins, maxs;
@@ -1068,6 +1085,7 @@ typedef struct mapDrawSurface_s
 	
 	/* ydnar: editor/useful numbering */
 	int					entityNum;
+	int                 mapEntityNum;
 	int					surfaceNum;
 }
 mapDrawSurface_t;
@@ -1087,10 +1105,13 @@ typedef struct metaTriangle_s
 	mapDrawSurface_t    *ds;
 	shaderInfo_t		*si;
 	side_t				*side;
-	int					entityNum, planeNum, fogNum;
+	int					entityNum, mapEntityNum, planeNum, fogNum;
 	float               sampleSize;
 	char				castShadows, recvShadows;
+	vec3_t              minlight, ambient, colormod;
 	int					smoothNormals;
+	vec3_t				mins;
+	vec3_t				maxs;
 	vec4_t				plane;
 	vec3_t				lightmapAxis;
 	int					indexes[ 3 ];
@@ -1420,18 +1441,18 @@ outLightmap_t;
 
 typedef struct rawLightmap_s
 {
-	int                     index;
-	qboolean				finished, splotchFix, wrap[ 2 ];
+	qboolean				finished, splotchFix, wrap[ 2 ], stitch, translucent, unused2, unused3;
 	int						customWidth, customHeight;
 	float					brightness;
+	float                   shadeAngle;
 	float					filterRadius;
-	float                   stitchRadius;
-	
+
 	int						firstLightSurface, numLightSurfaces;	/* index into lightSurfaces */
 	int						numLightClusters, *lightClusters;
 	
 	float                   sampleSize;
 	float                   actualSampleSize;
+	float                   sampleOffset;
 	int						axisNum;
 
 	/* vortex: per-surface lighting control */
@@ -1443,7 +1464,7 @@ typedef struct rawLightmap_s
 	float                   aoGainScale;
 
 	int						entityNum;
-	int						recvShadows;
+	char					recvShadows;
 	vec3_t					mins, maxs, axis, origin, *vecs;
 	float					*plane;
 	int						w, h, sw, sh, used;
@@ -1468,6 +1489,8 @@ typedef struct rawLightmap_s
 	float					*bspDeluxels;
 	float					*bspNormals;
 	float					*superFloodLight; /* floodlight color */
+	float					*superTriorigins; /* sample real origins (on a triangle) */
+	float					*superTrinormals; /* triangle normals */
 }
 rawLightmap_t;
 
@@ -1494,12 +1517,11 @@ typedef struct surfaceInfo_s
 	int					parentSurfaceNum, childSurfaceNum;
 	int					entityNum, patchIterations;
 	float               sampleSize;
-	float               lightmapStitch;
-	char				castShadows, recvShadows;
+	char				castShadows, recvShadows, unused2, unused3;
 	float				longestCurve;
 	float				*plane;
 	vec3_t				axis, mins, maxs;
-	qboolean			hasLightmap, approximated;
+	qboolean			hasLightmap, approximated, lightmapStitch, unused1;
 	int					firstSurfaceCluster, numSurfaceClusters;
 	float               shadeAngle;
 }
@@ -1660,7 +1682,7 @@ void						PicoPrintFunc( int level, const char *str );
 void						PicoLoadFileFunc( char *name, byte **buffer, int *bufSize );
 picoModel_t					*FindModel( const char *name, int frame );
 picoModel_t					*LoadModel( const char *name, int frame );
-void						InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, float lightmapStitch, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes );
+void						InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, int mapEntityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t ambient, vec3_t colormod, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes );
 void						AddTriangleModels( int entityNum );
 
 
@@ -1721,13 +1743,14 @@ void						SetSurfaceExtra( mapDrawSurface_t *ds, int num );
 shaderInfo_t				*GetSurfaceExtraShaderInfo( int num );
 int							GetSurfaceExtraParentSurfaceNum( int num );
 int							GetSurfaceExtraEntityNum( int num );
+int                         GetSurfaceExtraMapEntityNum( int num );
 char						GetSurfaceExtraCastShadows( int num );
 char						GetSurfaceExtraRecvShadows( int num );
 float						GetSurfaceExtraSampleSize( int num );
 float						GetSurfaceExtraLongestCurve( int num );
 void						GetSurfaceExtraLightmapAxis( int num, vec3_t lightmapAxis );
 float						GetSurfaceExtraShadeAngle( int num );
-float						GetSurfaceExtraLightmapStitch( int num );
+qboolean					GetSurfaceExtraLightmapStitch( int num );
 
 void						WriteSurfaceExtraFile( const char *path );
 void						LoadSurfaceExtraFile( const char *path );
@@ -1799,13 +1822,14 @@ void                        SampleGrid(vec3_t origin, vec3_t outambient, vec3_t 
 
 void						SetupFloodLight();
 void						FloodlightRawLightmaps();
-void						FloodlightIlluminateLightmap( rawLightmap_t *lm );
 float						FloodLightForSample( trace_t *trace , float floodLightDistance, qboolean floodLightLowQuality);
 void						FloodLightRawLightmap(int num);
 
 void						IlluminateRawLightmap(int num);
+void						FilterRawLightmap(int num);
+void						StitchRawLightmap(int num);
 void						IlluminateVertexes(int num);
-void						DebugRawLightmap(int num);
+void						WriteRawLightmapsFile( const char *outFile );
 
 void						SetupBrushes( void );
 void						SetupClusters( void );
@@ -1871,7 +1895,6 @@ void						SetDrawVerts( int n );
 void						IncDrawVerts();
 void						SetDrawSurfaces(int n);
 void						SetDrawSurfacesBuffer();
-void						BSPFilesCleanup();
 
 void						SwapBlock( int *block, int size );
 
@@ -1897,8 +1920,9 @@ void						GetVectorForKey( const entity_t *ent, const char *key, vec3_t vec );
 entity_t					*FindTargetEntity( const char *target );
 void						GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, char *castShadows, char *recvShadows, qboolean isWorldspawn );
 void						GetEntityLightmapScale( const entity_t *ent, float *lightmapScale, float baseScale );
+void                        GetEntityLightmapAxis( const entity_t *ent, vec3_t lightmapAxis, vec3_t baseAxis );
 void						GetEntityNormalSmoothing( const entity_t *ent, int *smoothNormals, int baseSmoothing );
-void                        GetEntityLightmapStitch( const entity_t *ent, float *stitchRadius, float baseStitchRadius );
+void                        GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t minlight, vec3_t ambient, vec3_t colormod, qboolean setDefaults );
 
 /* bspfile_ibsp.c */
 void						LoadIBSPFile( const char *filename );
@@ -2003,7 +2027,7 @@ Q_EXTERN qboolean			nodetail Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nosubdivide Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noclipmodel Q_ASSIGN( qfalse ); /* vortex: disable misc_model "autoclip" spawnflag */
 Q_EXTERN qboolean			noclip Q_ASSIGN( qfalse ); /* globally disable BSP clipping of brush faces */
-Q_EXTERN qboolean			notjunc Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			noTJunc Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			fulldetail Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nodetailcollision Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			nofoliage Q_ASSIGN( qfalse ); /* vortex: don't load foliage file */
@@ -2028,7 +2052,6 @@ Q_EXTERN int				texRange Q_ASSIGN( 0 );
 Q_EXTERN qboolean			flat Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			meta Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			patchMeta Q_ASSIGN( qfalse );
-Q_EXTERN qboolean			broadMerge Q_ASSIGN( qfalse );          /* vortex: extensively merge drawsurfaces */
 Q_EXTERN qboolean			emitFlares Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugSurfaces Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugInset Q_ASSIGN( qfalse );
@@ -2193,6 +2216,7 @@ Q_EXTERN qboolean			noSurfaces Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			noStitch Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			patchShadows Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			cpmaHack Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			stitch Q_ASSIGN( qfalse );
 
 Q_EXTERN qboolean			deluxemap Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugDeluxemap Q_ASSIGN( qfalse );
@@ -2222,6 +2246,7 @@ Q_EXTERN qboolean			noCollapse Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			exportLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			externalLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN int				lmCustomSize Q_ASSIGN( LIGHTMAP_WIDTH );
+Q_EXTERN int				lmMaxSurfaceSize Q_ASSIGN( 0 );
 Q_EXTERN qboolean			lightmapsRGB Q_ASSIGN( qfalse );
 
 /* vortex: dirtmapping/ambient occlusion */
@@ -2293,6 +2318,7 @@ Q_EXTERN qboolean			debugCluster Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugOrigin Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugStitch Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugLightmap Q_ASSIGN( qfalse );
+Q_EXTERN qboolean			debugRawLightmap Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			debugGrid Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			lightmapBorder Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			lightmapDebugState Q_ASSIGN( qfalse );
@@ -2443,10 +2469,13 @@ Q_EXTERN int				numNonPlanarsLightmapped Q_ASSIGN( 0 );
 Q_EXTERN int				numPatchesLightmapped Q_ASSIGN( 0 );
 Q_EXTERN int				numPlanarPatchesLightmapped Q_ASSIGN( 0 );
 
+/* luxels */
+Q_EXTERN ThreadMutex        LightmapGrowStitchMutex;
 Q_EXTERN int				numLuxels Q_ASSIGN( 0 );
 Q_EXTERN int				numLuxelsMapped Q_ASSIGN( 0 );
 Q_EXTERN int				numLuxelsOccluded Q_ASSIGN( 0 );
 Q_EXTERN int				numLuxelsIlluminated Q_ASSIGN( 0 );
+Q_EXTERN int				numLuxelsStitched Q_ASSIGN( 0 );
 Q_EXTERN int				numVertsIlluminated Q_ASSIGN( 0 );
 
 /* vortex: lightgrid areas */

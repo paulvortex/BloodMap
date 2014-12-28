@@ -275,7 +275,7 @@ void Foliage( mapDrawSurface_t *src )
 		m4x4_scale_for_vec3( transform, scale );
 		
 		/* add the model to the bsp */
-		InsertModel( foliage->model, 0, 0, transform, 1.0, NULL, NULL, src->entityNum, src->castShadows, src->recvShadows, 0, src->lightmapScale, src->lightmapStitch, 0, src->smoothNormals, src->vertTexProj, src->noAlphaFix, 0, src->skybox, NULL, NULL, NULL, NULL );
+		InsertModel( foliage->model, 0, 0, transform, 1.0, NULL, NULL, src->entityNum, src->mapEntityNum, src->castShadows, src->recvShadows, 0, src->lightmapScale, NULL, src->minlight, src->ambient, src->colormod, 0, src->smoothNormals, src->vertTexProj, src->noAlphaFix, 0, src->skybox, NULL, NULL, NULL, NULL );
 		
 		/* walk each new surface */
 		for( i = oldNumMapDrawSurfs; i < numMapDrawSurfs; i++ )

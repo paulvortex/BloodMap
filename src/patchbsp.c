@@ -30,7 +30,8 @@ entity_t *AllocateEntity(entity_t *base)
 
 	e = &entities[numEntities];
 	memset(e, 0, sizeof(entity_t));
-	e->epairs = base->epairs;
+	if (base != NULL)
+		e->epairs = base->epairs;
 	numEntities++;
 
 	return e;

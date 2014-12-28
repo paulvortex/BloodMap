@@ -125,18 +125,6 @@ void SetDrawSurfaces(int n)
 	memset(bspDrawSurfaces, 0, n * sizeof(bspDrawVert_t));
 }
 
-void BSPFilesCleanup()
-{
-	if(bspDrawVerts != 0)
-		free(bspDrawVerts);
-	if(bspDrawSurfaces != 0)
-		free(bspDrawSurfaces);
-	if(bspLightBytes != 0)
-		free(bspLightBytes);
-	if(bspGridPoints != 0)
-		free(bspGridPoints);
-}
-
 
 
 
@@ -901,6 +889,60 @@ void GetEntityLightmapScale( const entity_t *ent, float *lightmapScale, float ba
 }
 
 /*
+GetEntityLightmapAxis() - vortex
+gets an entity's lightmap axis
+*/
+
+void GetEntityLightmapAxis( const entity_t *ent, vec3_t lightmapAxis, vec3_t baseAxis )
+{
+	const char *value;
+	int a;
+
+	value = NULL;
+	if( KeyExists( ent, "_la" ) )
+		value = ValueForKey( ent, "_la" );
+	if( KeyExists( ent, "_lightmapaxis" ) )
+		value = ValueForKey( ent, "_lightmapaxis" );
+	if( KeyExists( ent, "lightmapaxis" ) )
+		value = ValueForKey( ent, "lightmapaxis" );
+
+	/* get axis */
+	if( value == NULL )
+	{
+		if (baseAxis == NULL)
+			VectorClear( lightmapAxis );
+		else
+			VectorCopy( baseAxis, lightmapAxis );
+		return;
+	}
+	if( !Q_stricmp( value, "z" ) )
+		VectorSet( lightmapAxis, 0, 0, 1 );
+	else if( !Q_stricmp( value, "-z" ) )
+		VectorSet( lightmapAxis, 0, 0, -1 );
+	else if( !Q_stricmp( value, "y" ) )
+		VectorSet( lightmapAxis, 0, 1, 0 );
+	else if( !Q_stricmp( value, "-y" ) )
+		VectorSet( lightmapAxis, 0, -1, 0 );
+	else if( !Q_stricmp( value, "x" ) )
+		VectorSet( lightmapAxis, 1, 0, 0 );
+	else if( !Q_stricmp( value, "-x" ) )
+		VectorSet( lightmapAxis, -1, 0, 0 );
+	else
+	{
+		a = sscanf_s(value, "%f %f %f", &lightmapAxis[0], &lightmapAxis[1], &lightmapAxis[2]);
+		if (a != 3)
+		{
+			if (baseAxis == NULL)
+				VectorClear( lightmapAxis );
+			else
+				VectorCopy( baseAxis, lightmapAxis );
+		}
+		else
+			VectorNormalize( lightmapAxis, lightmapAxis );
+	}
+}
+
+/*
 GetEntityNormalSmoothing() - vortex
 gets an entity's normal smoothing
 */
@@ -915,15 +957,80 @@ void GetEntityNormalSmoothing( const entity_t *ent, int *smoothNormals, int base
 }
 
 /*
-GetEntityLightmapStitch() - vortex
-gets entity lightmap stitching
+GetEntityMinlightAmbientColor() - vortex
+gets an entity's minlight, ambient light, color mod
 */
 
-void GetEntityLightmapStitch( const entity_t *ent, float *stitchRadius, float baseStitchRadius )
+void GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t minlight, vec3_t ambient, vec3_t colormod, qboolean setDefaults )
 {
-	*stitchRadius = baseStitchRadius;
-	if( KeyExists( ent, "_lst" ) )
-		*stitchRadius = FloatForKey(ent, "_lst");
-	if( KeyExists( ent, "_lightmapstitch" ) )
-		*stitchRadius  = FloatForKey(ent, "_lightmapstitch");
+	vec3_t _color;
+	float f;
+
+	/* find the optional _color key (used for _ambient and _minlight) */
+	GetVectorForKey( ent, "_color", _color );
+	if( VectorIsNull( _color ) )
+		VectorSet( _color, 1.0, 1.0, 1.0 );
+	if( color != NULL )
+		VectorCopy( _color, color );
+
+	/* _minlight key */
+	if( minlight != NULL )
+	{
+		if( setDefaults == qtrue )
+			VectorSet( minlight, 0, 0, 0 );
+		if( KeyExists( ent, "minlight" ) )
+		{
+		if( sscanf( ValueForKey( ent, "minlight"), "%f %f %f", &minlight[0], &minlight[1], &minlight[2] ) != 3 )
+		{
+			f = FloatForKey( ent, "minlight" );
+			VectorScale( _color, f, minlight );
+		}
+		}
+		if( KeyExists( ent, "_minlight" ) )
+		{
+		if( sscanf( ValueForKey( ent, "_minlight"), "%f %f %f", &minlight[0], minlight[1], &minlight[2] ) != 3 )
+		{
+			f = FloatForKey( ent, "_minlight" );
+			VectorScale( _color, f, minlight );
+		}
+		}
+	}
+
+	/* _ambient key */
+	if( ambient != NULL )
+	{
+		if( setDefaults == qtrue )
+			VectorSet( ambient, 0, 0, 0 );
+		if( KeyExists( ent, "ambient" ) )
+		{
+		if( sscanf( ValueForKey( ent, "ambient"), "%f %f %f", &ambient[0], &ambient[1], &ambient[2] ) != 3 )
+		{
+			f = FloatForKey( ent, "ambient" );
+			VectorScale( _color, f, ambient );
+		}
+		}
+		if( KeyExists( ent, "_ambient" ) )
+		{
+		if( sscanf( ValueForKey( ent, "_ambient"), "%f %f %f", &ambient[0], &ambient[1], &ambient[2] ) != 3 )
+		{
+			f = FloatForKey( ent, "_ambient" );
+			VectorScale( _color, f, ambient );
+		}
+		}
+	}
+	
+	/* _colormod key */
+	if( colormod != NULL )
+	{
+		if( setDefaults == qtrue )
+			VectorSet( colormod, 1, 1, 1 );
+		if( KeyExists( ent, "_colormod" ) )
+		{
+		if( sscanf( ValueForKey( ent, "_colormod"), "%f %f %f", &colormod[0], &colormod[1], &colormod[2] ) != 3 )
+		{
+			f = FloatForKey( ent, "_colormod" );
+			VectorSet( colormod, f, f, f );
+		}
+		}
+	}
 }

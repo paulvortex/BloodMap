@@ -51,8 +51,12 @@ typedef struct decalProjector_s
 	vec4_t					texMat[ 2 ];
 	float					backfacecull;
 	float                   lightmapScale;
-	float                   lightmapStitch;
+	vec3_t                  lightmapAxis;
+	vec3_t                  minlight;
+	vec3_t                  ambient;
+	vec3_t                  colormod;
 	int                     smoothNormals;
+	int                     mapEntityNum;
 }
 decalProjector_t;
 
@@ -281,7 +285,7 @@ MakeDecalProjector()
 creates a new decal projector from a triangle
 */
 
-static int MakeDecalProjector( shaderInfo_t *si, vec4_t projection, float distance, int numVerts, bspDrawVert_t **dv, float backfacecull, float lightmapScale, float lightmapStitch, int smoothNormals )
+static int MakeDecalProjector( int mapEntityNum, shaderInfo_t *si, vec4_t projection, float distance, int numVerts, bspDrawVert_t **dv, float backfacecull, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t ambient, vec3_t colormod, int smoothNormals )
 {
 	int					i, j;
 	decalProjector_t	*dp;
@@ -307,8 +311,12 @@ static int MakeDecalProjector( shaderInfo_t *si, vec4_t projection, float distan
 	dp->numPlanes = numVerts + 2;
 	dp->backfacecull = backfacecull;
 	dp->lightmapScale = lightmapScale;
-	dp->lightmapStitch = lightmapStitch;
+	VectorCopy( lightmapAxis, dp->lightmapAxis );
+	VectorCopy( minlight, dp->minlight );
+	VectorCopy( ambient, dp->ambient );
+	VectorCopy( colormod, dp->colormod );
 	dp->smoothNormals = smoothNormals;
+	dp->mapEntityNum = mapEntityNum;
 	
 	/* make texture matrix */
 	if( !MakeTextureMatrix( dp, projection, dv[ 0 ], dv[ 1 ], dv[ 2 ] ) )
@@ -365,9 +373,10 @@ finds all decal entities and creates decal projectors
 void ProcessDecals( void )
 {
 	int					i, j, x, y, pw[ 5 ], r, iterations, smoothNormals;
-	float				distance, lightmapScale, lightmapStitch, backfaceAngle;
+	float				distance, lightmapScale, backfaceAngle;
 	vec4_t				projection, plane;
-	vec3_t				origin, target, delta;
+	vec3_t				origin, target, delta, lightmapAxis;
+	vec3_t              minlight, ambient, colormod;
 	entity_t			*e, *e2;
 	parseMesh_t			*p;
 	mesh_t				*mesh, *subdivided;
@@ -426,11 +435,14 @@ void ProcessDecals( void )
 		/* vortex: get lightmap scaling value for this entity */
 		GetEntityLightmapScale( e, &lightmapScale, 0);
 
+		/* vortex: get lightmap axis for this entity */
+		GetEntityLightmapAxis( e, lightmapAxis, NULL );
+
 		/* vortex: per-entity normal smoothing */
 		GetEntityNormalSmoothing( e, &smoothNormals, 0);
 
-		/* vortex: per-entity lightmap stitch */
-		GetEntityLightmapStitch( e, &lightmapStitch, -1);
+		/* vortex: per-entity _minlight, _ambient, _color, _colormod */
+		GetEntityMinlightAmbientColor( e, NULL, minlight, ambient, colormod, qtrue );
 		
 		/* vortex: _backfacecull */
 		if ( KeyExists(e, "_backfacecull") )
@@ -502,17 +514,17 @@ void ProcessDecals( void )
 							fabs( DotProduct( dv[ 1 ]->xyz, plane ) - plane[ 3 ] ) <= PLANAR_EPSILON )
 						{
 							/* make a quad projector */
-							MakeDecalProjector( p->shaderInfo, projection, distance, 4, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapStitch, smoothNormals);
+							MakeDecalProjector( i, p->shaderInfo, projection, distance, 4, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, ambient, colormod, smoothNormals);
 						}
 						else
 						{
 							/* make first triangle */
-							MakeDecalProjector( p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapStitch, smoothNormals);
+							MakeDecalProjector( i, p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, ambient, colormod, smoothNormals);
 							
 							/* make second triangle */
 							dv[ 1 ] = dv[ 2 ];
 							dv[ 2 ] = dv[ 3 ];
-							MakeDecalProjector( p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapStitch, smoothNormals);
+							MakeDecalProjector( i, p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, ambient, colormod, smoothNormals);
 						}
 					}
 				}
@@ -608,16 +620,23 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 	
 	/* make a new surface */
 	ds2 = AllocDrawSurface( SURFACE_DECAL );
-	
+
 	/* set it up */
 	ds2->entityNum = ds->entityNum;
+	ds2->mapEntityNum = dp->mapEntityNum;
 	ds2->castShadows = ds->castShadows;
 	ds2->recvShadows = ds->recvShadows;
 	ds2->shaderInfo = dp->si;
 	ds2->fogNum = ds->fogNum;	/* why was this -1? */
 	ds2->lightmapScale = (dp->lightmapScale) ? dp->lightmapScale : ds->lightmapScale;
+	if (dp->lightmapAxis[ 0 ] || dp->lightmapAxis[ 1 ] || dp->lightmapAxis[ 2 ])
+		VectorCopy(dp->lightmapAxis, ds2->lightmapAxis);
+	else
+		VectorCopy(ds->lightmapAxis, ds2->lightmapAxis);
+	VectorCopy(dp->minlight, ds2->minlight); /* fixme: use surface's colormod? */
+	VectorCopy(dp->ambient, ds2->ambient);
+	VectorCopy(dp->colormod, ds2->colormod);
 	ds2->smoothNormals = (dp->smoothNormals) ? dp->smoothNormals : ds->smoothNormals;
-	ds2->lightmapStitch = (dp->lightmapStitch >= 0) ? dp->lightmapStitch : ds->lightmapStitch;
 	ds2->numVerts = w->numpoints;
 	ds2->verts = (bspDrawVert_t *)safe_malloc( ds2->numVerts * sizeof( *ds2->verts ) );
 	memset( ds2->verts, 0, ds2->numVerts * sizeof( *ds2->verts ) );

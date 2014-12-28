@@ -141,10 +141,8 @@ extern	qboolean	com_eof;
 
 char *copystring(const char *s);
 
-
-void CRC_Init(unsigned short *crcvalue);
-void CRC_ProcessByte(unsigned short *crcvalue, byte data);
-unsigned short CRC_Value(unsigned short crcvalue);
+unsigned short CRC_Block(const unsigned char *data, size_t size);
+unsigned short CRC_Block_CaseInsensitive(const unsigned char *data, size_t size);
 
 void	CreatePath( const char *path );
 void	QCopyFile( const char *from, const char *to );

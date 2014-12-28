@@ -26,17 +26,19 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 
 ------------------------------------------------------------------------------- */
 
-
-
 /* marker */
 #define SURFACE_META_C
-
-
 
 /* dependencies */
 #include "q3map2.h"
 
+/*
+================================================================================
 
+ Metasurface Creation
+
+================================================================================
+*/
 
 #define LIGHTMAP_EXCEEDED	-1
 #define S_EXCEEDED			-2
@@ -49,17 +51,16 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 #define GROW_META_VERTS		32768
 #define GROW_META_TRIANGLES	16384
 
-static int					numMetaSurfaces, numPatchMetaSurfaces;
+int					numMetaSurfaces, numPatchMetaSurfaces;
 
-static int					maxMetaVerts = 0;
-static int					numMetaVerts = 0;
-static int					firstSearchMetaVert = 0;
-static bspDrawVert_t		*metaVerts = NULL;
+int					maxMetaVerts = 0;
+int					numMetaVerts = 0;
+int					firstSearchMetaVert = 0;
+bspDrawVert_t		*metaVerts = NULL;
 
-static int					maxMetaTriangles = 0;
-static int					numMetaTriangles = 0;
-static metaTriangle_t		*metaTriangles = NULL;
-
+int					maxMetaTriangles = 0;
+int					numMetaTriangles = 0;
+metaTriangle_t		*metaTriangles = NULL;
 
 /*
 ClearMetaVertexes()
@@ -103,8 +104,6 @@ static int FindMetaVertex( bspDrawVert_t *src )
 	return (numMetaVerts - 1);
 }
 
-
-
 /*
 AddMetaTriangle()
 adds a new meta triangle, allocating more memory if necessary
@@ -132,8 +131,6 @@ static int AddMetaTriangle( void )
 	numMetaTriangles++;
 	return numMetaTriangles - 1;
 }
-
-
 
 /*
 FindMetaTriangle()
@@ -198,7 +195,7 @@ int FindMetaTriangle( metaTriangle_t *src, bspDrawVert_t *a, bspDrawVert_t *b, b
 	src->indexes[ 1 ] = FindMetaVertex( b );
 	src->indexes[ 2 ] = FindMetaVertex( c );
 
-	/* find area of meta triagle (for smoothing) */
+	/* find area and bounds of meta triagle (for smoothing) */	
 	VectorSubtract(a->xyz, b->xyz, dir);
 	ab = VectorLength(dir);
 	VectorSubtract(b->xyz, c->xyz, dir);
@@ -207,6 +204,12 @@ int FindMetaTriangle( metaTriangle_t *src, bspDrawVert_t *a, bspDrawVert_t *b, b
 	ac = VectorLength(dir);
 	s = (ab + bc + ac)/2;
 	src->area = max(1, sqrt(max(1, s*(s - ab)*(s - bc)*(s - ac)))); // a max is here to fix bogus triangles
+
+	/* find bounds of meta triagle */	
+	ClearBounds( src->mins, src->maxs );
+	AddPointToBounds( a->xyz, src->mins, src->maxs );
+	AddPointToBounds( b->xyz, src->mins, src->maxs );
+	AddPointToBounds( c->xyz, src->mins, src->maxs );
 
 	/* try to find an existing triangle */
 	#ifdef USE_EXHAUSTIVE_SEARCH
@@ -228,8 +231,6 @@ int FindMetaTriangle( metaTriangle_t *src, bspDrawVert_t *a, bspDrawVert_t *b, b
 	/* return the triangle index */
 	return triIndex;
 }
-
-
 
 /*
 SurfaceToMetaTriangles()
@@ -260,14 +261,18 @@ static void SurfaceToMetaTriangles( mapDrawSurface_t *ds )
 			src.si = ds->shaderInfo;
 			src.side = (ds->sideRef != NULL ? ds->sideRef->side : NULL);
 			src.entityNum = ds->entityNum;
+			src.mapEntityNum = ds->mapEntityNum;
 			src.planeNum = ds->planeNum;
 			src.castShadows = ds->castShadows;
 			src.recvShadows = ds->recvShadows;
+			VectorCopy( ds->minlight, src.minlight );
+			VectorCopy( ds->ambient, src.ambient );
+			VectorCopy( ds->colormod, src.colormod );
 			src.smoothNormals = ds->smoothNormals;
 			src.fogNum = ds->fogNum;
 			src.sampleSize = ds->sampleSize;
 			VectorCopy( ds->lightmapAxis, src.lightmapAxis );
-			
+
 			/* copy drawverts */
 			memcpy( &a, &ds->verts[ ds->indexes[ i ] ], sizeof( a ) );
 			memcpy( &b, &ds->verts[ ds->indexes[ i + 1 ] ], sizeof( b ) );
@@ -282,8 +287,6 @@ static void SurfaceToMetaTriangles( mapDrawSurface_t *ds )
 	/* clear the surface (free verts and indexes, sets it to SURFACE_BAD) */
 	ClearSurface( ds );
 }
-
-
 
 /*
 TriangulatePatchSurface()
@@ -396,8 +399,6 @@ void TriangulatePatchSurface( entity_t *e , mapDrawSurface_t *ds )
 	/* classify it */
 	ClassifySurfaces( 1, ds );
 }
-
-
 
 /*
 FanFaceSurface() - ydnar
@@ -706,6 +707,13 @@ void MakeEntityMetaTriangles( entity_t *e )
 }
 
 
+/*
+================================================================================
+
+ TJunction Fixing
+
+================================================================================
+*/
 
 /*
 PointTriangleIntersect()
@@ -790,8 +798,6 @@ void CreateEdge( vec4_t plane, vec3_t a, vec3_t b, edge_t *edge )
 	edge->plane[ 3 ] = DotProduct( a, edge->plane );
 }
 
-
-
 /*
 FixMetaTJunctions()
 fixes t-junctions on meta triangles
@@ -840,7 +846,7 @@ void FixMetaTJunctions( void )
 		
 		/* attempt to early out */
 		si = tri->si;
-		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->notjunc )
+		if( (si->compileFlags & C_NODRAW) || si->autosprite || si->noTJunc )
 			continue;
 		
 		/* calculate planes */
@@ -973,342 +979,265 @@ void FixMetaTJunctions( void )
 }
 
 /*
-SmoothMetaTrianglesEdgeBased()
-vortex: averages coincident vertex normals in the meta triangles using edge-based smoothing technique
+================================================================================
+
+ Vertex Smoothing
+
+================================================================================
 */
 
-#define SMOOTH_MAX_SAMPLES          256
-#define SMOOTH_THETA_EPSILON        0.000001f
-#define SMOOTH_EQUAL_NORMAL_EPSILON 0.1f
-#define SMOOTH_ORIGIN_EPSILON       0.05f
+#define FIND_META_PLANE_EPSILON 0.1
 
-void SmoothMetaTrianglesEdgeBased( void )
+typedef struct
 {
-	int i, j, k, d, f, fOld, start, numShadeTriangles, points, point0, point1, point2, smooth;
-	int numSmoothedVerts = 0, numSmoothedEdges = 0, numSmoothedTriangles = 0;
-	float shadeAngle, testAngle, defaultShadeAngle, *shadeAngles;
-	metaTriangle_t **shadeTriangles;
-	vec3_t *shadeNormals, average, a, b, c;
-	metaTriangle_t *tri, *tri2;
+	int   metaVert;
+	float distance;
+	float area;
+}smoothVert_t;
 
-	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- SmoothMetaTriangles ---\n" );
+int             maxShadeAngle = 0;
+int             defaultShadeAngle = 0;
+int             numComparisons = 0;
+metaTriangle_t *metaTrianglePlaneTriangles;
+float          *metaVertShadeAngles;
+float          *metaVertAreas;
 
-	/* set default shade angle */
-	defaultShadeAngle = DEG2RAD( npDegrees );
+#define SMOOTH_MAX_SAMPLES 1024
+#define SMOOTH_THETA_EPSILON 0.000001f
+#define SMOOTH_EQUAL_NORMAL_EPSILON 0.1f
+#define SMOOTH_ORIGIN_EPSILON 0.05f
 
-	/* init pacifier */
-	fOld = -1;
-	start = I_FloatTime();
+/*
+CompareMetaTrianglesPlane()
+compare function for qsort (MetaTriangleFindAreaWeight)
+*/
 
-	/* allocate tables */
-	shadeAngles = (float *)safe_malloc( numMetaTriangles * sizeof( float ) );
-	memset( shadeAngles, 0, numMetaTriangles * sizeof( float ) );
-	shadeTriangles = (metaTriangle_t **)safe_malloc( numMetaTriangles * sizeof( metaTriangle_t * ) );
-	memset( shadeTriangles, 0, numMetaTriangles * sizeof( metaTriangle_t * ) );
-	numShadeTriangles = 0;
-	shadeNormals = (vec3_t *)safe_malloc( numMetaTriangles * sizeof( vec3_t ) );
-	memset( shadeNormals, 0, numMetaTriangles * sizeof( vec3_t ) );
-
-	/* run through every surface and build shade tables */
-	for( i = 0; i < numMetaTriangles; i++ )
-	{
-		tri = &metaTriangles[ i ];
-
-		/* get shade angle */
-		shadeAngle = tri->smoothNormals;
-		if (shadeAngle > 0.0f)
-			shadeAngle = DEG2RAD( shadeAngle );
-		else if( tri->si->shadeAngleDegrees > 0.0f )
-			shadeAngle = DEG2RAD( tri->si->shadeAngleDegrees );
-		else
-			shadeAngle = defaultShadeAngle;
-		if ( shadeAngle <= 0.0f )
-			continue;
-		
-		/* store */
-		shadeTriangles[ numShadeTriangles ] = tri;
-		shadeAngles[ numShadeTriangles ] = shadeAngle;
-
-		/* build face normal */
-		for (j = 0; j < 3; j++)
-		{
-			a[j] = metaVerts[ tri->indexes[ 0 ] ].xyz[ j ] - metaVerts[ tri->indexes[ 1 ] ].xyz[ j ];
-			b[j] = metaVerts[ tri->indexes[ 2 ] ].xyz[ j ] - metaVerts[ tri->indexes[ 1 ] ].xyz[ j ];
-		}
-		CrossProduct(a, b, average);
-		VectorNormalize(average, shadeNormals[ numShadeTriangles ]);
-
-		/* increase */
-		numShadeTriangles++;
-	}
-
-	/* now process each shaded triangle */
-	for( i = 0; i < numShadeTriangles; i++ )
-	{
-		/* print pacifier */
-		f = 10 * i / numShadeTriangles;
-		while( fOld < f )
-		{
-			fOld++;
-			Sys_FPrintf( SYS_VRB, "%d...", fOld );
-		}
-
-		/* get triangle */
-		tri = shadeTriangles[ i ];
-		smooth = 0;
-
-		/* process neighboring triangles */
-		VectorCopy(metaVerts[ tri->indexes[ 0 ] ].xyz, a);
-		VectorCopy(metaVerts[ tri->indexes[ 1 ] ].xyz, b);
-		VectorCopy(metaVerts[ tri->indexes[ 2 ] ].xyz, c);
-		for( j = 0; j < numShadeTriangles; j++ )
-		{
-			tri2 = shadeTriangles[ j ];
-
-			/* find edges */
-			points = 0;
-			point0 = point1 = point2 = -1;
-			for (k = 0; k < 3; k++)
-			{
-				d = tri2->indexes[ k ];
-				if( point0 < 0 && VectorCompareExt( metaVerts[ d ].xyz, a, SMOOTH_ORIGIN_EPSILON ) == qtrue )
-				{
-					point0 = d;
-					points++;
-					continue;
-				}
-				if( point1 < 0 && VectorCompareExt( metaVerts[ d ].xyz, b, SMOOTH_ORIGIN_EPSILON ) == qtrue )
-				{
-					point1 = d;
-					points++;
-					continue;
-				}
-				if( point2 < 0 && VectorCompareExt( metaVerts[ d ].xyz, c, SMOOTH_ORIGIN_EPSILON ) == qtrue )
-				{
-					point2 = d;
-					points++;
-					continue;
-				}
-			}
-
-			/* no edges? */
-			if (points != 2)
-				continue;
-
-			/* use smallest shade angle */
-			shadeAngle = max(shadeAngles[ i ], shadeAngles[ j ]);
-
-			/* test normal */
-			testAngle = acos( DotProduct( shadeNormals[ i ], shadeNormals[ j ] ) ) + SMOOTH_THETA_EPSILON;
-			if( testAngle >= shadeAngle )
-				continue;
-			
-			/* smooth out */
-			VectorAdd( shadeNormals[ i ], shadeNormals[ j ], average );
-			VectorNormalize( average, average );
-			if( point0 >= 0 )
-			{
-				if( point1 >= 0 )
-				{
-					/* AB */
-					VectorCopy( average, metaVerts[ tri->indexes[ 0 ] ].normal );
-					VectorCopy( average, metaVerts[ tri->indexes[ 1 ] ].normal );
-					VectorCopy( average, metaVerts[ point0 ].normal );
-					VectorCopy( average, metaVerts[ point1 ].normal );
-					numSmoothedVerts += 4;
-					numSmoothedEdges++;
-					smooth |= 1;
-				}
-				else
-				{
-					/* AC */
-					VectorCopy( average, metaVerts[ tri->indexes[ 0 ] ].normal );
-					VectorCopy( average, metaVerts[ tri->indexes[ 2 ] ].normal );
-					VectorCopy( average, metaVerts[ point0 ].normal );
-					VectorCopy( average, metaVerts[ point2 ].normal );
-					numSmoothedVerts += 4;
-					numSmoothedEdges++;
-					smooth |= 4;
-				}
-			}
-			else
-			{
-				/* BC */
-				VectorCopy( average, metaVerts[ tri->indexes[ 1 ] ].normal );
-				VectorCopy( average, metaVerts[ tri->indexes[ 2 ] ].normal );
-				VectorCopy( average, metaVerts[ point1 ].normal );
-				VectorCopy( average, metaVerts[ point2 ].normal );
-				numSmoothedVerts += 4;
-				numSmoothedEdges++;
-				smooth |= 2;
-			}
-			
-			/* triangle is completely smoothed? */
-			if( smooth == 7 )
-				break;
-		}
-
-		/* add to stats */
-		if( smooth )
-			numSmoothedTriangles++;
-	}
-
-	/* free the tables */
-	free( shadeAngles );
-	free( shadeTriangles );
-	free( shadeNormals );
-	
-	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
-
-	/* emit some stats */
-	Sys_FPrintf( SYS_VRB, "%9d smoothed triangles\n", numSmoothedTriangles );
-	Sys_FPrintf( SYS_VRB, "%9d smoothed vertexes\n", numSmoothedVerts );
-	Sys_FPrintf( SYS_VRB, "%9d smoothed edges\n", numSmoothedEdges );
+static int CompareMetaTrianglesPlane( const void *a, const void *b ) 
+{ 
+	if( ((metaTriangle_t*) a)->plane[ 3 ] < ((metaTriangle_t*) b)->plane[ 3 ] ) 
+		return -1; 
+	if( ((metaTriangle_t*) a)->plane[ 3 ] > ((metaTriangle_t*) b)->plane[ 3 ] )	
+		return 1; 
+	return 0;
 }
 
-#define SMOOTH_USE_AREA_WEIGHTING
-#define SMOOTH_USE_AREA_WEIGHTING_POWER 1
+/*
+MetaTriangleFindAreaWeight()
+find out meta triangle plane area (for area weighting)
+*/
+void MetaTriangleFindAreaWeight( int metaTriangleNum )
+{
+	vec3_t mins, maxs, a, b, c, normal;
+	float shadeAngle, area, planedist;
+	int i, startTriangle, endTriangle;
+	metaTriangle_t *tri, *tri2;
+
+	/* get triangle */
+	tri = &metaTrianglePlaneTriangles[ metaTriangleNum ];
+	VectorCopy( metaVerts[ tri->indexes[ 0 ] ].xyz, a );
+	VectorCopy( metaVerts[ tri->indexes[ 1 ] ].xyz, b );
+	VectorCopy( metaVerts[ tri->indexes[ 2 ] ].xyz, c );
+	VectorCopy( tri->mins, mins );
+	VectorCopy( tri->maxs, maxs );
+	VectorCopy( tri->plane, normal );
+	planedist = tri->plane[ 3 ];
+
+	/* find adjastent triangles */
+	for(startTriangle = metaTriangleNum; startTriangle > 0; startTriangle--)
+		if ( ( planedist - metaTrianglePlaneTriangles[ startTriangle ].plane[ 3 ] ) > FIND_META_PLANE_EPSILON)
+			break;
+	for(endTriangle = metaTriangleNum + 1; endTriangle < numMetaTriangles; endTriangle++)
+		if ( ( planedist - metaTrianglePlaneTriangles[ endTriangle ].plane[ 3 ] ) < -FIND_META_PLANE_EPSILON)
+			break;
+
+	/* get shade angle */
+	shadeAngle = tri->smoothNormals;
+	if (tri->si->noSmooth || (tri->si->compileFlags & C_NODRAW) || shadeAngle < 0)
+		shadeAngle = -1;
+	else if (shadeAngle > 0.0f)
+		shadeAngle = DEG2RAD( shadeAngle );
+	else if( tri->si->shadeAngleDegrees > 0.0f )
+		shadeAngle = DEG2RAD( tri->si->shadeAngleDegrees );
+	else
+		shadeAngle = defaultShadeAngle;
+
+	/* flag verts */
+	maxShadeAngle = max(shadeAngle, maxShadeAngle);
+	for( i = 0; i < 3; i++ )
+	{
+		if (metaVertShadeAngles[ tri->indexes[ i ] ] > 0 && shadeAngle >= 0)
+			metaVertShadeAngles[ tri->indexes[ i ] ] = max(shadeAngle, metaVertShadeAngles[ tri->indexes[ i ] ]);
+		else
+			metaVertShadeAngles[ tri->indexes[ i ] ] = shadeAngle;
+	}
+
+	/* calculate adjastent surfaces area */
+	area = tri->area;
+	for( i = startTriangle, tri2 = &metaTrianglePlaneTriangles[ startTriangle ]; i < endTriangle; i++, tri2++ )
+	{
+		/* not same triangle */
+		if( i == metaTriangleNum )
+			continue;
+
+		/* compare planes */
+		if( DotProduct( normal, tri2->plane ) < 0.99f )
+			continue;
+
+		/* must share at least one vertex */
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 0 ] ].xyz, metaVerts[ tri->indexes[ 0 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 0 ] ].xyz, metaVerts[ tri->indexes[ 1 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 0 ] ].xyz, metaVerts[ tri->indexes[ 2 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 1 ] ].xyz, metaVerts[ tri->indexes[ 0 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 1 ] ].xyz, metaVerts[ tri->indexes[ 1 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 1 ] ].xyz, metaVerts[ tri->indexes[ 2 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 2 ] ].xyz, metaVerts[ tri->indexes[ 0 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 2 ] ].xyz, metaVerts[ tri->indexes[ 1 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		if( VectorCompareExt( metaVerts[ tri2->indexes[ 2 ] ].xyz, metaVerts[ tri->indexes[ 2 ] ].xyz, 0.1f ) == qtrue )
+			goto shared;
+		continue;
+shared:
+
+		/* add area */
+		area += tri2->area;
+	}
+
+	/* set area */
+	metaVertAreas[ tri->indexes[ 0 ] ] = area;
+	metaVertAreas[ tri->indexes[ 1 ] ] = area;
+	metaVertAreas[ tri->indexes[ 2 ] ] = area;
+}
+
+/*
+CompareSmoothVerts()
+compare function for qsort (SmoothMetaTriangles)
+*/
+
+static int CompareSmoothVerts( const void *a, const void *b ) 
+{
+	if( ((smoothVert_t*) a)->distance < ((smoothVert_t*) b)->distance )
+		return -1;
+	if( ((smoothVert_t*) a)->distance > ((smoothVert_t*) b)->distance )
+		return 1;
+	return 0;
+}
+
+/*
+SmoothMetaTriangles()
+averages coincident vertex normals in the meta triangles
+*/
+
 void SmoothMetaTriangles( void )
 {
-#if 0
-	/* new method */
-	SmoothMetaTrianglesEdgeBased();
-#else
-	int i, j, f, fOld, start, numVerts, numSmoothed;
-	float shadeAngle, defaultShadeAngle, maxShadeAngle, testAngle, *shadeAngles;
+	int i, j, f, fOld, start, vertIndex, numVerts, startVert, endVert, numSmoothed, numSmoothVerts;
+	float shadeAngle, testAngle, vertDist;
+	metaTriangle_t *tri;
+	smoothVert_t *smoothVerts;
 	vec3_t org, normal, average;
 	int	indexes[ SMOOTH_MAX_SAMPLES ];
-	metaTriangle_t *tri, *tri2;
-#ifndef SMOOTH_USE_AREA_WEIGHTING
-	int numVotes, k;
-	vec3_t votes[ SMOOTH_MAX_SAMPLES ];
-#endif
 
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- SmoothMetaTriangles ---\n" );
-	
-	/* allocate shade angle table */
-	shadeAngles = (float *)safe_malloc( numMetaVerts * sizeof( float ) );
-	memset( shadeAngles, 0, numMetaVerts * sizeof( float ) );
-	
-	/* set default shade angle */
-	defaultShadeAngle = DEG2RAD( npDegrees );
-	maxShadeAngle = 0.0f;
-	
-	/* run through every surface and flag verts belonging to non-lightmapped surfaces and set per-vertex smoothing angle */
-	for( i = 0; i < numMetaTriangles; i++ )
-	{
-		tri = &metaTriangles[ i ];
 
-		/* get shade angle */
-		shadeAngle = tri->smoothNormals;
-		if (tri->si->noSmooth || shadeAngle < 0)
-			shadeAngle = -1;
-		else if (shadeAngle > 0.0f)
-			shadeAngle = DEG2RAD( shadeAngle );
-		else if( tri->si->shadeAngleDegrees > 0.0f )
-			shadeAngle = DEG2RAD( tri->si->shadeAngleDegrees );
-		else
-			shadeAngle = defaultShadeAngle;
-
-		/* flag verts */
-		maxShadeAngle = max(shadeAngle, maxShadeAngle);
-		for( j = 0; j < 3; j++ )
-		{
-			if (shadeAngles[ tri->indexes[ j ] ] > 0 && shadeAngle >= 0)
-				shadeAngles[ tri->indexes[ j ] ] = max(shadeAngle, shadeAngles[ tri->indexes[ j ] ]);
-			else
-				shadeAngles[ tri->indexes[ j ] ] = shadeAngle;
-		}
-
-		/* calculate adjastent surfaces area */
-		for( j = 0; j < numMetaTriangles; j++ )
-		{
-			/* get adjastent triange */
-			tri2 = &metaTriangles[ j ];
-			if (i == j)
-				continue;
-
-			/* compare planes */
-			if( fabs( tri->plane[ 3 ] - tri2->plane[ 3 ] ) > 0.1f || DotProduct( tri->plane, tri2->plane ) < 0.99f )
-				continue;
-
-			/* must share at least one vertex */
-			if( VectorCompareExt( metaVerts[ i * 3 ].xyz, metaVerts[ j * 3 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 ].xyz, metaVerts[ j * 3 + 1 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 ].xyz, metaVerts[ j * 3 + 2 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 + 1 ].xyz, metaVerts[ j * 3 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 + 1 ].xyz, metaVerts[ j * 3 + 1 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 + 1 ].xyz, metaVerts[ j * 3 + 2 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 + 2 ].xyz, metaVerts[ j * 3 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 + 2 ].xyz, metaVerts[ j * 3 + 1 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			if( VectorCompareExt( metaVerts[ i * 3 + 2 ].xyz, metaVerts[ j * 3 + 2 ].xyz, 0.1f ) == qtrue )
-				goto shared;
-			continue;
-shared:
-			
-			/* add area */
-			tri->area += tri2->area;
-		}
-	}
-
-	/* bail if no surfaces have a shade angle */
-	if( maxShadeAngle <= 0 )
-	{
-		free( shadeAngles );
-		return;
-	}
-	
 	/* init pacifier */
 	fOld = -1;
 	start = I_FloatTime();
+
+	/* set default shade angle */
+	defaultShadeAngle = DEG2RAD( npDegrees );
+
+	/* allocate shade angle and area table */
+	metaVertAreas = (float *)safe_malloc( numMetaVerts * sizeof( float ) );
+	metaVertShadeAngles = (float *)safe_malloc( numMetaVerts * sizeof( float ) );
+	memset( metaVertShadeAngles, 0, numMetaVerts * sizeof( float ) );
+	memset( metaVertAreas, 0, numMetaVerts * sizeof( float ) );
+
+	/* allocate plane-sorted metatriangles */
+	metaTrianglePlaneTriangles = (metaTriangle_t *)safe_malloc( numMetaTriangles * sizeof( metaTriangle_t ) );
+	memcpy( metaTrianglePlaneTriangles, metaTriangles, numMetaTriangles * sizeof( metaTriangle_t ) );
+	qsort( metaTrianglePlaneTriangles, numMetaTriangles, sizeof( metaTriangle_t ), CompareMetaTrianglesPlane );
+	maxShadeAngle = 0;
+
+	/* find triangle area weights, build optimized smooth verts table */
+	numSmoothVerts = 0;
+	smoothVerts = (smoothVert_t *)safe_malloc( numMetaVerts * sizeof( smoothVert_t ) );
+	RunThreadsOnIndividual( numMetaTriangles, qfalse, MetaTriangleFindAreaWeight );
+	free( metaTrianglePlaneTriangles );
+	for( i = 0; i < numMetaTriangles; i++ )
+	{
+		tri = &metaTriangles[ i ];
+		tri->area = metaVertAreas[ tri->indexes[ 0 ] ];
+		if( metaVertShadeAngles[ tri->indexes[ 0 ] ] < 0 )
+			continue;
+		for( j = 0; j < 3; j++ )
+		{
+			smoothVerts[ numSmoothVerts ].metaVert = tri->indexes[ j ];
+			smoothVerts[ numSmoothVerts ].area = tri->area;
+			smoothVerts[ numSmoothVerts++ ].distance = VectorLength( metaVerts[ tri->indexes[ j ] ].xyz);
+		}
+	}
+	free( metaVertAreas );
 	
+	/* bail if no surfaces have a shade angle */
+	if( numSmoothVerts == 0 )
+	{
+		free( metaVertShadeAngles );
+		return;
+	}
+
+	/* sort smoothed weights by their distance */
+	qsort( smoothVerts, numSmoothVerts, sizeof( smoothVert_t ), CompareSmoothVerts );
+
 	/* go through the list of vertexes */
 	numSmoothed = 0;
-	for( i = 0; i < numMetaVerts; i++ )
+	for( vertIndex = 0; vertIndex < numSmoothVerts; vertIndex++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numMetaVerts;
+		f = 10 * vertIndex / numSmoothVerts;
 		if( f != fOld )
 		{
 			fOld = f;
 			Sys_FPrintf( SYS_VRB, "%d...", f );
 		}
 		
-		/* cannot be smoothed */
-		if( shadeAngles[ i ] <= 0 )
+		/* get vert */
+		i = smoothVerts[ vertIndex ].metaVert;
+		if( metaVertShadeAngles[ i ] <= 0 )
 			continue;
+
+		/* find coincident vertexes */
+		vertDist = smoothVerts[ vertIndex ].distance;
+		for(startVert = vertIndex; startVert > 0; startVert--)
+			if ( ( vertDist - smoothVerts[ startVert ].distance ) > SMOOTH_ORIGIN_EPSILON )
+				break;
+		for(endVert = vertIndex + 1; endVert < numSmoothVerts; endVert++)
+			if ( ( smoothVerts[ endVert ].distance - vertDist ) > SMOOTH_ORIGIN_EPSILON )
+				break;
 		
 		/* initiate samples */
-		defaultShadeAngle = shadeAngles[ i ];
+		defaultShadeAngle = metaVertShadeAngles[ i ];
 		VectorCopy( metaVerts[ i ].xyz, org);
 		VectorCopy( metaVerts[ i ].normal, normal);
-#ifdef SMOOTH_USE_AREA_WEIGHTING
-		VectorScale( normal, pow(metaTriangles[ i / 3 ].area, SMOOTH_USE_AREA_WEIGHTING_POWER), average );
-#else
-		VectorCopy( normal, average );
-		VectorCopy( normal, votes[ 0 ]), 
-		numVotes = 1;
-#endif
-		numVerts = 1;
+		VectorScale( normal, smoothVerts[ vertIndex ].area, average );
+		metaVertShadeAngles[ i ] = -1;
 		indexes[ 0 ] = i;
-		shadeAngles[ i ] = -1;
+		numVerts = 1;
 
 		/* build a table of coincident vertexes */
-		for( j = 0; j < numMetaVerts && numVerts < SMOOTH_MAX_SAMPLES; j++ )
+		for( ; startVert < endVert && numVerts < SMOOTH_MAX_SAMPLES; startVert++ )
 		{
+			/* get vert */
+			j = smoothVerts[ startVert ].metaVert;
+
 			/* skip smoothed verts (vortex: but not flat shaded. this will prevent harsh edges between smoother and unsmoothed stuff) */
-			if (shadeAngles[ j ] < 0 )
+			if (metaVertShadeAngles[ j ] < 0 )
 				continue;
 
 			/* test origin */
@@ -1316,7 +1245,7 @@ shared:
 				continue;
 			
 			/* use biggest shade angle */
-			shadeAngle = max(defaultShadeAngle, shadeAngles[ j ]);
+			shadeAngle = max(defaultShadeAngle, metaVertShadeAngles[ j ]);
 			if ( shadeAngle <= 0 )
 				continue;
 			
@@ -1326,19 +1255,7 @@ shared:
 				continue;
 
 			/* add to the smooth votes */
-#ifdef SMOOTH_USE_AREA_WEIGHTING
-			VectorMA( average, pow(metaTriangles[ j / 3 ].area, SMOOTH_USE_AREA_WEIGHTING_POWER), metaVerts[ j ].normal, average ); 
-#else
-			for( k = 0; k < numVotes; k++ )
-				if( VectorCompareExt( metaVerts[ j ].normal, votes[ k ], SMOOTH_EQUAL_NORMAL_EPSILON ) == qtrue )
-					break;
-			if( k == numVotes && numVotes < SMOOTH_MAX_SAMPLES )
-			{
-				VectorAdd( average, metaVerts[ j ].normal, average );
-				VectorCopy( metaVerts[ j ].normal, votes[ numVotes ] );
-				numVotes++;
-			}
-#endif
+			VectorMA( average, pow(metaTriangles[ j / 3 ].area, 1), metaVerts[ j ].normal, average ); 
 
 			/* add to the smooth list */
 			indexes[ numVerts++ ] = j;
@@ -1348,29 +1265,75 @@ shared:
 		if (VectorNormalize(average, average) < 0.1)
 		{
 			for( j = 0; j < numVerts; j++ )
-				shadeAngles[ indexes[ j ] ] = -1;
+				metaVertShadeAngles[ indexes[ j ] ] = -1;
 		}
 		else
 		{
 			for( j = 0; j < numVerts; j++ )
 			{
 				VectorCopy( average, metaVerts[ indexes[ j ] ].normal );
-				shadeAngles[ indexes[ j ] ] = -1;
+				metaVertShadeAngles[ indexes[ j ] ] = -1;
 			}
 			numSmoothed++;
 		}
 	}
-	
+
 	/* free the tables */
-	free( shadeAngles );
+	free( metaVertShadeAngles );
+	free( smoothVerts );
 	
 	/* print time */
 	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* emit some stats */
-	Sys_FPrintf( SYS_VRB, "%9d smoothed vertexes\n", numSmoothed );
-#endif
+	Sys_FPrintf( SYS_VRB, "%9d smooth vertexes\n", numSmoothVerts );
+	Sys_FPrintf( SYS_VRB, "%9d smooth points\n", numSmoothed );
+	Sys_FPrintf( SYS_VRB, "%7.2f average vertexes per point\n", numSmoothVerts / (float) numSmoothed );
 }
+
+/*
+================================================================================
+
+ Drawsurface Construction
+
+================================================================================
+*/
+
+ThreadMutex AddMetaVertToSurfaceMutex     = { qfalse };
+ThreadMutex AddMetaTriangleToSurfaceMutex = { qfalse };
+ThreadMutex MetaTrianglesToSurfaceMutex   = { qfalse };
+ThreadMutex MetaTrianglesToSurfaceMutex2  = { qfalse };
+ThreadMutex MetaTrianglesToSurfaceMutex3  = { qfalse };
+
+/* AddMetaVertToSurface */
+#define ADD_META_VERT_ORIGIN_EPSILON 0.001f
+#define ADD_META_VERT_COLOR_EPSILON 0.01f
+#define ADD_META_VERT_NORMAL_EPSILON 0.01f
+
+/* AddMetaTriangleToSurface */
+#define AXIS_SCORE			100000
+#define AXIS_MIN			100000
+#define VERT_SCORE			10000
+#define SURFACE_SCORE		1000
+#define ST_SCORE			50
+#define ST_SCORE2			(2 * (ST_SCORE))
+#define ADEQUATE_SCORE		((AXIS_MIN) + 1 * (VERT_SCORE))
+#define GOOD_SCORE			((AXIS_MIN) + 2 * (VERT_SCORE) + 4 * (ST_SCORE))
+#define PERFECT_SCORE		((AXIS_MIN) + 3 * (VERT_SCORE) + (SURFACE_SCORE) + 4 * (ST_SCORE))
+
+/* GroupMetaTriangles */
+typedef struct metaTriangleGroup_s
+{
+	int firstTriangle;
+	int numTriangles;
+	int nextTriangle;
+}
+metaTriangleGroup_t;
+int maxMetaTrianglesInGroup;
+int numMetaTriangleGroups;
+metaTriangleGroup_t *metaTriangleGroups;
+
+qboolean InitMergeMetaTriangles = qtrue;
 
 /*
 AddMetaVertToSurface()
@@ -1378,11 +1341,6 @@ adds a drawvert to a surface unless an existing vert matching already exists
 returns the index of that vert (or < 0 on failure)
 */
 
-#define ADD_META_VERT_ORIGIN_EPSILON 0.001f
-#define ADD_META_VERT_COLOR_EPSILON 0.01f
-#define ADD_META_VERT_NORMAL_EPSILON 0.01f
-
-ThreadMutex AddMetaVertToSurfaceMutex = { qfalse };
 int AddMetaVertToSurface( mapDrawSurface_t *ds, bspDrawVert_t *dv1, int *coincident )
 {
 	int	i;
@@ -1435,23 +1393,10 @@ attempts to add a metatriangle to a surface
 returns the score of the triangle added
 */
 
-ThreadMutex AddMetaTriangleToSurfaceMutex = { qfalse };
-
-#define AXIS_SCORE			100000
-#define AXIS_MIN			100000
-#define VERT_SCORE			10000
-#define SURFACE_SCORE		1000
-#define ST_SCORE			50
-#define ST_SCORE2			(2 * (ST_SCORE))
-
-#define ADEQUATE_SCORE		((AXIS_MIN) + 1 * (VERT_SCORE))
-#define GOOD_SCORE			((AXIS_MIN) + 2 * (VERT_SCORE) + 4 * (ST_SCORE))
-#define PERFECT_SCORE		((AXIS_MIN) + + 3 * (VERT_SCORE) + (SURFACE_SCORE) + 4 * (ST_SCORE))
-
 static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, qboolean testAdd )
 {
 	int i, score, coincident, ai, bi, ci, oldTexRange[ 2 ];
-	float lmMax;
+	float lmMax, lmMax2;
 	vec3_t mins, maxs;
 	qboolean inTexRange, es, et;
 	mapDrawSurface_t old;
@@ -1466,6 +1411,14 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 	if( ds->castShadows != tri->castShadows || ds->recvShadows != tri->recvShadows )
 		return 0;
 	if( ds->shaderInfo != tri->si || ds->fogNum != tri->fogNum || ds->sampleSize != tri->sampleSize )
+		return 0;
+	if (ds->smoothNormals != tri->smoothNormals)
+		return 0;
+	if (ds->minlight[ 0 ] != tri->minlight[ 0 ] || ds->minlight[ 1 ] != tri->minlight[ 1 ] || ds->minlight[ 2 ] != tri->minlight[ 2 ] )
+		return 0;
+	if (ds->ambient[ 0 ] != tri->ambient[ 0 ] || ds->ambient[ 1 ] != tri->ambient[ 1 ] || ds->ambient[ 2 ] != tri->ambient[ 2 ] )
+		return 0;
+	if (ds->colormod[ 0 ] != tri->colormod[ 0 ] || ds->colormod[ 1 ] != tri->colormod[ 1 ] || ds->colormod[ 2 ] != tri->colormod[ 2 ] )
 		return 0;
 
 	/* planar surfaces will only merge with triangles in the same plane */
@@ -1495,10 +1448,6 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 	ai = AddMetaVertToSurface( ds, &metaVerts[ tri->indexes[ 0 ] ], &coincident );
 	bi = AddMetaVertToSurface( ds, &metaVerts[ tri->indexes[ 1 ] ], &coincident );
 	ci = AddMetaVertToSurface( ds, &metaVerts[ tri->indexes[ 2 ] ], &coincident );
-
-	/* vortex: with broad merge on BSP stage we can freely merge vertexlit-only surfaces (lightmapped surfaces needs to be merged later) */
-	if( broadMerge == qtrue && (ds->shaderInfo->compileFlags & C_VERTEXLIT) )
-		score += (3 * VERT_SCORE);
 	
 	/* check vertex underflow */
 	if( ai < 0 || bi < 0 || ci < 0 )
@@ -1523,7 +1472,10 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 		/* set maximum size before lightmap scaling (normally 2032 units) */
 		/* 2004-02-24: scale lightmap test size by 2 to catch larger brush faces */
 		/* 2004-04-11: reverting to actual lightmap size */
+		/* 2014-12-09: vortex: added lmMaxSurfaceSize */
 		lmMax = (ds->sampleSize * (ds->shaderInfo->lmCustomWidth - 1));
+		lmMax2 = (ds->sampleSize * (lmMaxSurfaceSize - 1));
+		lmMax = min(lmMax, lmMax2);
 		for( i = 0; i < 3; i++ )
 		{
 			if( (maxs[ i ] - mins[ i ]) > lmMax )
@@ -1638,9 +1590,6 @@ MetaTrianglesToSurface()
 creates map drawsurface(s) from the list of possibles
 */
 
-ThreadMutex MetaTrianglesToSurfaceMutex = { qfalse };
-ThreadMutex MetaTrianglesToSurfaceMutex2 = { qfalse };
-ThreadMutex MetaTrianglesToSurfaceMutex3 = { qfalse };
 static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles, bspDrawVert_t *verts, int *indexes )
 {
 	int					i, j, best, score, bestScore;
@@ -1663,16 +1612,23 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 		ThreadMutexLock(&MetaTrianglesToSurfaceMutex);
 		ds = AllocDrawSurface( SURFACE_META );
 		ThreadMutexUnlock(&MetaTrianglesToSurfaceMutex);
+
 		ds->entityNum = seed->entityNum;
+		ds->mapEntityNum = seed->mapEntityNum;
 		ds->castShadows = seed->castShadows;
 		ds->recvShadows = seed->recvShadows;
 		ds->shaderInfo = seed->si;
 		ds->planeNum = seed->planeNum;
 		ds->fogNum = seed->fogNum;
 		ds->sampleSize = seed->sampleSize;
+		VectorCopy( seed->minlight, ds->minlight );
+		VectorCopy( seed->ambient, ds->ambient );
+		VectorCopy( seed->colormod, ds->colormod );
+		ds->smoothNormals = seed->smoothNormals;
 		ds->verts = verts;
 		ds->indexes = indexes;
 		VectorCopy( seed->lightmapAxis, ds->lightmapAxis );
+
 		ThreadMutexLock(&MetaTrianglesToSurfaceMutex2);
 		ds->sideRef = AllocSideRef( seed->side, NULL );
 		ThreadMutexUnlock(&MetaTrianglesToSurfaceMutex2);
@@ -1780,6 +1736,12 @@ static int CompareMetaTriangles( const void *a, const void *b )
 	else if( ((metaTriangle_t*) a)->entityNum > ((metaTriangle_t*) b)->entityNum )
 		return -1;
 
+	/* then map entity num */
+	else if( ((metaTriangle_t*) a)->mapEntityNum < ((metaTriangle_t*) b)->mapEntityNum )
+		return 1;
+	else if( ((metaTriangle_t*) a)->mapEntityNum > ((metaTriangle_t*) b)->mapEntityNum )
+		return -1;
+
 	/* then cast shadows */
 	else if( ((metaTriangle_t*) a)->castShadows < ((metaTriangle_t*) b)->castShadows )
 		return 1;
@@ -1858,18 +1820,6 @@ GroupMetaTriangles
 find out merging groups for meta triangles
 */
 
-typedef struct metaTriangleGroup_s
-{
-	int firstTriangle;
-	int numTriangles;
-	int nextTriangle;
-}
-metaTriangleGroup_t;
-
-int maxMetaTrianglesInGroup;
-int numMetaTriangleGroups;
-metaTriangleGroup_t *metaTriangleGroups;
-
 void GroupMetaTriangles( void )
 {
 	metaTriangle_t		*head, *end;
@@ -1912,7 +1862,7 @@ void GroupMetaTriangles( void )
 			{
 				/* get end of list */
 				end = &metaTriangles[ j ];
-				if( head->si != end->si || head->fogNum != end->fogNum || head->entityNum != end->entityNum || head->castShadows != end->castShadows || head->recvShadows != end->recvShadows || head->sampleSize != end->sampleSize )
+				if( head->si != end->si || head->fogNum != end->fogNum || head->entityNum != end->entityNum || head->mapEntityNum != end->mapEntityNum || head->castShadows != end->castShadows || head->recvShadows != end->recvShadows || head->sampleSize != end->sampleSize )
 					break;
 			}
 		}
@@ -1971,7 +1921,7 @@ void MergeMetaTrianglesThread( int threadnum )
 	indexes = (int *)safe_malloc( sizeof( *indexes ) * maxMetaTrianglesInGroup * 3 );
 
 	/* cycle */
-	while((work = GetThreadWork()) >= 0)
+	while( (work = GetThreadWork()) >= 0 )
 	{
 		/* get group */
 		group = &metaTriangleGroups[ work ];
@@ -2001,7 +1951,6 @@ MergeMetaTriangles()
 merges meta triangles into drawsurfaces
 */
 
-qboolean InitMergeMetaTriangles = qtrue;
 void MergeMetaTriangles( void )
 {
 	int numTriangles;
@@ -2011,7 +1960,7 @@ void MergeMetaTriangles( void )
 		return;
 
 	/* init mutexes */
-	if ( InitMergeMetaTriangles == qtrue )
+	if( InitMergeMetaTriangles == qtrue )
 	{
 		ThreadMutexInit( &AddMetaVertToSurfaceMutex );
 		ThreadMutexInit( &AddMetaTriangleToSurfaceMutex );
@@ -2021,7 +1970,7 @@ void MergeMetaTriangles( void )
 		InitMergeMetaTriangles = qfalse;
 	}
 
-	/* find meta triangle groups */
+	/* group meta triangles */
 	GroupMetaTriangles();
 
 	/* note it */
@@ -2029,7 +1978,7 @@ void MergeMetaTriangles( void )
 
 	/* run threaded */
 	/* vortex: real threaded implemetation is still crashy */
-	if (numMetaTriangleGroups)
+	if( numMetaTriangleGroups )
 		RunSameThreadOn(numMetaTriangleGroups, verbose, MergeMetaTrianglesThread);
 
 	/* clear meta triangle list */

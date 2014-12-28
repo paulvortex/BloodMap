@@ -173,7 +173,7 @@ static void FixBrushSides( entity_t *e )
 }
 
 /*
-StitchBrushFaces() - vortex
+FixBrushFaces() - vortex
 performs a bugfixing of brush faces
 */
 
@@ -182,7 +182,7 @@ performs a bugfixing of brush faces
 #define STITCH_MAX_TRIANGLES    64      /* max triangles formed from a stiched vertex to be checked */
 //#define STITCH_USE_TRIANGLE_NORMAL_CHECK
 
-static void StitchBrushFaces( entity_t *e )
+static void FixBrushFaces( entity_t *e )
 {
 	mapDrawSurface_t *ds, *ds2;
 	shaderInfo_t *si;
@@ -200,7 +200,7 @@ static void StitchBrushFaces( entity_t *e )
 #endif
 
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- StitchBrushFaces ---\n" );
+	Sys_FPrintf( SYS_VRB, "--- FixBrushFaces ---\n" );
 
 	/* loop drawsurfaces */
 	for ( i = e->firstDrawSurf ; i < numMapDrawSurfs ; i++ )
@@ -488,10 +488,10 @@ void ProcessWorldModel( void )
 		SubdivideFaceSurfaces( e, tree );
 
 	/* vortex: fix degenerate brush faces */
-	StitchBrushFaces( e );
+	FixBrushFaces( e );
 	
 	/* add in any vertexes required to fix t-junctions */
-	if( !notjunc )
+	if( !noTJunc )
 		FixTJunctions( e );
 
 	/* ydnar: classify the surfaces */
@@ -637,10 +637,10 @@ void ProcessSubModel( void )
 		SubdivideFaceSurfaces( e, tree );
 	
 	/* vortex: fix degenerate brush faces */
-	StitchBrushFaces( e );
+	FixBrushFaces( e );
 	
 	/* add in any vertexes required to fix t-junctions */
-	if( !notjunc )
+	if( !noTJunc )
 		FixTJunctions( e );
 	
 	/* ydnar: classify the surfaces and project lightmaps */
@@ -1168,7 +1168,7 @@ int BSPMain( int argc, char **argv )
 		else if( !strcmp( argv[ i ], "-notjunc" ) )
 		{
 			Sys_Printf( "Disabling T-junction fixing\n" );
-			notjunc = qtrue;
+			noTJunc = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-noclip" ) )
 		{
@@ -1200,6 +1200,12 @@ int BSPMain( int argc, char **argv )
 			}
 			i++;
 			Sys_Printf( "Default lightmap size set to %d x %d pixels\n", lmCustomSize, lmCustomSize );
+		}
+		else if( !strcmp( argv[ i ], "-maxsurfacelightmapsize" ) )
+		{
+			lmMaxSurfaceSize = atoi( argv[ i + 1 ] );
+			i++;
+			Sys_Printf( "Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
 		}
 		else if( !strcmp( argv[ i ],  "-custinfoparms") )
 		{
@@ -1294,11 +1300,6 @@ int BSPMain( int argc, char **argv )
 			Sys_Printf( "Creating meta surfaces from brush faces\n" );
 			meta = qtrue;
 		}
-		else if( !strcmp( argv[ i ], "-broadmerge" ) )
-		{
-			broadMerge = qtrue;
-			Sys_Printf( "Reducing drawsurfaces count by extensive merging\n" );
-		}
 		else if( !strcmp( argv[ i ], "-patchmeta" ) )
 		{
 			Sys_Printf( "Creating meta surfaces from patches\n" );
@@ -1339,6 +1340,10 @@ int BSPMain( int argc, char **argv )
 		else
 			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
 	}
+
+	/* set up lmMaxSurfaceSize */
+	if (lmMaxSurfaceSize == 0)
+		lmMaxSurfaceSize = lmCustomSize;
 	
 	/* fixme: print more useful usage here */
 	if( i != (argc - 1) )

@@ -807,12 +807,13 @@ static shaderInfo_t	*AllocShaderInfo( void )
 	si->vertexScale = 1.0;
 	si->aoGainScale = 1.0;
 	si->aoScale = 1.0;
-	si->notjunc = qfalse;
+	si->noTJunc = qfalse;
 	
 	/* ydnar: set texture coordinate transform matrix to identity */
 	TCModIdentity( si->mod );
 	
 	/* ydnar: lightmaps can now be > 128x128 in certain games or an externally generated tga */
+	si->lmBrightness = 1.0f;
 	si->lmCustomWidth = lmCustomSize;
 	si->lmCustomHeight = lmCustomSize;
 	
@@ -1273,7 +1274,7 @@ static void ParseShaderFile( const char *filename )
 					
 					/* ydnar: gs mods: added these useful things */
 					si->noClip = qtrue;
-					si->notjunc = qtrue;
+					si->noTJunc = qtrue;
 				}
 				
 				/* deformVertexes move <x> <y> <z> <func> <base> <amplitude> <phase> <freq> (ydnar: for particle studio support) */
@@ -1747,6 +1748,8 @@ static void ParseShaderFile( const char *filename )
 				{
 					GetTokenAppend( shaderText, qfalse );
 					si->vertexScale = atof( token );
+					if( si->vertexScale < 0 )
+						si->vertexScale = 1.0;
 				}
 
 				/* q3map_vertexUsePointSample - use lightgrid-style omnidirectional point sample instead of lightmap-style sample */
@@ -1868,7 +1871,7 @@ static void ParseShaderFile( const char *filename )
 					   passed through the metatriangle surface pipeline, with a lightmap axis on z */
 					si->legacyTerrain = qtrue;
 					si->noClip = qtrue;
-					si->notjunc = qtrue;
+					si->noTJunc = qtrue;
 					si->indexed = qtrue;
 					si->nonplanar = qtrue;
 					si->forceMeta = qtrue;
@@ -2189,16 +2192,20 @@ static void ParseShaderFile( const char *filename )
 					si->noBSP = qtrue;
 
 				/* vortex: prevent metasurface vertex normal smoothing */
-				else if( !Q_stricmp( token, "q3map_nosmooth" ) )
+				else if( !Q_stricmp( token, "q3map_noSmooth" ) )
 					si->noSmooth = qtrue;
 
 				/* vortex: prevent lightmap stitching */
-				else if( !Q_stricmp( token, "q3map_lightmapNoStitch" ) )
+				else if( !Q_stricmp( token, "q3map_noStitch" ) )
 					si->lightmapNoStitch = qtrue;
 
+				/* vortex: apply lightmap stitching (is no -stitch is set) */
+				else if( !Q_stricmp( token, "q3map_stitch" ) )
+					si->lightmapForceStitch = qtrue;
+				
 				/* q3map_notjunc */
 				else if( !Q_stricmp( token, "q3map_notjunc" ) )
-					si->notjunc = qtrue;
+					si->noTJunc = qtrue;
 				
 				/* q3map_nofog */
 				else if( !Q_stricmp( token, "q3map_nofog" ) )
@@ -2214,7 +2221,7 @@ static void ParseShaderFile( const char *filename )
 				
 				/* ydnar: gs mods: q3map_lightmapMergable (ok to merge non-planar */
 				else if( !Q_stricmp( token, "q3map_lightmapMergable" ) )
-					si->lmMergable = qtrue;
+					si->lightmapMergable = qtrue;
 				
 				/* ydnar: q3map_nofast */
 				else if( !Q_stricmp( token, "q3map_noFast" ) )

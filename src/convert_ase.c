@@ -36,6 +36,9 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 /* dependencies */
 #include "q3map2.h"
 
+int convertedSurfaces = 0;
+int convertedVertexes = 0;
+int convertedTriangles = 0;
 
 /*
 ConvertCollapsedSurface()
@@ -65,6 +68,7 @@ static void ConvertCollapsedSurface( FILE *f, bspModel_t *model, int modelNum, i
 	bspDrawVert_t		*dv, *dv2;
 	vec3_t				normal;
 	int					countIndexes, countTexVerts, exportedFaces, exportedTexVerts, exportedTexFaces;
+	qboolean            collapseVertices;
  
 	/* print object header for each dsurf */
 	if (modelNum == 0)
@@ -84,6 +88,7 @@ static void ConvertCollapsedSurface( FILE *f, bspModel_t *model, int modelNum, i
 	fprintf( f, "\t\t*TM_ROW3\t0\t0\t0\r\n" );
 	fprintf( f, "\t\t*TM_POS\t%f\t%f\t%f\r\n", origin[ 0 ], origin[ 1 ], origin[ 2 ] );
 	fprintf( f, "\t}\r\n" );
+	convertedSurfaces++;
 
 	/* reset vertex collapse array and other counters */
 	collapseNumVerts = 0;
@@ -91,10 +96,12 @@ static void ConvertCollapsedSurface( FILE *f, bspModel_t *model, int modelNum, i
 	countIndexes = 0;
 	countTexVerts = 0;
 
+	collapseVertices = qfalse;
+
 	/* basic counts, mark drawsurfaces that needs to be processed, collapse identical vertices */
 	for( s = 0; s < model->numBSPSurfaces; s++ )
 	{
-		ds = &bspDrawSurfaces[s];
+		ds = &bspDrawSurfaces[model->firstBSPSurface + s];
 		if( ds->surfaceType != MST_PLANAR && ds->surfaceType != MST_TRIANGLE_SOUP )
 			continue;
 		if( ds->shaderNum != shaderNum)
@@ -102,21 +109,26 @@ static void ConvertCollapsedSurface( FILE *f, bspModel_t *model, int modelNum, i
 		countIndexes += ds->numIndexes;
 		countTexVerts += ds->numVerts;
 		// to speed up next loops
-		markDrawSurfaces[numMarkDrawSurfaces] = s;
+		markDrawSurfaces[numMarkDrawSurfaces] = model->firstBSPSurface + s;
 		numMarkDrawSurfaces++;
 		// collapse vertices into mesh
 		for (i = 0; i < ds->numVerts; i++)
 		{
 			v = i + ds->firstVert;
 			dv = &bspDrawVerts[ v ];
-			for (v = 0; v < collapseNumVerts; v++)
+			if (!collapseVertices)
+				v = collapseNumVerts;
+			else
 			{
-				dv2 = &collapseDrawVerts[ v ];
-				if (VectorCompare(dv2->xyz, dv->xyz) == qtrue) // already exists, merge normals
+				for (v = 0; v < collapseNumVerts; v++)
 				{
-					VectorAdd( dv2->normal, dv->normal, dv2->normal);
-					VectorNormalize( dv2->normal, dv2->normal);
-					break;
+					dv2 = &collapseDrawVerts[ v ];
+					if (VectorCompare(dv2->xyz, dv->xyz) == qtrue) // already exists, merge normals
+					{
+						VectorAdd( dv2->normal, dv->normal, dv2->normal);
+						VectorNormalize( dv2->normal, dv2->normal);
+						break;
+					}
 				}
 			}
 			if (v == collapseNumVerts) // not found, add vertex and normal
@@ -141,6 +153,7 @@ static void ConvertCollapsedSurface( FILE *f, bspModel_t *model, int modelNum, i
 	{
 		dv = &collapseDrawVerts[ i ];
 		fprintf( f, "\t\t\t*MESH_VERTEX\t%d\t%f\t%f\t%f\r\n", i, dv->xyz[ 0 ], dv->xyz[ 1 ], dv->xyz[ 2 ] );
+		convertedVertexes++;
 	}
 	fprintf( f, "\t\t}\r\n" );
 
@@ -191,6 +204,7 @@ static void ConvertCollapsedSurface( FILE *f, bspModel_t *model, int modelNum, i
 			b = FindVertexInCollapsedMesh(ds->firstVert + b);
 			c = FindVertexInCollapsedMesh(ds->firstVert + c);
 			fprintf( f, "\t\t\t*MESH_FACE\t%d\tA:\t%d\tB:\t%d\tC:\t%d\tAB:\t1\tBC:\t1\tCA:\t1\t*MESH_SMOOTHING\t0\t*MESH_MTLID\t0\r\n", exportedFaces, a, b, c );
+			convertedTriangles++;
 		}
 	}
 	fprintf( f, "\t\t}\r\n" );
@@ -276,6 +290,7 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
 	fprintf( f, "\t\t*TM_ROW3\t0\t0\t0\r\n" );
 	fprintf( f, "\t\t*TM_POS\t%f\t%f\t%f\r\n", origin[ 0 ], origin[ 1 ], origin[ 2 ] );
 	fprintf( f, "\t}\r\n" );
+	convertedSurfaces++;
 	
 	/* print mesh header */
 	fprintf( f, "\t*MESH\t{\r\n" );
@@ -299,6 +314,7 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
 		v = i + ds->firstVert;
 		dv = &bspDrawVerts[ v ];
 		fprintf( f, "\t\t\t*MESH_VERTEX\t%d\t%f\t%f\t%f\r\n", i, dv->xyz[ 0 ], dv->xyz[ 1 ], dv->xyz[ 2 ] );
+		convertedVertexes++;
 	}
 	fprintf( f, "\t\t}\r\n" );
 
@@ -332,8 +348,8 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
 		a = bspDrawIndexes[ i + ds->firstIndex ];
 		c = bspDrawIndexes[ i + ds->firstIndex + 1 ];
 		b = bspDrawIndexes[ i + ds->firstIndex + 2 ];
-		fprintf( f, "\t\t\t*MESH_FACE\t%d\tA:\t%d\tB:\t%d\tC:\t%d\tAB:\t1\tBC:\t1\tCA:\t1\t*MESH_SMOOTHING\t0\t*MESH_MTLID\t0\r\n",
-			face, a, b, c );
+		fprintf( f, "\t\t\t*MESH_FACE\t%d\tA:\t%d\tB:\t%d\tC:\t%d\tAB:\t1\tBC:\t1\tCA:\t1\t*MESH_SMOOTHING\t0\t*MESH_MTLID\t0\r\n", face, a, b, c );
+		convertedTriangles++;
 	}
 	fprintf( f, "\t\t}\r\n" );
 	
@@ -397,7 +413,7 @@ static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origi
 				ds = &bspDrawSurfaces[ dsi ];
 				if (ds->shaderNum == i)
 				{
-					ConvertCollapsedSurface(f, model, modelNum, meshNum, ds->shaderNum, origin);
+					ConvertCollapsedSurface(f, model, modelNum, meshNum, i, origin);
 					meshNum++;
 					break;
 				}
@@ -524,7 +540,7 @@ int ConvertBSPToASE( char *bspName, int collapseByTexture )
 	
 	
 	/* note it */
-	Sys_Printf( "--- Convert BSP to ASE ---\n" );
+	Sys_Printf( "--- BSPtoASE ---\n" );
 
 	/* collapsing by texture name */
 	if (collapseByTexture)
@@ -596,7 +612,12 @@ int ConvertBSPToASE( char *bspName, int collapseByTexture )
 			GetVectorForKey( e, "origin", origin );
 		
 		/* convert model */
+		convertedSurfaces = 0;
+		convertedVertexes = 0;
+		convertedTriangles = 0;
+		Sys_Printf( "exporting model %i...", modelNum );
 		ConvertModel( f, model, modelNum, origin, collapseByTexture );
+		Sys_Printf( "%i surfaces, %i vertexes, %i triangles\n", convertedSurfaces, convertedVertexes, convertedTriangles );
 	}
 	
 	/* close the file and return */

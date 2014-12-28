@@ -1088,11 +1088,13 @@ float	LittleFloat (float l)
 
 #endif
 
+/*
+============================================================================
 
-//=======================================================
+					CRC FUNCTIONS
 
-
-// FIXME: byte swap?
+============================================================================
+*/
 
 // this is a 16 bit, non-reflected CRC using the polynomial 0x1021
 // and the initial and final xor values shown below...  in other words, the
@@ -1137,20 +1139,21 @@ static unsigned short crctable[256] =
 	0x6e17,	0x7e36,	0x4e55,	0x5e74,	0x2e93,	0x3eb2,	0x0ed1,	0x1ef0
 };
 
-void CRC_Init(unsigned short *crcvalue)
+unsigned short CRC_Block(const unsigned char *data, size_t size)
 {
-	*crcvalue = CRC_INIT_VALUE;
+	unsigned short crc = CRC_INIT_VALUE;
+	while (size--)
+		crc = (crc << 8) ^ crctable[(crc >> 8) ^ (*data++)];
+	return crc ^ CRC_XOR_VALUE;
+}
+unsigned short CRC_Block_CaseInsensitive(const unsigned char *data, size_t size)
+{
+	unsigned short crc = CRC_INIT_VALUE;
+	while (size--)
+		crc = (crc << 8) ^ crctable[(crc >> 8) ^ (tolower(*data++))];
+	return crc ^ CRC_XOR_VALUE;
 }
 
-void CRC_ProcessByte(unsigned short *crcvalue, byte data)
-{
-	*crcvalue = (*crcvalue << 8) ^ crctable[(*crcvalue >> 8) ^ data];
-}
-
-unsigned short CRC_Value(unsigned short crcvalue)
-{
-	return crcvalue ^ CRC_XOR_VALUE;
-}
 //=============================================================================
 
 /*
