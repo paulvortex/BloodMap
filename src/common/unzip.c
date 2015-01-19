@@ -124,7 +124,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 
 /* Maximum value for windowBits in deflateInit2 and inflateInit2.
- * WARNING: reducing MAX_WBITS makes minigzip unable to extract .gz files
+ * Note!: reducing MAX_WBITS makes minigzip unable to extract .gz files
  * created by gzip. (Files created by minigzip can still be extracted by
  * gzip.)
  */
@@ -205,7 +205,7 @@ typedef Byte    *voidp;
 
    On 16-bit systems, the functions zalloc and zfree must be able to allocate
    exactly 65536 bytes, but will not be required to allocate more than this
-   if the symbol MAXSEG_64K is defined (see zconf.h). WARNING: On MSDOS,
+   if the symbol MAXSEG_64K is defined (see zconf.h). NOTE!!!: On MSDOS,
    pointers returned by zalloc for objects of exactly 65536 bytes *must*
    have their offset normalized to zero. The default allocation function
    provided by this library ensures this (see zutil.c). To reduce memory
@@ -2525,7 +2525,7 @@ uLong crc32(uLong crc, const Byte *buf, uInt len)
  * For conditions of distribution and use, see copyright notice in zlib.h 
  */
 
-/* WARNING: this file should *not* be used by applications. It is
+/* NOTE!!!: this file should *not* be used by applications. It is
    part of the implementation of the compression library and is
    subject to change. Applications should only use zlib.h.
  */
@@ -2573,7 +2573,7 @@ static const uInt border[] = { /* Order of the bit length code lengths */
  * For conditions of distribution and use, see copyright notice in zlib.h 
  */
 
-/* WARNING: this file should *not* be used by applications. It is
+/* NOTE!!!: this file should *not* be used by applications. It is
    part of the implementation of the compression library and is
    subject to change. Applications should only use zlib.h.
  */
@@ -2633,7 +2633,7 @@ extern int inflate_trees_fixed OF((
  * For conditions of distribution and use, see copyright notice in zlib.h 
  */
 
-/* WARNING: this file should *not* be used by applications. It is
+/* NOTE!!!: this file should *not* be used by applications. It is
    part of the implementation of the compression library and is
    subject to change. Applications should only use zlib.h.
  */
@@ -2660,7 +2660,7 @@ extern void inflate_codes_free OF((
  * For conditions of distribution and use, see copyright notice in zlib.h 
  */
 
-/* WARNING: this file should *not* be used by applications. It is
+/* NOTE!!!: this file should *not* be used by applications. It is
    part of the implementation of the compression library and is
    subject to change. Applications should only use zlib.h.
  */
@@ -3581,7 +3581,7 @@ int inflate_trees_dynamic(uInt nl, uInt nd, uInt *c, uInt *bl, uInt *bd, inflate
  * Generated automatically by the maketree.c program
  */
 
-/* WARNING: this file should *not* be used by applications. It is
+/* NOTE!!!: this file should *not* be used by applications. It is
    part of the implementation of the compression library and is
    subject to change. Applications should only use zlib.h.
  */
@@ -4199,7 +4199,7 @@ uLong adler32(uLong adler, const Byte *buf, uInt len)
  * For conditions of distribution and use, see copyright notice in zlib.h 
  */
 
-/* WARNING: this file should *not* be used by applications. It is
+/* NOTE!!!: this file should *not* be used by applications. It is
    part of the implementation of the compression library and is
    subject to change. Applications should only use zlib.h.
  */

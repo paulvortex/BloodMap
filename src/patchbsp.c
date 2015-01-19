@@ -25,7 +25,7 @@ entity_t *AllocateEntity(entity_t *base)
 {
 	entity_t *e;
 
-	if(numEntities >= MAX_MAP_ENTITIES)
+	if( numEntities >= MAX_MAP_ENTITIES )
 		Error("numEntities == MAX_MAP_ENTITIES");
 
 	e = &entities[numEntities];
@@ -97,7 +97,7 @@ void PatchEntities(void)
 				mapent = FindMapEntityByUniqueKey(val);
 				if (mapent)
 				{
-					bspent = AllocateEntity(mapent);
+					bspent = AllocateEntity( mapent );
 					SetKeyValue(bspent, "model", model); // keep model number
 					numentsext++;
 					continue;
@@ -106,7 +106,7 @@ void PatchEntities(void)
 		}
 
 		/* add a submodel entity */
-		AllocateEntity(e);
+		AllocateEntity( e );
 		numents++;
 	}
 	Sys_Printf("%9d .bsp submodel entities copied\n", numents);
@@ -125,7 +125,7 @@ void PatchEntities(void)
 		/* add a trigger */
 		if (patchTriggers && !strncmp(ValueForKey(e, "classname"), "trigger_", 8))
 		{
-			mapent = AllocateEntity(e);
+			mapent = AllocateEntity( e );
 			/* find bounds */
 			ClearBounds( mins, maxs );
 			for( b = mapent->brushes; b; b = b->next )
@@ -151,7 +151,7 @@ void PatchEntities(void)
 		}
 
 		/* add a point entity */
-		AllocateEntity(e);
+		AllocateEntity( e );
 		numents++;
 	}
 	Sys_Printf("%9d .map point entities copied\n", numents);
@@ -200,20 +200,16 @@ int PatchBSPMain( int argc, char **argv )
 	}
 
 	/* process arguments */
+	Sys_Printf( "--- CommandLine ---\n" );
 	patchentities = qtrue;
 	verbose = qfalse;
 	strcpy(uniqueEntityKey, "");
 	patchTriggers = qfalse;
-	for( i = 1; i < (argc - 1); i++ )
+	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
-		if( !strcmp( argv[ i ],  "-custinfoparms") )
+		if( !strcmp( argv[ i ],  "-entitysaveid") )
 		{
-			Sys_Printf( "Custom info parms enabled\n" );
-			useCustomInfoParms = qtrue;
-		}
-		else if( !strcmp( argv[ i ],  "-entitysaveid") )
-		{
-			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			Sys_Printf( " Entity unique savegame identifiers enabled\n" );
 			useEntitySaveId = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-source" ) )
@@ -231,27 +227,27 @@ int PatchBSPMain( int argc, char **argv )
 			strcpy(uniqueEntityKey, argv[i + 1]);
  			i++;
 			if (strcmp(uniqueEntityKey, ""))
-				Sys_Printf( "Using entity key \"%s\" as unique entity identifier\n", uniqueEntityKey );
+				Sys_Printf( " Using entity key \"%s\" as unique entity identifier\n", uniqueEntityKey );
  		}
 		else if( !strcmp( argv[ i ],  "-triggers") )
 		{
-			Sys_Printf( "Enable patching BSP by map trigger entities\n" );
+			Sys_Printf( " Enable patching BSP by map trigger entities\n" );
 			patchTriggers = qtrue;
 		}
 		else
-			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown option \"%s\"", argv[ i ] );
 	}
 	if (patchentities)
-		Sys_Printf( "Patching BSP entities by MAP entities\n" );
+		Sys_Printf( " Patching BSP entities by MAP entities\n" );
 	if (!patchentities)
-		Error("Nothing to patch\n");
+		Error(" Nothing to patch.\n");
 
 	/* load shaders */
 	LoadShaderInfo();
 
 	/* load MAP file */
-	Sys_Printf( "--- LoadMap ---\n" );
-	LoadMapFile(name, qfalse, qfalse, qfalse);
+	Sys_Printf( "--- LoadMapFile ---\n" );
+	LoadMapFile( name, qfalse, qfalse, qfalse, qfalse );
 	Sys_Printf( "%9d entities\n", numEntities );
 
 	/* check map for errors */
@@ -259,8 +255,7 @@ int PatchBSPMain( int argc, char **argv )
 
 	/* preprocess map */
 	Sys_Printf( "--- CompileEntities ---\n" );
-	LoadDecorations();
-	ImportDecorations(source);
+	LoadDecorations( source );
 	RegionScissor();
 	ProcessDecorations();
 	ProcessDecals();
@@ -275,8 +270,8 @@ int PatchBSPMain( int argc, char **argv )
 	Sys_Printf( "%9d entities\n", patch_numMapEntities );
 
 	/* load BSP file */
-	Sys_Printf( "--- LoadBSP ---\n" );
-	Sys_Printf( "Loading %s\n", out );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", out );
 	LoadBSPFile( out );
 	ParseEntities();
 	patch_numBspEntities = numEntities;

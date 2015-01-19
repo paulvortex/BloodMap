@@ -315,7 +315,7 @@ void InitPaths( int *argc, char **argv )
 	
 	
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- InitPaths ---\n" );
+	Sys_Printf( "--- InitPaths ---\n" );
 	
 	/* get the install path for backup */
 	LokiInitPaths( argv[ 0 ] );
@@ -437,9 +437,6 @@ void InitPaths( int *argc, char **argv )
 			vfsInitDirectory( temp );
 		}
 	}
-	
-	/* done */
-	Sys_Printf( "\n" );
 }
 
 /*

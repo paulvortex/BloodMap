@@ -111,7 +111,7 @@ void SetCloneModelNumbers( void )
 				value3 = ValueForKey( &entities[ j ], "model" );
 				if( value3[ 0 ] == '\0' )
 				{
-					Sys_Printf( "WARNING: Cloned entity %s referenced entity without model\n", value2 );
+					Sys_Warning( entities[ j ].mapEntityNum, "Cloned entity %s referenced entity without model", value2 );
 					continue;
 				}
 				models = atoi( &value2[ 1 ] );
@@ -356,11 +356,11 @@ creates a full bsp + surfaces for the worldspawn entity
 
 void ProcessWorldModel( void )
 {
-	int			i, s;
+	int			i, s, start;
 	entity_t	*e;
 	tree_t		*tree;
 	face_t		*faces;
-	qboolean	ignoreLeaks, leaked;
+	qboolean	ignoreLeaks, leaked, filled, oldVerbose;
 	xmlNodePtr	polyline, leaknode;
 	char		level[ 2 ], shader[ MAX_OS_PATH ];
 	const char	*value;
@@ -386,7 +386,7 @@ void ProcessWorldModel( void )
 			blockSize[ 2 ] = blockSize[ 0 ];
 		}
 	}
-	Sys_Printf( "block size = { %d %d %d }\n", blockSize[ 0 ], blockSize[ 1 ], blockSize[ 2 ] );
+	Sys_Printf( "BSP block size = { %d %d %d }\n", blockSize[ 0 ], blockSize[ 1 ], blockSize[ 2 ] );
 	
 	/* sof2: ignore leaks? */
 	value = ValueForKey( &entities[ 0 ], "_ignoreleaks" );	/* ydnar */
@@ -396,12 +396,15 @@ void ProcessWorldModel( void )
 		ignoreLeaks = qtrue;
 	else
 		ignoreLeaks = qfalse;
+
 	
 	/* begin worldspawn model */
 	BeginModel();
 	e = &entities[ 0 ];
 	e->firstDrawSurf = 0;
-	
+	if( ignoreLeaks )
+		Sys_Printf( "Ignoring leaks\n" );
+
 	/* ydnar: gs mods */
 	ClearMetaTriangles();
 
@@ -410,30 +413,52 @@ void ProcessWorldModel( void )
 
 	/* build an initial bsp tree using all of the sides of all of the structural brushes */
 	faces = MakeStructuralBSPFaceList( entities[ 0 ].brushes );
-	tree = FaceBSP( faces );
-	MakeTreePortals( tree );
-	FilterStructuralBrushesIntoTree( e, tree );
+	tree = FaceBSP( faces, qfalse );
+	MakeTreePortals( tree, qfalse );
+	FilterStructuralBrushesIntoTree( e, tree, qfalse );
+
+	/* note BSP phase (non-verbose-mode) */
+	if( !verbose )
+		Sys_Printf ( "--- BuildBSP ---\n" );
 	
 	/* see if the bsp is completely enclosed */
-	if( FloodEntities( tree ) || ignoreLeaks )
+	filled = ignoreLeaks;
+	if( filled )
+		FloodEntities( tree, qtrue );
+	else
+		filled = FloodEntities( tree, qfalse );
+	if( filled )
 	{
+		Sys_FPrintf( SYS_VRB, "--- RebuildBSP ---\n" );
+
 		/* rebuild a better bsp tree using only the sides that are visible from the inside */
 		FillOutside( tree->headnode );
 
 		/* chop the sides to the convex hull of their visible fragments, giving us the smallest polygons */
-		ClipSidesIntoTree( e, tree );
+		ClipSidesIntoTree( e, tree, qtrue );
 		
 		/* build a visible face tree */
 		faces = MakeVisibleBSPFaceList( entities[ 0 ].brushes );
 		FreeTree( tree );
-		tree = FaceBSP( faces );
-		MakeTreePortals( tree );
-		FilterStructuralBrushesIntoTree( e, tree );
+		tree = FaceBSP( faces, qtrue );
+		MakeTreePortals( tree, qtrue );
+		FilterStructuralBrushesIntoTree( e, tree, qtrue );
 		leaked = qfalse;
 		
 		/* ydnar: flood again for skybox */
 		if( skyboxPresent )
-			FloodEntities( tree );
+			FloodEntities( tree, qtrue );
+
+		/* emit stats */
+		oldVerbose = verbose;
+		verbose = qtrue;
+		FillOutsideStats();
+		ClipSidesIntoTreeStats();
+		FaceBSPStats();
+		MakeTreePortalsStats();
+		FilterStructuralBrushesIntoTreeStats();
+		FloodEntitiesStats();
+		verbose = oldVerbose;
 	}
 	else
 	{
@@ -450,34 +475,48 @@ void ProcessWorldModel( void )
 		xml_SendNode( leaknode );
 		if( leaktest )
 		{
-			Sys_Printf ("--- MAP LEAKED, ABORTING LEAKTEST ---\n");
+			Sys_Printf ("MAP LEAKED, ABORTING LEAKTEST\n");
 			exit( 0 );
 		}
 		leaked = qtrue;
 		
 		/* chop the sides to the convex hull of their visible fragments, giving us the smallest polygons */
-		ClipSidesIntoTree( e, tree );
+		ClipSidesIntoTree( e, tree, qfalse );
 	}
 	
 	/* save out information for visibility processing */
 	NumberClusters( tree );
 	if( !leaked )
 		WritePortalFile( tree );
+
+	/* note BSP phase (non-verbose-mode) */
+	if( !verbose )
+	{
+		Sys_Printf( "--- CreateMapDrawsurfs ---\n" );
+		Sys_Printf( "%d...", 0 );
+		start = I_FloatTime();
+	}
 	
 	/* flood from entities */
 	FloodAreas( tree );
+	if( !verbose )
+		Sys_Printf( "%d...", 1 );
 	
 	/* create drawsurfs for triangle models */
 	AddTriangleModels( 0 );
 	
 	/* create drawsurfs for surface models */
 	AddEntitySurfaceModels( e );
+	if( !verbose )
+		Sys_Printf( "%d...", 2 );
 	
 	/* generate bsp brushes from map brushes */
 	EmitBrushes( e->brushes, &e->firstBrush, &e->numBrushes );
 	
 	/* add references to the detail brushes */
 	FilterDetailBrushesIntoTree( e, tree );
+	if( !verbose )
+		Sys_Printf( "%d...", 3 );
 	
 	/* drawsurfs that cross fog boundaries will need to be split along the fog boundary */
 	if( !nofog )
@@ -486,25 +525,37 @@ void ProcessWorldModel( void )
 	/* subdivide each drawsurf as required by shader tesselation */
 	if( !nosubdivide )
 		SubdivideFaceSurfaces( e, tree );
+	if( !verbose )
+		Sys_Printf( "%d...", 4 );
 
 	/* vortex: fix degenerate brush faces */
 	FixBrushFaces( e );
-	
+
 	/* add in any vertexes required to fix t-junctions */
 	if( !noTJunc )
 		FixTJunctions( e );
 
 	/* ydnar: classify the surfaces */
 	ClassifyEntitySurfaces( e );
+	if( !verbose )
+		Sys_Printf( "%d...", 5 );
 	
 	/* ydnar: project decals */
 	MakeEntityDecals( e );
+	if( !verbose )
+		Sys_Printf( "%d...", 6 );
 	
 	/* ydnar: meta surfaces */
 	MakeEntityMetaTriangles( e );
+	if( !verbose )
+		Sys_Printf( "%d...", 7);
 	SmoothMetaTriangles();
 	FixMetaTJunctions();
+	if( !verbose )
+		Sys_Printf( "%d...", 8 );
 	MergeMetaTriangles();
+	if( !verbose )
+		Sys_Printf( "%d...", 9 );
 	
 	/* ydnar: debug portals */
 	if( debugPortals )
@@ -566,10 +617,18 @@ void ProcessWorldModel( void )
 			}
 		}
 	}
-	
+	if ( !verbose )
+	{
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
+		Sys_Printf( "%9d drawsurfs\n", numMapDrawSurfs );
+	}
+
 	/* add references to the final drawsurfs in the apropriate clusters */
 	FilterDrawsurfsIntoTree( e, tree, qtrue );
-	EmitDrawsurfsStats();
+	if( !verbose )
+		EmitDrawsurfsSimpleStats();
+	else
+		EmitDrawsurfsStats();
 
 	/* match drawsurfaces back to original brushsides (sof2) */
 	FixBrushSides( e );
@@ -613,7 +672,7 @@ void ProcessSubModel( void )
 	tree->headnode = node;
 	
 	/* add the sides to the tree */
-	ClipSidesIntoTree( e, tree );
+	ClipSidesIntoTree( e, tree, qtrue );
 	
 	/* ydnar: create drawsurfs for triangle models */
 	AddTriangleModels( entityNum );
@@ -748,7 +807,7 @@ remove all stuff outside map region
 */
 void RegionScissor( void )
 {
-	int k, entityNum, scissorEntity, c, frame;
+	int i, k, entityNum, scissorEntity, c, frame;
 	int removedBrushes = 0, removedPatches = 0, removedModels = 0, removedEntities = 0, removedLights = 0;
 	const char *classname, *model, *value;
 	float temp, intensity;
@@ -765,7 +824,7 @@ void RegionScissor( void )
 		return;
 
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- RegionScissor ---\n" );
+	Sys_Printf( "--- RegionScissor ---\n" );
 
 	/* scissor world brushes */
 	e = &entities[ 0 ];
@@ -773,17 +832,26 @@ void RegionScissor( void )
 	for( b = e->brushes; b; b = nb )
 	{
 		nb = b->next;
+
+		/* sky surfaces are never scissored */
 		if( b->mins[ 0 ] > mapRegionMaxs[ 0 ] || b->maxs[ 0 ] < mapRegionMins[ 0 ] ||
-			b->mins[ 1 ] > mapRegionMaxs[ 1 ] || b->maxs[ 1 ] < mapRegionMins[ 1 ] ||
+		    b->mins[ 1 ] > mapRegionMaxs[ 1 ] || b->maxs[ 1 ] < mapRegionMins[ 1 ] ||
 			b->mins[ 2 ] > mapRegionMaxs[ 2 ] || b->maxs[ 2 ] < mapRegionMins[ 2 ] )
 		{
-			// remove brush
+			/* sky brushes are never scissored */
+			for( i = 0; i < b->numsides; i++ )
+				if( b->sides[ i ].compileFlags & C_SKY )
+					goto keep;
+	
+			/* remove brush */
 			b->next = NULL;
 			FreeBrush(b);
 			removedBrushes++;
 			continue;
 		}
-		// keep brush
+		/* keep brush */
+keep:
+		b->nextColorModBrush = NULL;
 		if (bs == NULL)
 		{
 			bs = b;
@@ -798,13 +866,24 @@ void RegionScissor( void )
 	}
 	e->brushes = bs;
 
+	/* relink colorMod brushes */
+	e->colorModBrushes = NULL;
+	for( b = e->brushes; b; b = b->next )
+	{
+		if( b->contentShader != NULL && b->contentShader->colorMod != NULL && b->contentShader->colorMod->type == CM_VOLUME )
+		{
+			b->nextColorModBrush = e->colorModBrushes;
+			e->colorModBrushes = b;
+		}
+	}
+
 	/* scissor world patches */
 	e = &entities[ 0 ];
 	ps = NULL;
 	for( p = e->patches; p; p = np )
 	{
 		np = p->next;
-		// calc patch bounds
+		/* calc patch bounds */
 		ClearBounds( mins, maxs );
 		c = p->mesh.width * p->mesh.height;
 		v = p->mesh.verts;
@@ -814,13 +893,13 @@ void RegionScissor( void )
 			mins[ 1 ] > mapRegionMaxs[ 1 ] || maxs[ 1 ] < mapRegionMins[ 1 ] ||
 			mins[ 2 ] > mapRegionMaxs[ 2 ] || maxs[ 2 ] < mapRegionMins[ 2 ] )
 		{
-			// remove patch
-			// FIXME: leak
+			/* remove patch */
+			/* FIXME: leak */
 			p->next = NULL;
 			removedPatches++;
 			continue;
 		}
-		// keep patch
+		/* keep patch */
 		if (ps == NULL)
 		{
 			ps = p;
@@ -1008,11 +1087,11 @@ keepentity:
 
 
 	/* emit some stats */
-	Sys_FPrintf( SYS_VRB, "%9d brushes removed\n", removedBrushes );
-	Sys_FPrintf( SYS_VRB, "%9d patches removed\n", removedPatches );
-	Sys_FPrintf( SYS_VRB, "%9d models removed\n", removedModels );
-	Sys_FPrintf( SYS_VRB, "%9d lights removed\n", removedLights );
-	Sys_FPrintf( SYS_VRB, "%9d entities removed\n", removedEntities );
+	Sys_Printf( "%9d brushes removed\n", removedBrushes );
+	Sys_Printf( "%9d patches removed\n", removedPatches );
+	Sys_Printf( "%9d models removed\n", removedModels );
+	Sys_Printf( "%9d lights removed\n", removedLights );
+	Sys_Printf( "%9d entities removed\n", removedEntities );
 }
 
 /*
@@ -1104,7 +1183,7 @@ int BSPMain( int argc, char **argv )
 	Sys_Printf( "--- CommandLine ---\n" );
 	
 	/* process arguments */
-	for( i = 1; i < (argc - 1); i++ )
+	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
 		if( !strcmp( argv[ i ], "-tempname" ) )
 			strcpy( tempSource, argv[ ++i ] );
@@ -1112,72 +1191,72 @@ int BSPMain( int argc, char **argv )
 			strcpy( outbase, "/tmp" );
 		else if( !strcmp( argv[ i ],  "-nowater" ) )
 		{
-			Sys_Printf( "Disabling water\n" );
+			Sys_Printf( " Disabling water\n" );
 			nowater = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-nodetail" ) )
 		{
-			Sys_Printf( "Ignoring detail brushes\n") ;
+			Sys_Printf( " Ignoring detail brushes\n") ;
 			nodetail = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-fulldetail" ) )
 		{
-			Sys_Printf( "Turning detail brushes into structural brushes\n" );
+			Sys_Printf( " Turning detail brushes into structural brushes\n" );
 			fulldetail = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-nodetailcollision" ) )
 		{
-			Sys_Printf( "Disabling collision for detail brushes\n" );
+			Sys_Printf( " Disabling collision for detail brushes\n" );
 			nodetailcollision = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-nofoliage" ) )
 		{
-			Sys_Printf( "Disabling foliage\n" );
+			Sys_Printf( " Disabling foliage\n" );
 			nofoliage = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-nodecals" ) )
 		{
-			Sys_Printf( "Disabling decals\n" );
+			Sys_Printf( " Disabling decals\n" );
 			nodecals = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-nofog" ) )
 		{
-			Sys_Printf( "Fog volumes disabled\n" );
+			Sys_Printf( " Fog volumes disabled\n" );
 			nofog = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-nosubdivide" ) )
 		{
-			Sys_Printf( "Disabling brush face subdivision\n" );
+			Sys_Printf( " Disabling brush face subdivision\n" );
 			nosubdivide = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-noclipmodel" ) )
 		{
-			Sys_Printf( "Disabling misc_model autoclip feature\n" );
+			Sys_Printf( " Disabling misc_model autoclip feature\n" );
 			noclipmodel = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-leaktest" ) )
 		{
-			Sys_Printf( "Leaktest enabled\n" );
+			Sys_Printf( " Leaktest enabled\n" );
 			leaktest = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-nocurves" ) )
 		{
-			Sys_Printf( "Ignoring curved surfaces (patches)\n" );
+			Sys_Printf( " Ignoring curved surfaces (patches)\n" );
 			noCurveBrushes = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-notjunc" ) )
 		{
-			Sys_Printf( "Disabling T-junction fixing\n" );
+			Sys_Printf( " Disabling T-junction fixing\n" );
 			noTJunc = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-noclip" ) )
 		{
-			Sys_Printf( "Disabling face clipping by BSP tree\n" );
+			Sys_Printf( " Disabling face clipping by BSP tree\n" );
 			noclip = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-fakemap" ) )
 		{
-			Sys_Printf( "Generating fakemap.map\n" );
+			Sys_Printf( " Generating fakemap.map\n" );
 			fakemap = qtrue;
 		}
 		else if( !strcmp( argv[ i ],  "-samplesize" ) )
@@ -1186,41 +1265,37 @@ int BSPMain( int argc, char **argv )
 			if( sampleSize < MIN_LIGHTMAP_SAMPLE_SIZE )
 				sampleSize = MIN_LIGHTMAP_SAMPLE_SIZE;
  			i++;
-			Sys_Printf( "Lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
+			Sys_Printf( " Lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
  		}
 		else if( !strcmp( argv[ i ], "-lightmapsize" ) )
 		{
 			lmCustomSize = atoi( argv[ i + 1 ] );
-			
+
 			/* must be a power of 2 and greater than 2 */
 			if( ((lmCustomSize - 1) & lmCustomSize) || lmCustomSize < 2 )
 			{
-				Sys_Printf( "WARNING: Lightmap size must be a power of 2, greater or equal to 2 pixels.\n" );
+				Sys_Warning( "Given lightmap size (%i) must be a power of 2, greater or equal to 2 pixels.", lmCustomSize );
 				lmCustomSize = game->lightmapSize;
+				
 			}
+			Sys_Printf( " Default lightmap size set to %d x %d pixels\n", lmCustomSize, lmCustomSize );
 			i++;
-			Sys_Printf( "Default lightmap size set to %d x %d pixels\n", lmCustomSize, lmCustomSize );
 		}
 		else if( !strcmp( argv[ i ], "-maxsurfacelightmapsize" ) )
 		{
 			lmMaxSurfaceSize = atoi( argv[ i + 1 ] );
 			i++;
-			Sys_Printf( "Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
-		}
-		else if( !strcmp( argv[ i ],  "-custinfoparms") )
-		{
-			Sys_Printf( "Custom info parms enabled\n" );
-			useCustomInfoParms = qtrue;
+			Sys_Printf( " Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
 		}
 		else if( !strcmp( argv[ i ],  "-entitysaveid") )
 		{
-			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			Sys_Printf( " Entity unique savegame identifiers enabled\n" );
 			useEntitySaveId = qtrue;
 		}
 		/* sof2 args */
 		else if( !strcmp( argv[ i ], "-rename" ) )
 		{
-			Sys_Printf( "Appending _bsp suffix to misc_model shaders (SOF2)\n" );
+			Sys_Printf( " Appending _bsp suffix to misc_model shaders (SOF2)\n" );
 			renameModelShaders = qtrue;
 		}
 		
@@ -1229,27 +1304,27 @@ int BSPMain( int argc, char **argv )
  		{
 			normalEpsilon = atof( argv[ i + 1 ] );
  			i++;
-			Sys_Printf( "Normal epsilon set to %f\n", normalEpsilon );
+			Sys_Printf( " Normal epsilon set to %f\n", normalEpsilon );
  		}
 		else if( !strcmp( argv[ i ],  "-de" ) )
  		{
 			distanceEpsilon = atof( argv[ i + 1 ] );
  			i++;
-			Sys_Printf( "Distance epsilon set to %f\n", distanceEpsilon );
+			Sys_Printf( " Distance epsilon set to %f\n", distanceEpsilon );
  		}
 		else if( !strcmp( argv[ i ],  "-mv" ) )
  		{
 			maxLMSurfaceVerts = atoi( argv[ i + 1 ] );
 			if( maxLMSurfaceVerts < 3 )
 				maxLMSurfaceVerts = 3;
-			Sys_Printf( "Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
+			Sys_Printf( " Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
 			if( maxLMSurfaceVerts > maxSurfaceVerts )
 			{
 				maxSurfaceVerts = maxLMSurfaceVerts;
-				Sys_Printf( "Maximum surface vertex count set to %d\n", maxSurfaceVerts );
+				Sys_Printf( " Maximum surface vertex count set to %d\n", maxSurfaceVerts );
 			}
  			i++;
-			Sys_Printf( "Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
+			Sys_Printf( " Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
  		}
 		else if( !strcmp( argv[ i ],  "-mi" ) )
  		{
@@ -1257,7 +1332,7 @@ int BSPMain( int argc, char **argv )
 			if( maxSurfaceIndexes < 3 )
 				maxSurfaceIndexes = 3;
  			i++;
-			Sys_Printf( "Maximum per-surface index count set to %d\n", maxSurfaceIndexes );
+			Sys_Printf( " Maximum per-surface index count set to %d\n", maxSurfaceIndexes );
  		}
 		else if( !strcmp( argv[ i ], "-np" ) )
 		{
@@ -1265,7 +1340,7 @@ int BSPMain( int argc, char **argv )
 			if( npDegrees < 0.0f )
 				shadeAngleDegrees = 0.0f;
 			else if( npDegrees > 0.0f )
-				Sys_Printf( "Forcing nonplanar surfaces with a breaking angle of %f degrees\n", npDegrees );
+				Sys_Printf( " Forcing nonplanar surfaces with a breaking angle of %f degrees\n", npDegrees );
 			i++;
 		}
 		else if( !strcmp( argv[ i ],  "-snap" ) )
@@ -1275,7 +1350,7 @@ int BSPMain( int argc, char **argv )
 				bevelSnap = 0;
  			i++;
 			if( bevelSnap > 0 )
-				Sys_Printf( "Snapping brush bevel planes to %d units\n", bevelSnap );
+				Sys_Printf( " Snapping brush bevel planes to %d units\n", bevelSnap );
  		}
 		else if( !strcmp( argv[ i ],  "-texrange" ) )
  		{
@@ -1283,62 +1358,62 @@ int BSPMain( int argc, char **argv )
 			if( texRange < 0 )
 				texRange = 0;
  			i++;
-			Sys_Printf( "Limiting per-surface texture range to %d texels\n", texRange );
+			Sys_Printf( " Limiting per-surface texture range to %d texels\n", texRange );
  		}
 		else if( !strcmp( argv[ i ], "-nohint" ) )
 		{
-			Sys_Printf( "Hint brushes disabled\n" );
+			Sys_Printf( " Hint brushes disabled\n" );
 			noHint = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-flat" ) )
 		{
-			Sys_Printf( "Flatshading enabled\n" );
+			Sys_Printf( " Flatshading enabled\n" );
 			flat = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-meta" ) )
 		{
-			Sys_Printf( "Creating meta surfaces from brush faces\n" );
+			Sys_Printf( " Creating meta surfaces from brush faces\n" );
 			meta = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-patchmeta" ) )
 		{
-			Sys_Printf( "Creating meta surfaces from patches\n" );
+			Sys_Printf( " Creating meta surfaces from patches\n" );
 			patchMeta = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-flares" ) )
 		{
-			Sys_Printf( "Flare surfaces enabled\n" );
+			Sys_Printf( " Flare surfaces enabled\n" );
 			emitFlares = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-noflares" ) )
 		{
-			Sys_Printf( "Flare surfaces disabled\n" );
+			Sys_Printf( " Flare surfaces disabled\n" );
 			emitFlares = qfalse;
 		}
 		else if( !strcmp( argv[ i ], "-skyfix" ) )
 		{
-			Sys_Printf( "GL_CLAMP sky fix/hack/workaround enabled\n" );
+			Sys_Printf( " GL_CLAMP sky fix/hack/workaround enabled\n" );
 			skyFixHack = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-debugsurfaces" ) )
 		{
-			Sys_Printf( "emitting debug surfaces\n" );
+			Sys_Printf( " emitting debug surfaces\n" );
 			debugSurfaces = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-debuginset" ) )
 		{
-			Sys_Printf( "Debug surface triangle insetting enabled\n" );
+			Sys_Printf( " Debug surface triangle insetting enabled\n" );
 			debugInset = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-debugportals" ) )
 		{
-			Sys_Printf( "Debug portal surfaces enabled\n" );
+			Sys_Printf( " Debug portal surfaces enabled\n" );
 			debugPortals = qtrue;
 		}
 		else if( !strcmp( argv[ i ], "-bsp" ) )
-			Sys_Printf( "-bsp argument unnecessary\n" );
+			Sys_Printf( " -bsp argument unnecessary\n" );
 		else
-			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown option \"%s\"", argv[ i ] );
 	}
 
 	/* set up lmMaxSurfaceSize */
@@ -1386,18 +1461,15 @@ int BSPMain( int argc, char **argv )
 
 	/* load original file from temp spot in case it was renamed by the editor on the way in */
 	if( strlen( tempSource ) > 0 )
-		LoadMapFile( tempSource, qfalse, qfalse, qfalse );
+		LoadMapFile( tempSource, qfalse, qfalse, qfalse, qfalse );
 	else
-		LoadMapFile( name, qfalse, qfalse, qfalse  );
+		LoadMapFile( name, qfalse, qfalse, qfalse, qfalse );
 
 	/* check map for errors */
 	CheckMapForErrors();
 
 	/* load up decorations */
-	LoadDecorations();
-
-	/* import decorations */
-	ImportDecorations( source );
+	LoadDecorations( source );
 
 	/* vortex: preload triangle models */
 	LoadTriangleModels();

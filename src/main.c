@@ -91,7 +91,6 @@ static int MD4BlockChecksum(void *buffer, int length)
 	return checksum;
 }
 
-
 /*
 FixAAS()
 resets an aas checksum to match the given BSP
@@ -128,7 +127,8 @@ int FixAAS( int argc, char **argv )
 	Sys_Printf( "--- FixAAS ---\n" );
 	
 	/* load the bsp */
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	length = LoadFile( source, &buffer );
 	
 	/* create bsp checksum */
@@ -219,19 +219,20 @@ int AnalyzeBSP( int argc, char **argv )
 	}
 	
 	/* process arguments */
-	for( i = 1; i < (argc - 1); i++ )
+	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
 		/* -format map|ase|... */
 		if( !strcmp( argv[ i ],  "-lumpswap" ) )
 		{
-			Sys_Printf( "Swapped lump structs enabled\n" );
+			Sys_Printf( " Swapped lump structs enabled\n" );
  			lumpSwap = qtrue;
  		}
 	}
 	
 	/* clean up map name */
+	Sys_Printf( "--- LoadBSPFile ---\n" );
 	strcpy( source, ExpandArg( argv[ i ] ) );
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "loading %s\n", source );
 	
 	/* load the file */
 	size = LoadFile( source, (void**) &header );
@@ -423,7 +424,8 @@ int ScaleBSPMain( int argc, char **argv )
 	DefaultExtension( source, ".bsp" );
 	
 	/* load the bsp */
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	LoadBSPFile( source );
 	ParseEntities();
 	
@@ -491,6 +493,7 @@ int ScaleBSPMain( int argc, char **argv )
 	SetKeyValue( &entities[ 0 ], "gridsize", str );
 	
 	/* write the bsp */
+	Sys_Printf( "--- WriteBSPFile ---\n" );
 	UnparseEntities(qfalse);
 	StripExtension( source );
 	DefaultExtension( source, "_s.bsp" );
@@ -514,6 +517,9 @@ int ConvertBSPMain( int argc, char **argv )
 	int		(*convertFunc)( char *, int );
 	game_t	*convertGame;
 	int		convertCollapseByTexture;
+
+	/* note it */
+	Sys_Printf( "--- ConvertBSP ---\n" );
 	
 	/* set default */
 	convertFunc = ConvertBSPToASE;
@@ -528,16 +534,11 @@ int ConvertBSPMain( int argc, char **argv )
 	}
 	
 	/* process arguments */
-	for( i = 1; i < (argc - 1); i++ )
+	Sys_Printf( "--- CommandLine ---\n" );
+	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
-		/* -custinfoparms */
-		if( !strcmp( argv[ i ],  "-custinfoparms") )
-		{
-			useCustomInfoParms = qtrue;
-			Sys_Printf( "Custom info parms enabled\n" );
-		}
 		/* -entitysaveid */
-		else if( !strcmp( argv[ i ],  "-entitysaveid") )
+		if( !strcmp( argv[ i ],  "-entitysaveid") )
 		{
 			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
 			useEntitySaveId = qtrue;
@@ -572,7 +573,8 @@ int ConvertBSPMain( int argc, char **argv )
 	
 	LoadShaderInfo();
 	
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	
 	/* ydnar: load surface file */
 	//%	LoadSurfaceExtraFile( source );
@@ -589,6 +591,7 @@ int ConvertBSPMain( int argc, char **argv )
 		game = convertGame;
 		
 		/* write bsp */
+		Sys_Printf( "--- WriteBSPFile ---\n" );
 		StripExtension( source );
 		DefaultExtension( source, "_c.bsp" );
 		Sys_Printf( "Writing %s\n", source );
@@ -611,8 +614,8 @@ q3map mojo...
 
 int main( int argc, char **argv )
 {
-	int		i, r;
-	double	start, end;
+	int	i, r;
+	double start, end;
 	
 	/* we want consistent 'randomness' */
 	srand( 0 );
@@ -624,10 +627,24 @@ int main( int argc, char **argv )
 	atexit( ExitQ3Map );
 
 	/* read general options first */
-	for( i = 1; i < argc; i++ )
+	for( i = 1; i < argc && argv[ i ]; i++ )
 	{
+		/* -buildconfig */
+		if( !strcmp( argv[ i ], "-buildconfig" ) )
+		{
+			useBuildCfg = qtrue;
+			argv[ i ] = NULL;
+		}
+
+		/* -custinfoparms */
+		else if( !strcmp( argv[ i ],  "-custinfoparms") )
+		{
+			useCustomInfoParms = qtrue;
+			argv[ i ] = NULL;
+		}
+
 		/* -connect */
-		if( !strcmp( argv[ i ], "-connect" ) )
+		else if( !strcmp( argv[ i ], "-connect" ) )
 		{
 			argv[ i ] = NULL;
 			i++;
@@ -707,13 +724,22 @@ int main( int argc, char **argv )
 	/* we print out two versions, q3map's main version (since it evolves a bit out of GtkRadiant)
 	   and we put the GtkRadiant version to make it easy to track with what version of Radiant it was built with */
 	
-	Sys_Printf( "Q3Map         - v1.0r (c) 1999 Id Software Inc.\n" );
-	Sys_Printf( "Q3Map (ydnar) - v2.5.16 FS20g\n" );
-	Sys_Printf( "BloodMap      - v" BLOODMAP_VERSION " " __DATE__ " " __TIME__ "\n" );
-	Sys_Printf( "%s\n", BLOODMAP_MOTD );
+	Sys_Printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+	Sys_Printf(" Q3Map         - v1.0r (c) 1999 Id Software Inc.\n" );
+	Sys_Printf(" Q3Map (ydnar) - v2.5.16 FS20g\n" );
+	Sys_Printf(" GtkRadiant    - v1.5.0\n" );
+	Sys_Printf(" BloodMap      - v" BLOODMAP_VERSION " " __DATE__ " " __TIME__ " (c) Pavel [VorteX] Timofeyev\n" );
+	Sys_Printf(" %s\n", BLOODMAP_MOTD );
+	if( useBuildCfg )
+		Sys_Printf( " Enabled usage of .build config file\n" );
+	if( useCustomInfoParms )
+		Sys_Printf( " Custom info parms enabled\n" );
+#if MAX_LIGHTMAPS == 1
+	Sys_Printf( " Light styles are disabled in this build\n" );
+#endif
 	ThreadStats();
-	Sys_Printf( "\n" );
-	
+	Sys_Printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+
 	/* ydnar: new path initialization */
 	InitPaths( &argc, argv );
 
@@ -748,7 +774,7 @@ int main( int argc, char **argv )
 	/* vlight */
 	else if( !strcmp( argv[ 1 ], "-vlight" ) )
 	{
-		Sys_Printf( "WARNING: VLight is no longer supported, defaulting to -light -fast instead\n\n" );
+		Sys_Warning( "VLight is no longer supported, defaulting to -light -fast instead" );
 		argv[ 1 ] = "-fast";	/* eek a hack */
 		r = LightMain( argc, argv );
 	}

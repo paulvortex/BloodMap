@@ -449,10 +449,7 @@ void CreateEntityLights( void )
 			/* get target */
 			e2 = FindTargetEntity( target );
 			if( e2 == NULL )
-			{
-				Sys_Printf( "WARNING: light at (%i %i %i) has missing target\n",
-					(int) light->origin[ 0 ], (int) light->origin[ 1 ], (int) light->origin[ 2 ] );
-			}
+				Sys_Warning( e->mapEntityNum, "Spotlight at (%f %f %f) has missing target", light->origin[ 0 ], light->origin[ 1 ], light->origin[ 2 ] );
 			else
 			{
 				/* not a point light */
@@ -1500,10 +1497,22 @@ void IlluminateGridPoint(trace_t *trace, int num)
 		VectorMA( gp->ambient[ 0 ], (1.0 - d), contributions[ i ].color, gp->ambient[ 0 ] );
 	}
 
-	/* debug code for global ambient level */
-	//VectorSet( gp->ambient[ 0 ], ambient * 128.0f, ambient * 128.0f, ambient * 128.0f );
-	//VectorSet( gp->directed[ 0 ], 0, 0, 0 );
+	/* set min color */
+	VectorMA( gp->ambient[ 0 ], 0.5, gp->directed[ 0 ], color );
+	for( i = 0; i < 3; i++ )
+		if( color[ i ] < minGridLight[ i ] )
+			gp->ambient[ 0 ][ i ] += minGridLight[ i ] - color[ i ];
 
+	/* set color mod */
+	if( !bouncing )
+	{
+		for( i = 0; i < 3; i++ )
+		{
+			gp->ambient[ 0 ][ i ] *= colorMod[ i ];
+			gp->directed[ 0 ][ i ] *= colorMod[ i ];
+		}
+	}
+		
 	/* store off sample */
 	ColorToBytes( gp->ambient[ 0 ], bgp->ambient[ 0 ], 1.0, qfalse );
 	ColorToBytes( gp->directed[ 0 ], bgp->directed[ 0 ], 1.0, qfalse );
@@ -1742,7 +1751,7 @@ performs lightgrid calculations
 
 void IlluminateGrid( void )
 {
-	int i, numFloodPasses;
+	int i, numFloodPasses, totalFlooded;
 
 	/* set up light envelopes */
 	SetupEnvelopes( qtrue, fastgrid );
@@ -1761,15 +1770,24 @@ void IlluminateGrid( void )
 #endif
 
 	/* flood (this is a fast operation, so no pacifier) */
+	totalFlooded = 0;
 	numFloodPasses = max( max( gridBounds[ 0 ], gridBounds[ 1 ] ), gridBounds[ 2 ] ) + 1;
 	for (i = 0; i < numFloodPasses; i++)
+	{
+		gridPointsFlooded = 0;
 		RunThreadsOnIndividual( numRawGridPoints, qfalse, FloodGridPoint );
+		totalFlooded += gridPointsFlooded;
+
+		/* early out (all points was flooded) */
+		if( gridPointsFlooded == 0 )
+			break;
+	}
 	
 	/* print stats */
-	Sys_FPrintf( SYS_VRB, "%9d flood passes\n", numFloodPasses );
+	Sys_FPrintf( SYS_VRB, "%9d flood passes\n", i );
 	Sys_FPrintf( SYS_VRB, "%9d points illuminated\n", gridPointsIlluminated );
 	Sys_FPrintf( SYS_VRB, "%9d points occluded\n", gridPointsOccluded );
-	Sys_FPrintf( SYS_VRB, "%9d points flooded\n", gridPointsFlooded );
+	Sys_FPrintf( SYS_VRB, "%9d points flooded\n", totalFlooded );
 }
 
 /*
@@ -1833,8 +1851,8 @@ void SetupGrid( void )
 	
 	/* print stats */
 	Sys_Printf( "Grid point size = { %1.0f, %1.0f, %1.0f }\n", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
-	Sys_Printf( "Grid dimensions = %ix%ix%i\n", gridBounds[ 0 ], gridBounds[ 1 ], gridBounds[ 2 ] );
-	Sys_Printf( "Grid block = %ix%ix%i (total %ix%ix%i, %i points per block)\n", gridBlockSize[ 0 ], gridBlockSize[ 1 ], gridBlockSize[ 2 ], gridBlocks[ 0 ], gridBlocks[ 1 ], gridBlocks[ 2 ], gridBlockSize[ 0 ] * gridBlockSize[ 1 ] * gridBlockSize[ 2 ] );
+	Sys_FPrintf( SYS_VRB, "Grid dimensions = %ix%ix%i\n", gridBounds[ 0 ], gridBounds[ 1 ], gridBounds[ 2 ] );
+	Sys_FPrintf( SYS_VRB, "Grid block = %ix%ix%i (total %ix%ix%i, %i points per block)\n", gridBlockSize[ 0 ], gridBlockSize[ 1 ], gridBlockSize[ 2 ], gridBlocks[ 0 ], gridBlocks[ 1 ], gridBlocks[ 2 ], gridBlockSize[ 0 ] * gridBlockSize[ 1 ] * gridBlockSize[ 2 ] );
 
 	/* build normals used to calculate ambient lighting in new TraceGrid path */
 	for( i = 0; i < GRID_NUM_NORMALS; i++ )
@@ -1871,7 +1889,7 @@ void SetupGrid( void )
 	gridPointsMapped = 0;
 	for( i = 0; i < numRawGridPoints; i++ )
 	{
-		/* set ambient */
+		/* set ambient color */
 		VectorCopy( ambientColor, rawGridPoints[ i ].ambient[ j ] );
 		rawGridPoints[ i ].styles[ 0 ] = LS_NORMAL;
 		bspGridPoints[ i ].styles[ 0 ] = LS_NORMAL;
@@ -1915,9 +1933,9 @@ void SetupGrid( void )
 	}
 	
 	/* note it */
-	Sys_Printf( "%9d grid areas\n", numGridAreas );
-	Sys_Printf( "%9d grid blocks\n", numGridBlocks );
-	Sys_Printf( "%9d grid points\n", numRawGridPoints );
+	Sys_FPrintf( SYS_VRB, "%9d grid areas\n", numGridAreas );
+	Sys_FPrintf( SYS_VRB, "%9d grid blocks\n", numGridBlocks );
+	Sys_FPrintf( SYS_VRB, "%9d grid points\n", numRawGridPoints );
 	Sys_Printf( "%9d grid points mapped (%.2f percent)\n", gridPointsMapped, ((float)gridPointsMapped / numRawGridPoints) * 100 );
 	if( gridSuperSample >= 2 )
 		Sys_Printf( "%9d grid points sampled\n", gridPointsMapped * gridSuperSample * gridSuperSample * gridSuperSample );
@@ -1987,54 +2005,166 @@ LightWorld()
 does what it says...
 */
 
-void LightWorld( void )
+void LightWorld( char *mapSource )
 {
-	vec3_t		color;
-	float		f;
-	int			b, bt;
-	qboolean    minVertex, minGrid;
+	qboolean useMinLight = qfalse, useMinVertexLight = qfalse, useMinGridLight = qfalse, useAmbient = qfalse, useColormod = qfalse;
+	int	b, bt;
+	vec3_t color;
+	float f;
 
 	/* note it */
 	Sys_Printf( "--- LightWorld ---\n" );
 	
-	/* get minlight/ambient */
-	GetEntityMinlightAmbientColor( &entities[ 0 ], color, ambientColor, minLight, NULL, qtrue );
-	VectorCopy( minLight, minVertexLight );
-	VectorCopy( minLight, minGridLight );
+	/* get color/_color (used for minlight/minvertexlight/ambient */
+	GetEntityMinlightAmbientColor( &entities[ 0 ], color, NULL, NULL, NULL, NULL, qtrue );
 
-	/* _minvertexlight */
+	/* minlight/_minlight */
+	if( KeyExists( &entities[ 0 ], "minlight" ) )
+	{
+		useMinLight = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "minlight"), "%f %f %f", &minLight[ 0 ], &minLight[ 1 ], &minLight[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "minlight" );
+			VectorScale( color, f, minLight );
+		}
+	}
+	if( KeyExists( &entities[ 0 ], "_minlight" ) )
+	{
+		useMinLight = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "_minlight"), "%f %f %f", &minLight[ 0 ], &minLight[ 1 ], &minLight[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "_minlight" );
+			VectorScale( color, f, minLight );
+		}
+	}
+	if( useMinLight )
+	{
+		VectorCopy( minLight, minVertexLight );
+		VectorCopy( minLight, minGridLight );
+	}
+
+	/* minvertexlight/_minvertexlight */
+	if( KeyExists( &entities[ 0 ], "minvertexlight" ) )
+	{
+		useMinVertexLight = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "minvertexlight"), "%f %f %f", &minVertexLight[ 0 ], &minLight[ 1 ], &minLight[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "minvertexlight" );
+			VectorScale( color, f, minVertexLight );
+		}
+	}
 	if( KeyExists( &entities[ 0 ], "_minvertexlight" ) )
 	{
-		minVertex = qtrue;
-		f = FloatForKey( &entities[ 0 ], "_minvertexlight" );
-		VectorScale( color, f, minVertexLight );
+		useMinVertexLight = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "_minvertexlight"), "%f %f %f", &minVertexLight[ 0 ], &minVertexLight[ 1 ], &minVertexLight[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "_minvertexlight" );
+			VectorScale( color, f, minVertexLight );
+		}
 	}
-	
-	/* _mingridlight */
+
+	/* mingridlight/_mingridlight */
+	if( KeyExists( &entities[ 0 ], "mingridlight" ) )
+	{
+		useMinGridLight = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "mingridlight"), "%f %f %f", &minGridLight[ 0 ], &minGridLight[ 1 ], &minGridLight[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "mingridlight" );
+			VectorScale( color, f, minGridLight );
+		}
+	}
 	if( KeyExists( &entities[ 0 ], "_mingridlight" ) )
 	{
-		minGrid = qtrue;
-		f = FloatForKey( &entities[ 0 ], "_mingridlight" );
-		VectorScale( color, f, minGridLight );
+		useMinGridLight = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "_mingridlight"), "%f %f %f", &minGridLight[ 0 ], &minGridLight[ 1 ], &minGridLight[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "_mingridlight" );
+			VectorScale( color, f, minGridLight );
+		}
+	}
+
+	/* ambient/_ambient */
+	if( KeyExists( &entities[ 0 ], "ambient" ) )
+	{
+		useAmbient = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "ambient"), "%f %f %f", &ambientColor[ 0 ], &ambientColor[ 1 ], &ambientColor[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "ambient" );
+			VectorScale( color, f, ambientColor );
+		}
+	}
+	if( KeyExists( &entities[ 0 ], "_ambient" ) )
+	{
+		useAmbient = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "_ambient"), "%f %f %f", &ambientColor[ 0 ], &ambientColor[ 1 ], &ambientColor[ 2 ] ) != 3 )
+		{
+			f = FloatForKey( &entities[ 0 ], "_ambient" );
+			VectorScale( color, f, ambientColor );
+		}
+	}
+
+	/* colormod/_colormod */
+	if( KeyExists( &entities[ 0 ], "colormod" ) )
+	{
+		useColormod = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "colormod"), "%f %f %f", &colorMod[ 0 ], &colorMod[ 1 ], &colorMod[ 2 ] ) != 3 )
+			colorMod[ 0 ] = colorMod[ 1 ] = colorMod[ 2 ] = FloatForKey( &entities[ 0 ], "colormod" );
+	}
+	if( KeyExists( &entities[ 0 ], "_colormod" ) )
+	{
+		useColormod = qtrue;
+		if( sscanf( ValueForKey( &entities[ 0 ], "_colormod"), "%f %f %f", &colorMod[ 0 ], &colorMod[ 1 ], &colorMod[ 2 ] ) != 3 )
+			colorMod[ 0 ] = colorMod[ 1 ] = colorMod[ 2 ] = FloatForKey( &entities[ 0 ], "_colormod" );
 	}
 
 	/* show stats */
-	if( ambientColor[ 0 ] || ambientColor[ 1 ] || ambientColor[ 2 ] )
-		Sys_Printf( "Ambient light = ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
+	if( useMinLight )
+		Sys_Printf( "Min light override by worldspawn key\n" );
 	if( minLight[ 0 ] || minLight[ 1 ] || minLight[ 2 ] )
 		Sys_Printf( "Min light = ( %f %f %f )\n", minLight[ 0 ], minLight[ 1 ], minLight[ 2 ] );
-	if( minVertex )
+	if( useMinVertexLight )
+		Sys_Printf( "Min vertex light override by worldspawn key\n" );
+	if( ( minVertexLight[ 0 ] || minVertexLight[ 1 ] || minVertexLight[ 2 ] ) && ( minLight[ 0 ] != minVertexLight[ 0 ] || minLight[ 1 ] != minVertexLight[ 1 ] || minLight[ 2 ] != minVertexLight[ 2 ] ) )
 		Sys_Printf( "Min vertex light = ( %f %f %f )\n", minVertexLight[ 0 ], minVertexLight[ 1 ], minVertexLight[ 2 ] );
-	if( minGrid )
+	if( useMinGridLight )
+		Sys_Printf( "Min grid light override by worldspawn key\n" );
+	if( ( minGridLight[ 0 ] || minGridLight[ 1 ] || minGridLight[ 2 ] ) && ( minLight[ 0 ] != minGridLight[ 0 ] || minLight[ 1 ] != minGridLight[ 1 ] || minLight[ 2 ] != minGridLight[ 2 ] ) )
 		Sys_Printf( "Min grid light = ( %f %f %f )\n", minGridLight[ 0 ], minGridLight[ 1 ], minGridLight[ 2 ] );
+	if( useAmbient )
+		Sys_Printf( "Ambient light override by worldspawn key\n" );
+	if( ambientColor[ 0 ] || ambientColor[ 1 ] || ambientColor[ 2 ] )
+		Sys_Printf( "Ambient light = ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
+	if( useColormod )
+		Sys_Printf( "Global colormod override by worldspawn key\n" );
+	if( colorMod[ 0 ] != 1 || colorMod[ 1 ] != 1 || colorMod[ 2 ] != 1 )
+		Sys_Printf( "Colormod = ( %f %f %f )\n", colorMod[ 0 ], colorMod[ 1 ], colorMod[ 2 ] );
 
-	/* create world lights */
+	/* initialize filter effects  */
+	SetupDirt();
+	SetupFloodLight();
+
+	/* initialize lightmaps */
+	SetupSurfaceLightmaps();
+	
+	/* initialize the surface facet tracing */
+	SetupTraceNodes();
+
+	/* allocate raw lightmaps */
+	AllocateSurfaceLightmaps();
+
+	/* create world lights (note in verbose mode) */
+	if( verbose )
+		Sys_Printf( "--- CreateLights ---\n" );
 	CreateEntityLights();
 	CreateSurfaceLights();
-	Sys_Printf( "%9d point lights\n", numPointLights );
-	Sys_Printf( "%9d spotlights\n", numSpotLights );
-	Sys_Printf( "%9d diffuse (area) lights\n", numDiffuseLights );
-	Sys_Printf( "%9d sun/sky lights\n", numSunLights );
+	if( numPointLights || verbose )
+		Sys_Printf( "%9d point lightsources created\n", numPointLights );
+	if( numSpotLights || verbose )
+		Sys_Printf( "%9d spot lightsources created\n", numSpotLights );
+	if( numDiffuseLights || verbose )
+		Sys_Printf( "%9d diffuse (area) lightsources created\n", numDiffuseLights );
+	if( numSunLights || verbose )
+		Sys_Printf( "%9d sun/sky lightsources created\n", numSunLights );
 
 	/* smooth normals */
 	if( shade )
@@ -2059,21 +2189,27 @@ void LightWorld( void )
 	RunThreadsOnIndividual( numRawLightmaps, qtrue, MapRawLightmap );
 	Sys_Printf( "%9d luxels\n", numLuxels );
 	Sys_Printf( "%9d luxels mapped\n", numLuxelsMapped );
+	Sys_Printf( "%9d luxels remapped\n", numLuxelsRemapped );
+	Sys_Printf( "%9d luxels nudged\n", numLuxelsNudged );
 	Sys_Printf( "%9d luxels occluded\n", numLuxelsOccluded );
-	
+
 	/* dirty them up */
-	if (dirty)
+	if( !gridOnly && dirty )
 	{
 		Sys_Printf( "--- DirtyRawLightmap ---\n" );
 		RunThreadsOnIndividual( numRawLightmaps, qtrue, DirtyRawLightmap );
 	}
 
 	/* floodlight pass */
-	// VorteX: floodlight are off at the moment
-	//FloodlightRawLightmaps();
+	if( !gridOnly )
+	{
+		// VorteX: floodlight are off at the moment
+		//FloodlightRawLightmaps();
+	}
 
 	/* ydnar: set up light envelopes */
-	SetupEnvelopes( qfalse, fast );
+	if( !gridOnly )
+		SetupEnvelopes( qfalse, fast );
 	
 	/* light up my world */
 	lightsPlaneCulled = 0;
@@ -2090,11 +2226,20 @@ void LightWorld( void )
 	Sys_Printf( "--- FilterRawLightmap ---\n" );
 	ThreadMutexInit(&LightmapGrowStitchMutex);
 	RunThreadsOnIndividual( numRawLightmaps, qtrue, FilterRawLightmap );
-	Sys_Printf( "%9d luxels marked for stitching\n", numLuxelsStitched );
+	if( numLuxelsStitched || verbose )
+		Sys_Printf( "%9d luxels marked for stitching\n", numLuxelsStitched );
 	ThreadMutexDelete(&LightmapGrowStitchMutex);
 
 	/* stitch lightmaps */
-	StitchSurfaceLightmaps();
+	StitchRawLightmaps();
+
+	/* generate debug surfaces for luxels */
+	if( debugLightmap )
+	{
+		StripExtension( mapSource );
+		DefaultExtension( mapSource, "_luxels.ase" );
+		WriteRawLightmapsFile( mapSource );
+	}
 
 	/* illuminate vertexes */
 	Sys_Printf( "--- IlluminateVertexes ---\n" );
@@ -2123,6 +2268,7 @@ void LightWorld( void )
 		/* flag bouncing */
 		bouncing = qtrue;
 		VectorClear( ambientColor );
+		VectorSet( colorMod, 1, 1, 1 );
 		
 		/* generate diffuse lights */
 		RadFreeLights();
@@ -2162,11 +2308,12 @@ void LightWorld( void )
 		Sys_Printf( "--- FilterRawLightmap ---\n" );
 		ThreadMutexInit(&LightmapGrowStitchMutex);
 		RunThreadsOnIndividual( numRawLightmaps, qtrue, FilterRawLightmap );
-		Sys_Printf( "%9d luxels marked for stitching\n", numLuxelsStitched );
+		if( numLuxelsStitched || verbose )
+			Sys_Printf( "%9d luxels marked for stitching\n", numLuxelsStitched );
 		ThreadMutexDelete(&LightmapGrowStitchMutex);
 		
 		/* stitch lightmaps */
-		StitchSurfaceLightmaps();
+		StitchRawLightmaps();
 
 		/* illuminate vertexes */
 		Sys_Printf( "--- IlluminateVertexes ---\n" );
@@ -2260,14 +2407,14 @@ int LightMain( int argc, char **argv )
 	Sys_Printf( "--- CommandLine ---\n" );
 	
 	/* process commandline arguments */
-	for( i = 1; i < (argc - 1); i++ )
+	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
 		/* point lightsource scaling */
 		if( !strcmp( argv[ i ], "-point" ) || !strcmp( argv[ i ], "-pointscale" ) )
 		{
 			f = atof( argv[ i + 1 ] );
 			pointScale *= f;
-			Sys_Printf( "Point (entity) light scaled by %f to %f\n", f, pointScale );
+			Sys_Printf( " Point (entity) light scaled by %f to %f\n", f, pointScale );
 			i++;
 		}
 		
@@ -2276,7 +2423,7 @@ int LightMain( int argc, char **argv )
 		{
 			f = atof( argv[ i + 1 ] );
 			areaScale *= f;
-			Sys_Printf( "Area (shader) light scaled by %f to %f\n", f, areaScale );
+			Sys_Printf( " Area (shader) light scaled by %f to %f\n", f, areaScale );
 			i++;
 		}
 		
@@ -2285,7 +2432,7 @@ int LightMain( int argc, char **argv )
 		{
 			f = atof( argv[ i + 1 ] );
 			skyScale *= f;
-			Sys_Printf( "Sky/sun light scaled by %f to %f\n", f, skyScale );
+			Sys_Printf( " Sky/sun light scaled by %f to %f\n", f, skyScale );
 			i++;
 		}
 		
@@ -2294,7 +2441,7 @@ int LightMain( int argc, char **argv )
 		{
 			f = atof( argv[ i + 1 ] );
 			bounceScale *= f;
-			Sys_Printf( "Bounce (radiosity) light scaled by %f to %f\n", f, bounceScale );
+			Sys_Printf( " Bounce (radiosity) light scaled by %f to %f\n", f, bounceScale );
 			i++;
 		}
 	
@@ -2306,7 +2453,7 @@ int LightMain( int argc, char **argv )
 			areaScale *= f;
 			skyScale *= f;
 			bounceScale *= f;
-			Sys_Printf( "All light scaled by %f\n", f );
+			Sys_Printf( " All light scaled by %f\n", f );
 			i++;
 		}
 
@@ -2314,7 +2461,7 @@ int LightMain( int argc, char **argv )
 		else if( !strcmp( argv[ i ], "-vertexscale" ) )
 		{
 			vertexScale = atof( argv[ i + 1 ] );
-			Sys_Printf( "Applying intensity modifier %f for vertex light\n", vertexScale );
+			Sys_Printf( " Applying intensity modifier %f for vertex light\n", vertexScale );
 			i++;
 		}
 		
@@ -2323,7 +2470,7 @@ int LightMain( int argc, char **argv )
 		{
 			f = atof( argv[ i + 1 ] );
 			lightmapGamma = f;
-			Sys_Printf( "Lighting gamma set to %f\n", lightmapGamma );
+			Sys_Printf( " Lighting gamma set to %f\n", lightmapGamma );
 			i++;
 		}
 		
@@ -2334,7 +2481,7 @@ int LightMain( int argc, char **argv )
 			lightmapExposure = f;
 			if (lightmapExposure <= 0)
 				lightmapExposure = 1;
-			Sys_Printf( "Lighting exposure set to %f\n", lightmapExposure );
+			Sys_Printf( " Lighting exposure set to %f\n", lightmapExposure );
 			i++;
 		}
 		
@@ -2345,7 +2492,7 @@ int LightMain( int argc, char **argv )
 			if( f <= 0.0f )
 				f = 1.0f;
 			lightmapCompensate = f;
-			Sys_Printf( "Lighting compensation set to 1/%f\n", lightmapCompensate );
+			Sys_Printf( " Lighting compensation set to 1/%f\n", lightmapCompensate );
 			i++;
 		}
 
@@ -2354,7 +2501,7 @@ int LightMain( int argc, char **argv )
 		{
 			f = atof( argv[ i + 1 ] );
 			lightmapBrightness = f;
-			Sys_Printf( "Lighting brightness set to %f\n", lightmapBrightness );
+			Sys_Printf( " Lighting brightness set to %f\n", lightmapBrightness );
 			i++;
 		}
 		
@@ -2365,7 +2512,7 @@ int LightMain( int argc, char **argv )
 			if( bounce < 0 )
 				bounce = 0;
 			else if( bounce > 0 )
-				Sys_Printf( "Radiosity enabled with %d bounce(s)\n", bounce );
+				Sys_Printf( " Radiosity enabled with %d bounce(s)\n", bounce );
 			i++;
 		}
 		
@@ -2376,7 +2523,7 @@ int LightMain( int argc, char **argv )
 			if( superSample < 1 )
 				superSample = 1;
 			else if( superSample > 1 )
-				Sys_Printf( "Ordered-grid supersampling enabled with %d sample(s) per lightmap texel\n", (superSample * superSample) );
+				Sys_Printf( " Ordered-grid supersampling enabled with %d sample(s) per lightmap texel\n", (superSample * superSample) );
 			i++;
 		}
 		
@@ -2387,7 +2534,7 @@ int LightMain( int argc, char **argv )
 			if( lightSamples < 1 )
 				lightSamples = 1;
 			else if( lightSamples > 1 )
-				Sys_Printf( "Adaptive supersampling enabled with %d sample(s) per lightmap texel\n", lightSamples );
+				Sys_Printf( " Adaptive supersampling enabled with %d sample(s) per lightmap texel\n", lightSamples );
 			i++;
 		}
 
@@ -2395,7 +2542,7 @@ int LightMain( int argc, char **argv )
 		else if( !strcmp( argv[ i ], "-filter" ) )
 		{
 			filter = qtrue;
-			Sys_Printf( "Lightmap filtering enabled\n" );
+			Sys_Printf( " Lightmap filtering enabled\n" );
 		}
 		
 		/* phong shading */
@@ -2407,7 +2554,7 @@ int LightMain( int argc, char **argv )
 			else if( shadeAngleDegrees > 0.0f )
 			{
 				shade = qtrue;
-				Sys_Printf( "Phong shading enabled with a breaking angle of %f degrees\n", shadeAngleDegrees );
+				Sys_Printf( " Phong shading enabled with a breaking angle of %f degrees\n", shadeAngleDegrees );
 			}
 			i++;
 		}
@@ -2419,7 +2566,7 @@ int LightMain( int argc, char **argv )
 			if( subdivideThreshold < 0 )
 				subdivideThreshold = DEFAULT_SUBDIVIDE_THRESHOLD;
 			else
-				Sys_Printf( "Subdivision threshold set at %.3f\n", subdivideThreshold );
+				Sys_Printf( " Subdivision threshold set at %.3f\n", subdivideThreshold );
 			i++;
 		}
 		
@@ -2430,7 +2577,7 @@ int LightMain( int argc, char **argv )
 			if( approximateTolerance < 0 )
 				approximateTolerance = 0;
 			else if( approximateTolerance > 0 )
-				Sys_Printf( "Approximating lightmaps within a byte tolerance of %d\n", approximateTolerance );
+				Sys_Printf( " Approximating lightmaps within a byte tolerance of %d\n", approximateTolerance );
 			i++;
 		}
 
@@ -2442,18 +2589,16 @@ int LightMain( int argc, char **argv )
 				sscanf(argv[ i ], "%f %f %f", &ambientColor[ 0 ], &ambientColor[ 1 ], &ambientColor[ 2 ]); 
 			else
 				ambientColor[ 0 ] = ambientColor[ 1 ] = ambientColor[ 2 ] = atof(argv[ i ]);
-			Sys_Printf( "Ambient lighting set to ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
+			Sys_Printf( " Ambient lighting set to ( %f %f %f )\n", ambientColor[ 0 ], ambientColor[ 1 ], ambientColor[ 2 ] );
 		}
 
 		/* min light */
 		else if( !strcmp( argv[ i ], "-minlight" ) )
 		{
 			i++;
-			if( strstr(argv[ i ], " ") )
-				sscanf(argv[ i ], "%f %f %f", &minLight[ 0 ], &minLight[ 1 ], &minLight[ 2 ]); 
-			else
+			if( sscanf(argv[ i ], "%f %f %f", &minLight[ 0 ], &minLight[ 1 ], &minLight[ 2 ]) != 3 )
 				minLight[ 0 ] = minLight[ 1 ] = minLight[ 2 ] = atof(argv[ i ]);
-			Sys_Printf( "Min lighting set to ( %f %f %f )\n", minLight[ 0 ], minLight[ 1 ], minLight[ 2 ] );
+			Sys_Printf( " Min lighting set to ( %f %f %f )\n", minLight[ 0 ], minLight[ 1 ], minLight[ 2 ] );
 			VectorCopy( minLight, minVertexLight );
 			VectorCopy( minLight, minGridLight );
 		}
@@ -2462,22 +2607,27 @@ int LightMain( int argc, char **argv )
 		else if( !strcmp( argv[ i ], "-minvertex" ) )
 		{
 			i++;
-			if( strstr(argv[ i ], " ") )
-				sscanf(argv[ i ], "%f %f %f", &minVertexLight[ 0 ], &minVertexLight[ 1 ], &minVertexLight[ 2 ]); 
-			else
+			if( sscanf(argv[ i ], "%f %f %f", &minVertexLight[ 0 ], &minVertexLight[ 1 ], &minVertexLight[ 2 ]) != 3 )
 				minVertexLight[ 0 ] = minVertexLight[ 1 ] = minVertexLight[ 2 ] = atof(argv[ i ]);
-			Sys_Printf( "Min vertex lighting set to ( %f %f %f )\n", minVertexLight[ 0 ], minVertexLight[ 1 ], minVertexLight[ 2 ] );
+			Sys_Printf( " Min vertex lighting set to ( %f %f %f )\n", minVertexLight[ 0 ], minVertexLight[ 1 ], minVertexLight[ 2 ] );
 		}
 
 		/* min grid light */
 		else if( !strcmp( argv[ i ], "-mingrid" ) )
 		{
 			i++;
-			if( strstr(argv[ i ], " ") )
-				sscanf(argv[ i ], "%f %f %f", &minGridLight[ 0 ], &minGridLight[ 1 ], &minGridLight[ 2 ]); 
-			else
+			if( sscanf(argv[ i ], "%f %f %f", &minGridLight[ 0 ], &minGridLight[ 1 ], &minGridLight[ 2 ]) != 3 ) 
 				minGridLight[ 0 ] = minGridLight[ 1 ] = minGridLight[ 2 ] = atof(argv[ i ]);
-			Sys_Printf( "Min grid lighting set to ( %f %f %f )\n", minGridLight[ 0 ], minGridLight[ 1 ], minGridLight[ 2 ] );
+			Sys_Printf( " Min grid lighting set to ( %f %f %f )\n", minGridLight[ 0 ], minGridLight[ 1 ], minGridLight[ 2 ] );
+		}
+
+		/* global colormod */
+		else if( !strcmp( argv[ i ], "-colormod" ) )
+		{
+			i++;
+			if( sscanf(argv[ i ], "%f %f %f", &colorMod[ 0 ], &colorMod[ 1 ], &colorMod[ 2 ]) != 3 ) 
+				colorMod[ 0 ] = colorMod[ 1 ] = colorMod[ 2 ] = atof(argv[ i ]);
+			Sys_Printf( " Global colormod set to ( %f %f %f )\n", colorMod[ 0 ], colorMod[ 1 ], colorMod[ 2 ] );
 		}
 
 		/* lightgrid */
@@ -2485,7 +2635,7 @@ int LightMain( int argc, char **argv )
 		{
 			i++;
 			sscanf(argv[ i ], "%f %f %f", &gridSize[ 0 ], &gridSize[ 1 ], &gridSize[ 2 ]); 
-			Sys_Printf( "Lightgrid size set to { %f %f %f }\n", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
+			Sys_Printf( " Lightgrid size set to { %f %f %f }\n", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
 		}
 		else if( !strcmp( argv[ i ], "-gridsupersample" ) || !strcmp( argv[ i ], "-gridsuper" ) )
 		{
@@ -2494,36 +2644,36 @@ int LightMain( int argc, char **argv )
 			if( gridSuperSample < 1 )
 				gridSuperSample = 1;
 			else if( gridSuperSample > 1 )
-				Sys_Printf( "Lightgrid supersampling enabled with %d sample(s) per grid point\n", (gridSuperSample * gridSuperSample * gridSuperSample) );
+				Sys_Printf( " Lightgrid supersampling enabled with %d sample(s) per grid point\n", (gridSuperSample * gridSuperSample * gridSuperSample) );
 		}
 
 		/* deluxemapping */
 		else if( !strcmp( argv[ i ], "-deluxe" ) || !strcmp( argv[ i ], "-deluxemap" ) )
 		{
 			deluxemap = qtrue;
-			Sys_Printf( "Generating deluxemaps for average light direction\n" );
+			Sys_Printf( " Generating deluxemaps for average light direction\n" );
 		}
 		else if( !strcmp( argv[ i ], "-tangentspace" ))
 		{
 			deluxemode = 1;
-			Sys_Printf( "Deluxemaps using tangentspace coords\n" );
+			Sys_Printf( " Deluxemaps using tangentspace coords\n" );
 		}
 		else if( !strcmp( argv[ i ], "-modelspace" ))
 		{
 			deluxemode = 0;
-			Sys_Printf( "Deluxemaps using modelspace coords\n" );
+			Sys_Printf( " Deluxemaps using modelspace coords\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nodeluxe" ) || !strcmp( argv[ i ], "-nodeluxemap" ) )
 		{
 			deluxemap = qfalse;
-			Sys_Printf( "Disabling generating of deluxemaps for average light direction\n" );
+			Sys_Printf( " Disabling generating of deluxemaps for average light direction\n" );
 		}
 
 		/* external lightmaps */
 		else if( !strcmp( argv[ i ], "-external" ) )
 		{
 			externalLightmaps = qtrue;
-			Sys_Printf( "Storing all lightmaps externally\n" );
+			Sys_Printf( " Storing all lightmaps externally\n" );
 		}
 		else if( !strcmp( argv[ i ], "-lightmapsize" ) )
 		{
@@ -2532,50 +2682,45 @@ int LightMain( int argc, char **argv )
 			/* must be a power of 2 and greater than 2 */
 			if( ((lmCustomSize - 1) & lmCustomSize) || lmCustomSize < 2 )
 			{
-				Sys_Printf( "WARNING: Lightmap size must be a power of 2, greater or equal to 2 pixels.\n" );
+				Sys_Warning( "Given lightmap size (%i) must be a power of 2, greater or equal to 2 pixels.", lmCustomSize );
 				lmCustomSize = game->lightmapSize;
 			}
 			i++;
-			Sys_Printf( "Default lightmap size set to %d x %d pixels\n", lmCustomSize, lmCustomSize );
+			Sys_Printf( " Default lightmap size set to %d x %d pixels\n", lmCustomSize, lmCustomSize );
 			
 			/* enable external lightmaps */
 			if( lmCustomSize != game->lightmapSize )
 			{
 				externalLightmaps = qtrue;
-				Sys_Printf( "Storing all lightmaps externally\n" );
+				Sys_Printf( " Storing all lightmaps externally\n" );
 			}
 		}
 		else if( !strcmp( argv[ i ], "-maxsurfacelightmapsize" ) )
 		{
 			lmMaxSurfaceSize = atoi( argv[ i + 1 ] );
 			i++;
-			Sys_Printf( "Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
+			Sys_Printf( " Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
 		}
 
 		/* generate lightmap in sRGB colorspace */
 		else if( !strcmp( argv[ i ], "-lightmapsrgb" ) )
 		{
 			lightmapsRGB = qtrue;
-			Sys_Printf( "Generating lightmaps in sRGB colorspace\n" );
+			Sys_Printf( " Generating lightmaps in sRGB colorspace\n" );
 		}
 
 		/* disable sRGB (force all textues linear) */
 		else if( !strcmp( argv[ i ], "-nosrgb" ) )
 		{
 			lightmapsRGB = qfalse;
-			Sys_Printf( "Generating lightmaps in linear RGB colorspace\n" );
+			Sys_Printf( " Generating lightmaps in linear RGB colorspace\n" );
 		}
 		
 		/* ydnar: add this to suppress warnings */
-		else if( !strcmp( argv[ i ],  "-custinfoparms") )
-		{
-			Sys_Printf( "Custom info parms enabled\n" );
-			useCustomInfoParms = qtrue;
-		}
 		
 		else if( !strcmp( argv[ i ],  "-entitysaveid") )
 		{
-			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			Sys_Printf( " Entity unique savegame identifiers enabled\n" );
 			useEntitySaveId = qtrue;
 		}
 
@@ -2583,63 +2728,63 @@ int LightMain( int argc, char **argv )
 		{
 			/* -game should already be set */
 			wolfLight = qtrue;
-			Sys_Printf( "Enabling Wolf lighting model (linear default)\n" );
+			Sys_Printf( " Enabling Wolf lighting model (linear default)\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-colornorm" ) )
 		{
 			colorNormalize = qtrue;
-			Sys_Printf( "Enabling light color normalization\n" );
+			Sys_Printf( " Enabling light color normalization\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-nocolornorm" ) )
 		{
 			colorNormalize = qtrue;
-			Sys_Printf( "Disabling light color normalization\n" );
+			Sys_Printf( " Disabling light color normalization\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-q3" ) )
 		{
 			/* -game should already be set */
 			wolfLight = qfalse;
-			Sys_Printf( "Enabling Quake 3 lighting model (nonlinear default)\n" );
+			Sys_Printf( " Enabling Quake 3 lighting model (nonlinear default)\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-sunonly" ) )
 		{
 			sunOnly = qtrue;
-			Sys_Printf( "Only computing sunlight\n" );
+			Sys_Printf( " Only computing sunlight\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-bounceonly" ) )
 		{
 			bounceOnly = qtrue;
-			Sys_Printf( "Storing bounced light (radiosity) only\n" );
+			Sys_Printf( " Storing bounced light (radiosity) only\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-nocollapse" ) )
 		{
 			noCollapse = qtrue;
-			Sys_Printf( "Identical lightmap collapsing disabled\n" );
+			Sys_Printf( " Identical lightmap collapsing disabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-shade" ) )
 		{
 			shade = qtrue;
-			Sys_Printf( "Phong shading enabled\n" );
+			Sys_Printf( " Phong shading enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-bouncegrid") )
 		{
 			bouncegrid = qtrue;
 			if( bounce > 0 )
-				Sys_Printf( "Grid lighting with radiosity enabled\n" );
+				Sys_Printf( " Grid lighting with radiosity enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-smooth" ) )
 		{
 			lightSamples = EXTRA_SCALE;
-			Sys_Printf( "The -smooth argument is deprecated, use \"-samples 2\" instead\n" );
+			Sys_Printf( " The -smooth argument is deprecated, use \"-samples 2\" instead\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-fast" ) )
@@ -2647,7 +2792,7 @@ int LightMain( int argc, char **argv )
 			fast = qtrue;
 			fastgrid = qtrue;
 			fastbounce = qtrue;
-			Sys_Printf( "Fast mode enabled\n" );
+			Sys_Printf( " Fast mode enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-faster" ) )
@@ -2656,132 +2801,138 @@ int LightMain( int argc, char **argv )
 			fast = qtrue;
 			fastgrid = qtrue;
 			fastbounce = qtrue;
-			Sys_Printf( "Faster mode enabled\n" );
+			Sys_Printf( " Faster mode enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-fastgrid" ) )
 		{
 			fastgrid = qtrue;
-			Sys_Printf( "Fast grid lighting enabled\n" );
+			Sys_Printf( " Fast grid lighting enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-fastbounce" ) )
 		{
 			fastbounce = qtrue;
-			Sys_Printf( "Fast bounce mode enabled\n" );
+			Sys_Printf( " Fast bounce mode enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-normalmap" ) )
 		{
 			normalmap = qtrue;
-			Sys_Printf( "Storing normal map instead of lightmap\n" );
+			Sys_Printf( " Storing normal map instead of lightmap\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-trisoup" ) )
 		{
 			trisoup = qtrue;
-			Sys_Printf( "Converting brush faces to triangle soup\n" );
+			Sys_Printf( " Converting brush faces to triangle soup\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-debug" ) )
 		{
 			debug = qtrue;
-			Sys_Printf( "Lightmap debugging enabled\n" );
+			Sys_Printf( " Lightmap debugging enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debugsurfaces" ) || !strcmp( argv[ i ], "-debugsurface" ) )
 		{
 			debugSurfaces = qtrue;
-			Sys_Printf( "Lightmap surface debugging enabled\n" );
+			Sys_Printf( " Lightmap surface debugging enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debugunused" ) )
 		{
 			debugUnused = qtrue;
-			Sys_Printf( "Unused luxel debugging enabled\n" );
+			Sys_Printf( " Unused luxel debugging enabled\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-debugaxis" ) )
 		{
 			debugAxis = qtrue;
-			Sys_Printf( "Lightmap axis debugging enabled\n" );
+			Sys_Printf( " Lightmap axis debugging enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debugcluster" ) )
 		{
 			debugCluster = qtrue;
-			Sys_Printf( "Luxel cluster debugging enabled\n" );
+			Sys_Printf( " Luxel cluster debugging enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debugorigin" ) )
 		{
 			debugOrigin = qtrue;
-			Sys_Printf( "Luxel origin debugging enabled\n" );
+			Sys_Printf( " Luxel origin debugging enabled\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debugstitch" ) )
 		{
 			debugStitch = qtrue;
-			Sys_Printf( "Luxel stitching debugging enabled\n" );
+			Sys_Printf( " Luxel stitching debugging enabled\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-debugrawlightmap" ) )
 		{
 			debugRawLightmap = qtrue;
-			Sys_Printf( "Raw lightmaps debugging enabled\n" );
+			Sys_Printf( " Raw lightmaps debugging enabled\n" );
 		}
 
 		else if( !strcmp( argv[ i ], "-debugdeluxe" ) )
 		{
 			deluxemap = qtrue;
 			debugDeluxemap = qtrue;
-			Sys_Printf( "Deluxemap debugging enabled\n" );
+			Sys_Printf( " Deluxemap debugging enabled\n" );
 		}
 
-		else if( !strcmp( argv[ i ], "-debuglightmap" ) )
+		else if( !strcmp( argv[ i ], "-debuglightmap" ) || !strcmp( argv[ i ], "-debuglightmaps" ) )
 		{
 			debugLightmap = qtrue;
-			Sys_Printf( "Lightmap debugging enabled, generating %mapname%_luxels.ase\n" );
+			Sys_Printf( " Lightmap debugging enabled, generating %mapname%_luxels.ase\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-debuggrid" ) )
 		{
 			debugGrid = qtrue;
-			Sys_Printf( "Lightgrid debugging enabled (sample lightmap from lightgrid)\n" );
+			Sys_Printf( " Lightgrid debugging enabled (sample lightmap from lightgrid)\n" );
+		}
+
+		else if( !strcmp( argv[ i ], "-gridonly" ) )
+		{
+			gridOnly = qtrue;
+			Sys_Printf( " Sample lightmap and vertex color from lightgrid (fast lighting mode)\n" );
 		}
 		
 		else if( !strcmp( argv[ i ], "-export" ) )
 		{
 			exportLightmaps = qtrue;
-			Sys_Printf( "Exporting lightmaps\n" );
+			Sys_Printf( " Exporting lightmaps\n" );
 		}
 		
 		else if( !strcmp(argv[ i ], "-notrace" )) 
 		{
 			noTrace = qtrue;
-			Sys_Printf( "Shadow occlusion disabled\n" );
+			Sys_Printf( " Shadow occlusion disabled\n" );
 		}
 		// VorteX: -notracegrid
 		else if( !strcmp(argv[ i ], "-notracegrid" )) 
 		{
 			noTraceGrid = qtrue;
-			Sys_Printf( "Shadow occlusion for lightgrid disabled\n" );
+			Sys_Printf( " Shadow occlusion for lightgrid disabled\n" );
 		}
 		else if( !strcmp(argv[ i ], "-patchshadows" ) )
 		{
 			patchShadows = qtrue;
-			Sys_Printf( "Patch shadow casting enabled\n" );
+			Sys_Printf( " Patch shadow casting enabled\n" );
 		}
 		else if( !strcmp( argv[ i ], "-extra" ) )
 		{
 			superSample = EXTRA_SCALE;		/* ydnar */
-			Sys_Printf( "The -extra argument is deprecated, use \"-super 2\" instead\n" );
+			Sys_Printf( " The -extra argument is deprecated, use \"-super 2\" instead\n" );
 		}
 		else if( !strcmp( argv[ i ], "-extrawide" ) )
 		{
 			superSample = EXTRAWIDE_SCALE;	/* ydnar */
 			filter = qtrue;					/* ydnar */
-			Sys_Printf( "The -extrawide argument is deprecated, use \"-filter [-super 2]\" instead\n");
+			Sys_Printf( " The -extrawide argument is deprecated, use \"-filter [-super 2]\" instead\n");
 		}
 		else if( !strcmp( argv[ i ], "-samplesize" ) )
 		{
@@ -2789,115 +2940,115 @@ int LightMain( int argc, char **argv )
 			if( sampleSize < MIN_LIGHTMAP_SAMPLE_SIZE )
 				sampleSize = MIN_LIGHTMAP_SAMPLE_SIZE;
 			i++;
-			Sys_Printf( "Default lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
+			Sys_Printf( " Default lightmap sample size set to %fx%f units\n", sampleSize, sampleSize );
 		}
 		else if( !strcmp( argv[ i ],  "-samplescale" ) )
  		{
 			sampleScale = atof( argv[ i + 1 ] );
  			i++;
-			Sys_Printf( "Lightmaps sample scale set to %.3f\n", sampleScale);
+			Sys_Printf( " Lightmaps sample scale set to %.3f\n", sampleScale);
  		}
 		else if( !strcmp( argv[ i ], "-novertex" ) )
 		{
 			noVertexLighting = qtrue;
-			Sys_Printf( "Disabling vertex lighting\n" );
+			Sys_Printf( " Disabling vertex lighting\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nogrid" ) )
 		{
 			noGridLighting = qtrue;
-			Sys_Printf( "Disabling grid lighting\n" );
+			Sys_Printf( " Disabling grid lighting\n" );
 		}
 		else if( !strcmp( argv[ i ], "-border" ) )
 		{
 			lightmapBorder = qtrue;
-			Sys_Printf( "Adding debug border to lightmaps\n" );
+			Sys_Printf( " Adding debug border to lightmaps\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nosurf" ) )
 		{
 			noSurfaces = qtrue;
-			Sys_Printf( "Not tracing against surfaces\n" );
+			Sys_Printf( " Not tracing against surfaces\n" );
 		}
 		else if( !strcmp( argv[ i ], "-stitch" ) )
 		{
 			stitch = qtrue;
-			Sys_Printf( "Enable stitching on all lightmaps\n" );
+			Sys_Printf( " Enable stitching on all lightmaps\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nostitch" ) )
 		{
 			noStitch = qtrue;
-			Sys_Printf( "Disable lightmap stitching\n" );
+			Sys_Printf( " Disable lightmap stitching\n" );
 		}
 		else if( !strcmp( argv[ i ], "-dump" ) )
 		{
 			dump = qtrue;
-			Sys_Printf( "Dumping radiosity lights into numbered prefabs\n" );
+			Sys_Printf( " Dumping radiosity lights into numbered prefabs\n" );
 		}
 		else if( !strcmp( argv[ i ], "-lomem" ) )
 		{
 			loMem = qtrue;
-			Sys_Printf( "Enabling low-memory (slower) lighting mode\n" );
+			Sys_Printf( " Enabling low-memory (slower) lighting mode\n" );
 		}
 		else if( !strcmp( argv[ i ], "-lomemsky" ) )
 		{
 			loMemSky = qtrue;
-			Sys_Printf( "Enabling low-memory (slower) lighting mode for sky light\n" );
+			Sys_Printf( " Enabling low-memory (slower) lighting mode for sky light\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nostyle" ) || !strcmp( argv[ i ], "-nostyles" ) )
 		{
 			noStyles = qtrue;
-			Sys_Printf( "Disabling lightstyles\n" );
+			Sys_Printf( " Disabling lightstyles\n" );
 		}
 		else if( !strcmp( argv[ i ], "-style" ) || !strcmp( argv[ i ], "-styles" ) )
 		{
 			noStyles = qfalse;
-			Sys_Printf( "Enabling lightstyles\n" );
+			Sys_Printf( " Enabling lightstyles\n" );
 		}
 		else if( !strcmp( argv[ i ], "-keeplights" ))
 		{
 			keepLights = qtrue;
-			Sys_Printf( "Leaving light entities on map after compile\n" );
+			Sys_Printf( " Leaving light entities on map after compile\n" );
 		}
 		else if( !strcmp( argv[ i ], "-cpma" ) )
 		{
 			cpmaHack = qtrue;
-			Sys_Printf( "Enabling Challenge Pro Mode Asstacular Vertex Lighting Mode (tm)\n" );
+			Sys_Printf( " Enabling Challenge Pro Mode Asstacular Vertex Lighting Mode (tm)\n" );
 		}
 		else if( !strcmp( argv[ i ], "-floodlight" ) )
 		{
 			floodlighty = qtrue;
-			Sys_Printf( "FloodLighting enabled\n" );
+			Sys_Printf( " FloodLighting enabled\n" );
 		}
 		else if( !strcmp( argv[ i ], "-debugnormals" ) )
 		{
 			debugnormals = qtrue;
-			Sys_Printf( "DebugNormals enabled\n" );
+			Sys_Printf( " DebugNormals enabled\n" );
 		}
 		else if( !strcmp( argv[ i ], "-lowquality" ) )
 		{
 			floodlight_lowquality = qtrue;
-			Sys_Printf( "Low Quality FloodLighting enabled\n" );
+			Sys_Printf( " Low Quality FloodLighting enabled\n" );
 		}
 		
 		/* dirtmapping / ambient occlusion */
 		else if( !strcmp( argv[ i ], "-dirty" ) || !strcmp( argv[ i ], "-ao" ) )
 		{
 			dirty = qtrue;
-			Sys_Printf( "Dirtmapping enabled\n" );
+			Sys_Printf( " Dirtmapping enabled\n" );
 		}
 		else if( !strcmp( argv[ i ], "-nodirt" ) || !strcmp( argv[ i ], "-noao" ) )
 		{
 			nodirt = qtrue;
-			Sys_Printf( "Dirtmapping disabled\n" );
+			Sys_Printf( " Dirtmapping disabled\n" );
 		}
 		else if( !strcmp( argv[ i ], "-dirtdebug" ) || !strcmp( argv[ i ], "-debugdirt" ) || !strcmp( argv[ i ], "-debugao" ) || !strcmp( argv[ i ], "-aodebug" ) )
 		{
 			dirtDebug = qtrue;
-			Sys_Printf( "Dirtmap debugging enabled\n" );
+			Sys_Printf( " Dirtmap debugging enabled\n" );
 		}
 		else if( !strcmp( argv[ i ], "-dirtmode" ) || !strcmp( argv[ i ], "-aomode" ) )
 		{
 			dirtMode = (dirtMode_t)atoi( argv[ i + 1 ] );
-			Sys_Printf( "Dirtmap mode set to '%s'\n", DirtModeName(&dirtMode) );
+			Sys_Printf( " Dirtmap mode set to '%s'\n", DirtModeName(&dirtMode) );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtdepth" ) || !strcmp( argv[ i ], "-aodepth" ) )
@@ -2905,7 +3056,7 @@ int LightMain( int argc, char **argv )
 			dirtDepth = atof( argv[ i + 1 ] );
 			if( dirtDepth <= 0.0f )
 				dirtDepth = 128.0f;
-			Sys_Printf( "Dirtmapping depth set to %.1f\n", dirtDepth );
+			Sys_Printf( " Dirtmapping depth set to %.1f\n", dirtDepth );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtdepthexponent" ) || !strcmp( argv[ i ], "-aodepthexponent" ) )
@@ -2913,7 +3064,7 @@ int LightMain( int argc, char **argv )
 			dirtDepthExponent = atof( argv[ i + 1 ] );
 			if( dirtDepthExponent <= 0.0f )
 				dirtDepthExponent = 2.0f;
-			Sys_Printf( "Dirtmapping depth exponent set to %.1f\n", dirtDepthExponent );
+			Sys_Printf( " Dirtmapping depth exponent set to %.1f\n", dirtDepthExponent );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtscale" ) || !strcmp( argv[ i ], "-aoscale" ) )
@@ -2921,13 +3072,13 @@ int LightMain( int argc, char **argv )
 			dirtScale = atof( argv[ i + 1 ] );
 			if( dirtScale <= 0.0f )
 				dirtScale = 1.0f;
-			Sys_Printf( "Dirtmapping scale set to %.1f\n", dirtScale );
+			Sys_Printf( " Dirtmapping scale set to %.1f\n", dirtScale );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtscalemask" ) || !strcmp( argv[ i ], "-aoscalemask" ) )
 		{
 			sscanf(argv[ i + 1], "%f %f %f", &dirtScaleMask[0], &dirtScaleMask[1], &dirtScaleMask[2]); 
-			Sys_Printf( "Dirtmapping scale mask set to %1.1f %1.1f %1.1f\n", dirtScaleMask[0], dirtScaleMask[1], dirtScaleMask[2]);
+			Sys_Printf( " Dirtmapping scale mask set to %1.1f %1.1f %1.1f\n", dirtScaleMask[0], dirtScaleMask[1], dirtScaleMask[2]);
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtgain" ) || !strcmp( argv[ i ], "-aogain" ))
@@ -2935,33 +3086,33 @@ int LightMain( int argc, char **argv )
 			dirtGain = atof( argv[ i + 1 ] );
 			if( dirtGain <= 0.0f )
 				dirtGain = 1.0f;
-			Sys_Printf( "Dirtmapping gain set to %.1f\n", dirtGain );
+			Sys_Printf( " Dirtmapping gain set to %.1f\n", dirtGain );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtgainmask" ) || !strcmp( argv[ i ], "-aogainmask" ) )
 		{
 			sscanf(argv[ i + 1], "%f %f %f", &dirtGainMask[0], &dirtGainMask[1], &dirtGainMask[2]); 
-			Sys_Printf( "Dirtmapping gain mask set to %1.1f %1.1f %1.1f\n", dirtGainMask[0], dirtGainMask[1], dirtGainMask[2]);
+			Sys_Printf( " Dirtmapping gain mask set to %1.1f %1.1f %1.1f\n", dirtGainMask[0], dirtGainMask[1], dirtGainMask[2]);
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-dirtfilter" ) || !strcmp( argv[ i ], "-aofilter" ) )
 		{
 			dirtFilter = (dirtFilter_t)atoi( argv[ i + 1 ] );
-			Sys_Printf( "Dirtmapping filter set to '%s'\n", DirtFilterName(&dirtFilter) );
+			Sys_Printf( " Dirtmapping filter set to '%s'\n", DirtFilterName(&dirtFilter) );
 			i++;
 		}
 		/* vortex: global deviance */
 		else if( !strcmp( argv[ i ], "-nodeviance" ) )
 		{
 			noDeviance = qtrue;
-			Sys_Printf( "Disable light's deviance\n" );
+			Sys_Printf( " Disable light's deviance\n" );
 		}
 		else if( !strcmp( argv[ i ], "-deviance" ) )
 		{
 			devianceJitter = atof( argv[ i + 1 ] );
 			if( devianceJitter <= 0.0f )
 				devianceJitter = 0.0f;
-			Sys_Printf( "Default deviance jitter set to %.1f\n", devianceJitter );
+			Sys_Printf( " Default deviance jitter set to %.1f\n", devianceJitter );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-deviancesamples" ) )
@@ -2969,7 +3120,7 @@ int LightMain( int argc, char **argv )
 			devianceSamples = atoi( argv[ i + 1 ] );
 			if( devianceSamples <= 0 )
 				devianceSamples = 0;
-			Sys_Printf( "Default deviance samples set to %i\n", devianceSamples );
+			Sys_Printf( " Default deviance samples set to %i\n", devianceSamples );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-deviancesamplesscale" ) )
@@ -2977,20 +3128,20 @@ int LightMain( int argc, char **argv )
 			devianceSamplesScale = atof( argv[ i + 1 ] );
 			if( devianceSamplesScale <= 0 )
 				devianceSamplesScale = 0;
-			Sys_Printf( "Deviance samples scale set to %i\n", devianceSamplesScale );
+			Sys_Printf( " Deviance samples scale set to %i\n", devianceSamplesScale );
 			i++;
 		}
 		else if( !strcmp( argv[ i ], "-devianceform" ) )
 		{
 			devianceForm = atoi( argv[ i + 1 ] );
 			if (devianceForm == 0)
-				Sys_Printf( "Deviance form set to box\n" );
+				Sys_Printf( " Deviance form set to box\n" );
 			else if (devianceForm == 1)
-				Sys_Printf( "Deviance form set to sphere\n" );
+				Sys_Printf( " Deviance form set to sphere\n" );
 			else
 			{
 				devianceForm = 0;
-				Sys_Printf( "Deviance form set to box\n" );
+				Sys_Printf( " Deviance form set to box\n" );
 			}
 			i++;
 		}
@@ -2998,27 +3149,26 @@ int LightMain( int argc, char **argv )
 		{
 			devianceAtten = atoi( argv[ i + 1 ] );
 			if (devianceAtten == 0)
-				Sys_Printf( "Deviance using no attenuation for light emitting zone\n" );
+				Sys_Printf( " Deviance using no attenuation for light emitting zone\n" );
 			else if (devianceAtten == 1)
-				Sys_Printf( "Deviance using inverse square attenuation for light emitting zone\n" );
+				Sys_Printf( " Deviance using inverse square attenuation for light emitting zone\n" );
 			else
 			{
 				devianceAtten = 0;
-				Sys_Printf( "Deviance using no attenuation for light emitting zone\n" );
+				Sys_Printf( " Deviance using no attenuation for light emitting zone\n" );
 			}
 			i++;
 		}
 
 		/* unhandled args */
 		else
-			Sys_Printf( "WARNING: Unknown argument \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown argument \"%s\"", argv[ i ] );
 
 	}
 
 	/* disable lightstyles is build do not support it */
 #if MAX_LIGHTMAPS == 1
 	noStyles = qtrue;
-	Sys_Printf( "Light styles are disabled in this build\n" );
 #endif
 
 	/* set up lightmap debug state */
@@ -3089,7 +3239,8 @@ int LightMain( int argc, char **argv )
 	LoadShaderInfo();
 	
 	/* note loading */
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	
 	/* ydnar: load surface file */
 	LoadSurfaceExtraFile( source );
@@ -3101,36 +3252,19 @@ int LightMain( int argc, char **argv )
 	ParseEntities();
 	
 	/* load map file */
-	LoadMapFile( mapSource, (IntForKey( &entities[ 0 ], "_keepLights" ) > 0) ? qfalse : qtrue, qtrue, qfalse );
+	LoadMapFile( mapSource, (IntForKey( &entities[ 0 ], "_keepLights" ) > 0) ? qfalse : qtrue, qtrue, qfalse, qfalse );
 	
 	/* set the entity/model origins and init yDrawVerts */
 	SetEntityOrigins();
-	
+
 	/* ydnar: set up optimization */
 	SetupBrushes();
-	SetupDirt();
-	SetupFloodLight();
-	SetupSurfaceLightmaps();
-	
-	/* initialize the surface facet tracing */
-	SetupTraceNodes();
-
-	/* allocate raw lightmaps */
-	AllocateSurfaceLightmaps();
 
 	/* light the world */
-	LightWorld();
+	LightWorld( mapSource );
 
 	/* ydnar: store off lightmaps */
 	StoreSurfaceLightmaps();
-
-	/* vortex: generate debug surfaces for luxels */
-	if( debugLightmap )
-	{
-		StripExtension( mapSource );
-		DefaultExtension( mapSource, "_luxels.ase" );
-		WriteRawLightmapsFile( mapSource );
-	}
 
 	/* vortex: set deluxeMaps key */
 	if (deluxemap)
@@ -3150,6 +3284,7 @@ int LightMain( int argc, char **argv )
 		SetKeyValue(&entities[0], "lightmapsRGB", "0");
 
 	/* write out the bsp */
+	Sys_Printf( "--- WriteBSPFile ---\n" );
 	UnparseEntities(qfalse);
 	Sys_Printf( "Writing %s\n", source );
 	WriteBSPFile( source );

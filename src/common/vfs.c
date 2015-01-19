@@ -172,7 +172,7 @@ void vfsInitDirectory (const char *path)
   if (g_numDirs == (VFS_MAXDIRS-1))
     return;
   
-  Sys_Printf ("VFS Init: %s\n", path);
+  Sys_Printf ("searching %s\n", path);
   
   strcpy (g_strDirs[g_numDirs], path);
   vfsFixDOSName (g_strDirs[g_numDirs]);

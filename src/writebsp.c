@@ -140,7 +140,7 @@ void EmitLeaf( node_t *node )
 	
 	/* check limits */
 	if( numBSPLeafs >= MAX_MAP_LEAFS )
-		Error( "MAX_MAP_LEAFS" );
+		Sys_Error( "MAX_MAP_LEAFS (%d) exceeded", MAX_MAP_LEAFS );
 
 	leaf_p = &bspLeafs[numBSPLeafs];
 	numBSPLeafs++;
@@ -159,7 +159,7 @@ void EmitLeaf( node_t *node )
 		/* something is corrupting brushes */
 		if( (int) b < 256 )
 		{
-			Sys_Printf( "WARNING: Node brush list corrupted (0x%08X)\n", b );
+			Sys_Warning( "Node brush list corrupted (0x%08X)\n", b );
 			break;
 		}
 		//%	if( b->guard != 0xDEADBEEF )
@@ -410,8 +410,9 @@ void EndBSPFile( void )
 	WriteSurfaceExtraFile( source );
 	
 	/* write the bsp */
+	Sys_Printf( "--- WriteBSPFile ---\n" );
 	sprintf( path, "%s.bsp", source );
-	Sys_Printf( "Writing %s\n", path );
+	Sys_Printf( "writing %s\n", path );
 	WriteBSPFile( path );
 }
 
@@ -591,6 +592,13 @@ void BeginModel( void )
 			AddPointToBounds( p->mesh.verts[i].xyz, mins, maxs );
 	}
 	
+	/* bound lightgrid by region */
+	if ( mapRegion == qtrue )
+	{
+		VectorCopy( mapRegionMins, lgMins );
+		VectorCopy( mapRegionMaxs, lgMaxs );
+	}
+
 	/* ydnar: lightgrid mins/maxs */
 	if( lgMins[ 0 ] < 99999 )
 	{
@@ -605,13 +613,6 @@ void BeginModel( void )
 		VectorCopy( maxs, mod->maxs );
 	}
 
-	/* bound lightgrid by region */
-	if ( mapRegion == qtrue )
-	{
-		VectorCopy( mapRegionMins, lgMins );
-		VectorCopy( mapRegionMaxs, lgMaxs );
-	}
-	
 	/* note size */
 	Sys_FPrintf( SYS_VRB, "BSP bounds: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mins[ 0 ], mins[ 1 ], mins[ 2 ], maxs[ 0 ], maxs[ 1 ], maxs[ 2 ] );
 	Sys_FPrintf( SYS_VRB, "Lightgrid bounds: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", lgMins[ 0 ], lgMins[ 1 ], lgMins[ 2 ], lgMaxs[ 0 ], lgMaxs[ 1 ], lgMaxs[ 2 ] );
@@ -648,8 +649,12 @@ void EndModel( entity_t *e, node_t *headnode )
 		}
 	}
 
+	/* vortex: min/max warning */
 	if (!mod->mins[0] && !mod->mins[1] && !mod->mins[2] && !mod->maxs[0] && !mod->maxs[1] && !mod->maxs[2])
-		Sys_Printf( "WARNING: submodel %i has null min/max!\n", numBSPModels );
+	{
+		/* todo: find entities with this model? */
+		Sys_Warning( "Submodel %i has null min/max!\n", numBSPModels );
+	}
 
 	/* set surfaces and brushes */
 	mod->numBSPSurfaces = numBSPDrawSurfaces - mod->firstBSPSurface;

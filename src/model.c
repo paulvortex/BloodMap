@@ -221,7 +221,7 @@ InsertModel() - ydnar
 adds a picomodel into the bsp
 */
 
-void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, int mapEntityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t ambient, vec3_t colormod, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes )
+void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvScale, remap_t *remap, shaderInfo_t *celShader, int entityNum, int mapEntityNum, char castShadows, char recvShadows, int spawnFlags, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t minvertexlight, vec3_t ambient, vec3_t colormod, float lightmapSampleSize, int shadeAngle, int vertTexProj, qboolean noAlphaFix, float pushVertexes, qboolean skybox, int *added_surfaces, int *added_verts, int *added_triangles, int *added_brushes )
 {
 	int					i, j, k, s, numSurfaces;
 	m4x4_t				identity, nTransform;
@@ -233,7 +233,7 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 	char				*picoShaderName;
 	char				shaderName[ MAX_QPATH ];
 	picoVec_t			*xyz, *normal, *st;
-	byte				*color;
+	picoByte_t			*color;
 	picoIndex_t			*indexes;
 	remap_t				*rm, *glob;
 	double				normalEpsilon_save;
@@ -260,7 +260,7 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 	/* create transform matrix for normals */
 	memcpy( nTransform, transform, sizeof( m4x4_t ) );
 	if( m4x4_invert( nTransform ) )
-		Sys_FPrintf( SYS_VRB, "WARNING: Can't invert model transform matrix, using transpose instead\n" );
+		Sys_Warning( mapEntityNum, "Can't invert model transform matrix, using transpose instead" );
 	m4x4_transpose( nTransform );
 
 	/* each surface on the model will become a new map drawsurface */
@@ -327,6 +327,19 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 		}
 		else
 			si = ShaderInfoForShader( picoShaderName );
+
+		/* warn for missing shader */
+		if( si->warnNoShaderImage == qtrue )
+		{
+			if( mapEntityNum >= 0 )
+				Sys_Warning( mapEntityNum, "Failed to load shader image '%s'", si->shader );
+			else
+			{
+				/* external entity, just show single warning */
+				Sys_Warning( "Failed to load shader image '%s' for model '%s'", si->shader, PicoGetModelFileName( model ) );
+				si->warnNoShaderImage = qfalse;
+			}
+		}
 		
 		/* set shader */
 		ds->shaderInfo = si;
@@ -356,7 +369,12 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 
 		/* set minlight/ambient/colormod */
 		if (minlight != NULL)
+		{
 			VectorCopy( minlight, ds->minlight );
+			VectorCopy( minlight, ds->minvertexlight );
+		}
+		if (minvertexlight != NULL)
+			VectorCopy( minvertexlight, ds->minvertexlight );
 		if (ambient != NULL)
 			VectorCopy( ambient, ds->ambient );
 		if (colormod != NULL)
@@ -495,8 +513,7 @@ void InsertModel( char *name, int frame, int skin, m4x4_t transform, float uvSca
 				/* overflow hack */
 				if( (nummapplanes + 64) >= (MAX_MAP_PLANES >> 1) )
 				{
-					Sys_Printf( "WARNING: MAX_MAP_PLANES (%d) hit generating clip brushes for model %s.\n",
-						MAX_MAP_PLANES, name );
+					Sys_Warning( mapEntityNum, "MAX_MAP_PLANES (%d) hit generating clip brushes for model %s.", MAX_MAP_PLANES, name );
 					break;
 				}
 				
@@ -668,13 +685,15 @@ preload triangle models map is using
 void LoadTriangleModels( void )
 {
 	int num, frame, start, f, fOld, numLoadedModels;
+	picoModel_t *picoModel;
+	qboolean loaded;
 	const char *model;
 	entity_t *e;
 
 	numLoadedModels = 0;
 
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- LoadTriangleModels ---\n" );
+	Sys_Printf( "--- LoadTriangleModels ---\n" );
 
 	/* load */
 	start = I_FloatTime();
@@ -686,10 +705,10 @@ void LoadTriangleModels( void )
 
 		/* print pacifier */
 		f = 10 * num / numEntities;
-		if( f != fOld )
+		while( fOld < f )
 		{
-			fOld = f;
-			Sys_Printf( "%d...", f );
+			fOld++;
+			Sys_Printf( "%d...", fOld );
 		}
 
 		/* convert misc_models into raw geometry  */
@@ -712,9 +731,19 @@ void LoadTriangleModels( void )
 		else
 			frame = 0;
 
-		/* insert the model */
-		if (PreloadModel( (char*) model, frame ))
+		/* load the model */
+		loaded = PreloadModel( (char*) model, frame );
+		if ( loaded )
 			numLoadedModels++;
+		
+		/* warn about missing models */
+		picoModel = FindModel( (char*) model, frame );
+		if( !picoModel || picoModel->numSurfaces == 0 )
+			Sys_Warning( e->mapEntityNum, "Failed to load model '%s' frame %i", model, frame );
+
+		/* debug */
+		//if( loaded && picoModel && picoModel->numSurfaces != 0  )
+		//	Sys_Printf("loaded %s: %i vertexes %i triangles\n", PicoGetModelFileName( picoModel ), PicoGetModelTotalVertexes( picoModel ), PicoGetModelTotalIndexes( picoModel ) / 3 );
 	}
 
 	/* print overall time */
@@ -742,7 +771,7 @@ void AddTriangleModels( int entityNum )
 	int				baseSmoothNormals, smoothNormals;
 	int				baseVertTexProj, vertTexProj;
 	qboolean        noAlphaFix, skybox;
-	vec3_t			origin, scale, angles, baseLightmapAxis, lightmapAxis, baseMinlight, baseAmbient, baseColormod, minlight, ambient, colormod;
+	vec3_t			origin, scale, angles, baseLightmapAxis, lightmapAxis, baseMinlight, baseMinvertexlight, baseAmbient, baseColormod, minlight, minvertexlight, ambient, colormod;
 	m4x4_t			transform;
 	epair_t			*ep;
 	remap_t			*remap, *remap2;
@@ -773,8 +802,8 @@ void AddTriangleModels( int entityNum )
 	/* vortex: per-entity normal smoothing */
 	GetEntityNormalSmoothing( e, &baseSmoothNormals, 0);
 
-	/* vortex: per-entity _minlight, _ambient, _color, _colormod */
-	GetEntityMinlightAmbientColor( e, NULL, baseMinlight, baseAmbient, baseColormod, qtrue );
+	/* vortex: per-entity _minlight, _minvertexlight, _ambient, _color, _colormod */
+	GetEntityMinlightAmbientColor( e, NULL, baseMinlight, baseMinvertexlight, baseAmbient, baseColormod, qtrue );
 
 	/* vortex: vertical texture projection */
 	baseVertTexProj = IntForKey(e, "_vtcproj");
@@ -805,7 +834,7 @@ void AddTriangleModels( int entityNum )
 			model = ValueForKey( e2, "model" );
 		if( model[ 0 ] == '\0' )
 		{
-			Sys_Printf( "WARNING: misc_model at %i %i %i without a model key\n", (int) origin[ 0 ], (int) origin[ 1 ], (int) origin[ 2 ] );
+			Sys_Warning( e2->mapEntityNum, "misc_model at %i %i %i without a model key", (int) origin[ 0 ], (int) origin[ 1 ], (int) origin[ 2 ] );
 			continue;
 		}
 		
@@ -888,7 +917,7 @@ void AddTriangleModels( int entityNum )
 				split = strchr( remap->from, ';' );
 				if( split == NULL )
 				{
-					Sys_Printf( "WARNING: Shader _remap key found in misc_model without a ; character\n" );
+					Sys_Warning( e2->mapEntityNum, "Shader _remap key found in misc_model without a ; character" );
 					free( remap );
 					remap = remap2;
 					continue;
@@ -926,9 +955,10 @@ void AddTriangleModels( int entityNum )
 
 		/* vortex: per-entity _minlight, _ambient, _color, _colormod */
 		VectorCopy( baseMinlight, minlight );
+		VectorCopy( baseMinvertexlight, minvertexlight );
 		VectorCopy( baseAmbient, ambient );
 		VectorCopy( baseColormod, colormod );
-		GetEntityMinlightAmbientColor( e2, NULL, minlight, ambient, colormod, qfalse );
+		GetEntityMinlightAmbientColor( e2, NULL, minlight, minvertexlight, ambient, colormod, qfalse );
 
 		/* vortex: vertical texture projection */
 		vertTexProj = IntForKey(e2, "_vp");
@@ -946,7 +976,7 @@ void AddTriangleModels( int entityNum )
 		pushVertexes += FloatForKey( e2, "_pv2" ); // vortex: set by decorator
 
 		/* insert the model */
-		InsertModel( (char*) model, frame, skin, transform, uvScale, remap, celShader, entityNum, e2->mapEntityNum, castShadows, recvShadows, spawnFlags, lightmapScale, lightmapAxis, minlight, ambient, colormod, 0, smoothNormals, vertTexProj, noAlphaFix, pushVertexes, skybox, &added_surfaces, &added_triangles, &added_verts, &added_brushes );
+		InsertModel( (char*) model, frame, skin, transform, uvScale, remap, celShader, entityNum, e2->mapEntityNum, castShadows, recvShadows, spawnFlags, lightmapScale, lightmapAxis, minlight, minvertexlight, ambient, colormod, 0, smoothNormals, vertTexProj, noAlphaFix, pushVertexes, skybox, &added_surfaces, &added_triangles, &added_verts, &added_brushes );
 		
 		/* free shader remappings */
 		while( remap != NULL )

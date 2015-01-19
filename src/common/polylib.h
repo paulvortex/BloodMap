@@ -19,12 +19,15 @@ along with GtkRadiant; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#ifndef __POLYLIB__
+#define __POLYLIB__
 
 typedef struct
 {
 	int		numpoints;
 	vec3_t	p[4];
 } winding_t;
+
 #define	MAX_POINTS_ON_WINDING	64
 
 // you can define on_epsilon in the makefile as tighter
@@ -64,3 +67,4 @@ void	    ChopDWindingInPlace( dwinding_t **dw, vec3_t normal, vec_t dist, vec_t 
 qboolean    FixDWinding( dwinding_t *dw );
 winding_t  *WindingFromDWinding( dwinding_t *w );
 
+#endif

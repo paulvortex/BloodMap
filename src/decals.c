@@ -53,10 +53,12 @@ typedef struct decalProjector_s
 	float                   lightmapScale;
 	vec3_t                  lightmapAxis;
 	vec3_t                  minlight;
+	vec3_t                  minvertexlight;
 	vec3_t                  ambient;
 	vec3_t                  colormod;
 	int                     smoothNormals;
 	int                     mapEntityNum;
+	/* vortex: when adding parms here do not forget to update TransformDecalProjector()! */
 }
 decalProjector_t;
 
@@ -244,14 +246,18 @@ static void TransformDecalProjector( decalProjector_t *in, vec3_t axis[ 3 ], vec
 {
 	int		i;
 	
-	
 	/* copy misc stuff */
 	out->si = in->si;
 	out->numPlanes = in->numPlanes;
-	out->lightmapScale = in->lightmapScale;
-	out->smoothNormals = in->smoothNormals;
 	out->backfacecull = in->backfacecull;
-	
+	out->lightmapScale = in->lightmapScale;
+	VectorCopy( in->lightmapAxis, out->lightmapAxis );
+	VectorCopy( in->ambient, out->ambient );
+	VectorCopy( in->minlight, out->minlight );
+	VectorCopy( in->minvertexlight, out->minvertexlight );
+	VectorCopy( in->colormod, out->colormod );
+	out->smoothNormals = in->smoothNormals;
+
 	/* translate bounding box and sphere (note: rotated projector bounding box will be invalid!) */
 	VectorSubtract( in->mins, origin, out->mins );
 	VectorSubtract( in->maxs, origin, out->maxs );
@@ -285,7 +291,7 @@ MakeDecalProjector()
 creates a new decal projector from a triangle
 */
 
-static int MakeDecalProjector( int mapEntityNum, shaderInfo_t *si, vec4_t projection, float distance, int numVerts, bspDrawVert_t **dv, float backfacecull, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t ambient, vec3_t colormod, int smoothNormals )
+static int MakeDecalProjector( int mapEntityNum, shaderInfo_t *si, vec4_t projection, float distance, int numVerts, bspDrawVert_t **dv, float backfacecull, float lightmapScale, vec3_t lightmapAxis, vec3_t minlight, vec3_t minvertexlight, vec3_t ambient, vec3_t colormod, int smoothNormals )
 {
 	int					i, j;
 	decalProjector_t	*dp;
@@ -298,13 +304,13 @@ static int MakeDecalProjector( int mapEntityNum, shaderInfo_t *si, vec4_t projec
 	/* limit check */
 	if( numProjectors >= MAX_PROJECTORS )
 	{
-		Sys_Printf( "WARNING: MAX_PROJECTORS (%d) exceeded, no more decal projectors available.\n", MAX_PROJECTORS );
+		Sys_Warning( mapEntityNum, "MAX_PROJECTORS (%d) exceeded, no more decal projectors available.", MAX_PROJECTORS );
 		return -2;
 	}
 	
 	/* create a new projector */
 	dp = &projectors[ numProjectors ];
-	memset( dp, 0, sizeof( *dp ) );
+	memset( dp, 0, sizeof( decalProjector_t ) );
 	
 	/* basic setup */
 	dp->si = si;
@@ -313,6 +319,7 @@ static int MakeDecalProjector( int mapEntityNum, shaderInfo_t *si, vec4_t projec
 	dp->lightmapScale = lightmapScale;
 	VectorCopy( lightmapAxis, dp->lightmapAxis );
 	VectorCopy( minlight, dp->minlight );
+	VectorCopy( minvertexlight, dp->minvertexlight );
 	VectorCopy( ambient, dp->ambient );
 	VectorCopy( colormod, dp->colormod );
 	dp->smoothNormals = smoothNormals;
@@ -376,7 +383,7 @@ void ProcessDecals( void )
 	float				distance, lightmapScale, backfaceAngle;
 	vec4_t				projection, plane;
 	vec3_t				origin, target, delta, lightmapAxis;
-	vec3_t              minlight, ambient, colormod;
+	vec3_t              minlight, minvertexlight, ambient, colormod;
 	entity_t			*e, *e2;
 	parseMesh_t			*p;
 	mesh_t				*mesh, *subdivided;
@@ -416,7 +423,7 @@ void ProcessDecals( void )
 		/* any patches? */
 		if( e->patches == NULL )
 		{
-			Sys_Printf( "WARNING: Decal entity without any patch meshes, ignoring.\n" );
+			Sys_Warning( e->mapEntityNum, "Decal entity without any patch meshes, ignoring." );
 			e->epairs = NULL;	/* fixme: leak! */
 			continue;
 		}
@@ -428,7 +435,7 @@ void ProcessDecals( void )
 		/* no target? */
 		if( e2 == NULL )
 		{
-			Sys_Printf( "WARNING: Decal entity without a valid target, ignoring.\n" );
+			Sys_Warning( e->mapEntityNum, "Decal entity without a valid target, ignoring." );
 			continue;
 		}
 
@@ -442,7 +449,7 @@ void ProcessDecals( void )
 		GetEntityNormalSmoothing( e, &smoothNormals, 0);
 
 		/* vortex: per-entity _minlight, _ambient, _color, _colormod */
-		GetEntityMinlightAmbientColor( e, NULL, minlight, ambient, colormod, qtrue );
+		GetEntityMinlightAmbientColor( e, NULL, minlight, minvertexlight, ambient, colormod, qtrue );
 		
 		/* vortex: _backfacecull */
 		if ( KeyExists(e, "_backfacecull") )
@@ -510,21 +517,20 @@ void ProcessDecals( void )
 						
 						/* planar? (nuking this optimization as it doesn't work on non-rectangular quads) */
 						plane[ 0 ] = 0.0f;	/* stupid msvc */
-						if( 0 && PlaneFromPoints( plane, dv[ 0 ]->xyz, dv[ 1 ]->xyz, dv[ 2 ]->xyz ) &&
-							fabs( DotProduct( dv[ 1 ]->xyz, plane ) - plane[ 3 ] ) <= PLANAR_EPSILON )
+						if( 0 && PlaneFromPoints( plane, dv[ 0 ]->xyz, dv[ 1 ]->xyz, dv[ 2 ]->xyz ) && fabs( DotProduct( dv[ 1 ]->xyz, plane ) - plane[ 3 ] ) <= PLANAR_EPSILON )
 						{
 							/* make a quad projector */
-							MakeDecalProjector( i, p->shaderInfo, projection, distance, 4, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, ambient, colormod, smoothNormals);
+							MakeDecalProjector( i, p->shaderInfo, projection, distance, 4, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, minvertexlight, ambient, colormod, smoothNormals);
 						}
 						else
 						{
 							/* make first triangle */
-							MakeDecalProjector( i, p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, ambient, colormod, smoothNormals);
+							MakeDecalProjector( i, p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, minvertexlight, ambient, colormod, smoothNormals);
 							
 							/* make second triangle */
 							dv[ 1 ] = dv[ 2 ];
 							dv[ 2 ] = dv[ 3 ];
-							MakeDecalProjector( i, p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, ambient, colormod, smoothNormals);
+							MakeDecalProjector( i, p->shaderInfo, projection, distance, 3, dv, cos(backfaceAngle / 180.0f * Q_PI), lightmapScale, lightmapAxis, minlight, minvertexlight, ambient, colormod, smoothNormals);
 						}
 					}
 				}
@@ -633,10 +639,14 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 		VectorCopy(dp->lightmapAxis, ds2->lightmapAxis);
 	else
 		VectorCopy(ds->lightmapAxis, ds2->lightmapAxis);
-	VectorCopy(dp->minlight, ds2->minlight); /* fixme: use surface's colormod? */
-	VectorCopy(dp->ambient, ds2->ambient);
-	VectorCopy(dp->colormod, ds2->colormod);
-	ds2->smoothNormals = (dp->smoothNormals) ? dp->smoothNormals : ds->smoothNormals;
+	for( i = 0; i < 3; i++ )
+	{
+		ds2->ambient[ i ] = dp->ambient[ i ] + ds->ambient[ i ];
+		ds2->minlight[ i ] = max( dp->minlight[ i ], ds->minlight[ i ] );
+		ds2->minvertexlight[ i ] = max( dp->minvertexlight[ i ], ds->minvertexlight[ i ] );
+		ds2->colormod[ i ] = dp->colormod[ i ] * ds->colormod[ i ];
+	}
+	ds2->smoothNormals = max(dp->smoothNormals, ds->smoothNormals);
 	ds2->numVerts = w->numpoints;
 	ds2->verts = (bspDrawVert_t *)safe_malloc( ds2->numVerts * sizeof( *ds2->verts ) );
 	memset( ds2->verts, 0, ds2->numVerts * sizeof( *ds2->verts ) );

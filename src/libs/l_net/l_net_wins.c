@@ -196,7 +196,7 @@ int WINS_Init(void)
 	else if (i < com_argc-1)
 		net_hostport = Q_atoi (com_argv[i+1]);
 	else
-		Sys_Error ("WINS_Init: you must specify a number after -udpport");
+		Error ("WINS_Init: you must specify a number after -udpport");
 	*/
 
 	// determine my name & address

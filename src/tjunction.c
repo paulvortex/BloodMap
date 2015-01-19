@@ -505,7 +505,7 @@ returns qfalse if the surface is broken
 
 extern void SnapWeldVector( vec3_t a, vec3_t b, vec3_t out );
 
-#define DEGENERATE_EPSILON	0.1
+#define DEGENERATE_EPSILON	0.05
 
 int		c_broken = 0;
 
@@ -540,7 +540,16 @@ qboolean FixBrokenSurface( mapDrawSurface_t *ds )
 		if( dist < DEGENERATE_EPSILON )
 		{
 			valid = qfalse;
-			Sys_FPrintf( SYS_VRB, "WARNING: Degenerate T-junction edge found, fixing...\n" );
+
+			{
+				int max = ds->numVerts;
+				vec3_t p[256];
+				if( max > 256 )
+					max = 256;
+				for ( i = 0 ; i < max ; i++ )
+					VectorCopy( ds->verts[i].xyz, p[i] );
+				Sys_Warning( p, max, "Degenerate T-junction edge found, fixing..." );
+			}
 
 			/* create an average drawvert */
 			/* ydnar 2002-01-26: added nearest-integer welding preference */

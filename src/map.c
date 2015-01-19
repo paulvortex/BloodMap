@@ -322,7 +322,7 @@ void SetBrushContents( brush_t *b )
 	/* check for detail & structural */
 	if( (compileFlags & C_DETAIL) && (compileFlags & C_STRUCTURAL) )
 	{
-		xml_Select( "Mixed detail and structural (defaulting to structural)", mapEnt->mapEntityNum, entitySourceBrushes, qfalse );
+		Sys_Warning( mapEnt->mapEntityNum, entitySourceBrushes, "Mixed detail and structural (defaulting to structural)" );
 		compileFlags &= ~C_DETAIL;
 	}
 	
@@ -418,9 +418,8 @@ void AddBrushBevels( void )
 			if ( i == buildBrush->numsides ) 
 			{
 				// add a new side
-				if ( buildBrush->numsides == MAX_BUILD_SIDES ) {
-					xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, qtrue);
-				}
+				if ( buildBrush->numsides == MAX_BUILD_SIDES )
+					Sys_Error( buildBrush->entityNum, buildBrush->brushNum, "MAX_BUILD_SIDES (%d)", MAX_BUILD_SIDES );
 				memset( s, 0, sizeof( *s ) );
 				buildBrush->numsides++;
 				VectorClear (normal);
@@ -548,9 +547,9 @@ void AddBrushBevels( void )
 					//%	Sys_Printf( "n = %f %f %f\n", normal[ 0 ], normal[ 1 ], normal[ 2 ] );
 					
 					// add this plane
-					if( buildBrush->numsides == MAX_BUILD_SIDES ) {
-						xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, qtrue);
-					}
+					if( buildBrush->numsides == MAX_BUILD_SIDES )
+						Sys_Error( buildBrush->entityNum, buildBrush->brushNum, "MAX_BUILD_SIDES (%d)", MAX_BUILD_SIDES );
+					
 					s2 = &buildBrush->sides[buildBrush->numsides];
 					buildBrush->numsides++;
 					memset( s2, 0, sizeof( *s2 ) );
@@ -591,8 +590,7 @@ brush_t *FinishBrush( void )
 
 		if( numEntities == 1 )
 		{
-			Sys_Printf( "Entity %i, Brush %i: origin brushes not allowed in world\n", 
-				mapEnt->mapEntityNum, entitySourceBrushes );
+			Sys_Warning( mapEnt->mapEntityNum, entitySourceBrushes, "Origin brushes not allowed in world" );
 			return NULL;
 		}
 		
@@ -814,7 +812,6 @@ static void ParseRawBrush( )
 	char			shader[ MAX_QPATH ];
 	int				flags;
 	
-	
 	/* initial setup */
 	buildBrush->numsides = 0;
 	buildBrush->detail = qfalse;
@@ -847,7 +844,7 @@ static void ParseRawBrush( )
 		
 		/* test side count */
 		if( buildBrush->numsides >= MAX_BUILD_SIDES )
-			xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, qtrue );
+			Sys_Error( buildBrush->entityNum, buildBrush->brushNum, "MAX_BUILD_SIDES (%d)", MAX_BUILD_SIDES );
 		
 		/* add side */
 		side = &buildBrush->sides[ buildBrush->numsides ];
@@ -961,8 +958,9 @@ qboolean RemoveDuplicateBrushPlanes( brush_t *b )
 	for ( i = 1 ; i < b->numsides ; i++ ) {
 
 		// check for a degenerate plane
-		if ( sides[i].planenum == -1) {
-		  xml_Select( "degenerate plane", b->entityNum, b->brushNum, qfalse );
+		if ( sides[i].planenum == -1) 
+		{
+			Sys_Warning( b->entityNum, b->brushNum, "Degenerate plane" );
 			// remove it
 			for ( k = i + 1 ; k < b->numsides ; k++ ) {
 				sides[k-1] = sides[k];
@@ -973,9 +971,11 @@ qboolean RemoveDuplicateBrushPlanes( brush_t *b )
 		}
 
 		// check for duplication and mirroring
-		for ( j = 0 ; j < i ; j++ ) {
-			if ( sides[i].planenum == sides[j].planenum ) {
-			  xml_Select( "duplicate plane", b->entityNum, b->brushNum, qfalse );
+		for ( j = 0 ; j < i ; j++ ) 
+		{
+			if ( sides[i].planenum == sides[j].planenum ) 
+			{
+				Sys_Warning( b->entityNum, b->brushNum, "Duplicate plane" );
 				// remove the second duplicate
 				for ( k = i + 1 ; k < b->numsides ; k++ ) {
 					sides[k-1] = sides[k];
@@ -985,9 +985,10 @@ qboolean RemoveDuplicateBrushPlanes( brush_t *b )
 				break;
 			}
 
-			if ( sides[i].planenum == (sides[j].planenum ^ 1) ) {
+			if ( sides[i].planenum == (sides[j].planenum ^ 1) )
+			{
 				// mirror plane, brush is invalid
-			  xml_Select( "mirrored plane", b->entityNum, b->brushNum, qfalse );
+				Sys_Warning( b->entityNum, b->brushNum, "Mirrored plane" );
 				return qfalse;
 			}
 		}
@@ -1188,9 +1189,6 @@ void SetEntityBounds( entity_t *e )
 	vec3_t		mins, maxs;
 	const char	*value;
 
-	
-	
-
 	/* walk the entity's brushes/patches and determine bounds */
 	ClearBounds( mins, maxs );
 	for( b = e->brushes; b; b = b->next )
@@ -1262,15 +1260,13 @@ void LoadEntityIndexMap( entity_t *e )
 		value = ValueForKey( e, "layers" );
 	if( value[ 0 ] == '\0' )
 	{
-		Sys_Printf( "WARNING: Entity with index/alpha map \"%s\" has missing \"_layers\" or \"layers\" key\n", indexMapFilename );
-		Sys_Printf( "Entity will not be textured properly. Check your keys/values.\n" );
+		Sys_Warning( e->mapEntityNum, "Entity with index/alpha map \"%s\" has missing \"_layers\" or \"layers\" key. Entity will not be textured properly. Check your keys/values.", indexMapFilename );
 		return;
 	}
 	numLayers = atoi( value );
 	if( numLayers < 1 )
 	{
-		Sys_Printf( "WARNING: Entity with index/alpha map \"%s\" has < 1 layer (%d)\n", indexMapFilename, numLayers );
-		Sys_Printf( "Entity will not be textured properly. Check your keys/values.\n" );
+		Sys_Warning( e->mapEntityNum, "Entity with index/alpha map \"%s\" has < 1 layer (%d). Entity will not be textured properly. Check your keys/values.", indexMapFilename, numLayers );
 		return;
 	}
 	
@@ -1280,8 +1276,7 @@ void LoadEntityIndexMap( entity_t *e )
 		value = ValueForKey( e, "shader" );
 	if( value[ 0 ] == '\0' )
 	{
-		Sys_Printf( "WARNING: Entity with index/alpha map \"%s\" has missing \"_shader\" or \"shader\" key\n", indexMapFilename );
-		Sys_Printf( "Entity will not be textured properly. Check your keys/values.\n" );
+		Sys_Warning( e->mapEntityNum, "Entity with index/alpha map \"%s\" has missing \"_shader\" or \"shader\" key. Entity will not be textured properly. Check your keys/values.", indexMapFilename );
 		return;
 	}
 	shader = value;
@@ -1339,8 +1334,7 @@ void LoadEntityIndexMap( entity_t *e )
 	/* the index map must be at least 2x2 pixels */
 	if( w < 2 || h < 2 )
 	{
-		Sys_Printf( "WARNING: Entity with index/alpha map \"%s\" is smaller than 2x2 pixels\n", indexMapFilename );
-		Sys_Printf( "Entity will not be textured properly. Check your keys/values.\n" );
+		Sys_Warning( e->mapEntityNum, "Entity with index/alpha map \"%s\" is smaller than 2x2 pixels. Entity will not be textured properly. Check your keys/values.", indexMapFilename );
 		free( pixels );
 		return;
 	}
@@ -1392,7 +1386,7 @@ ParseMapEntity()
 parses a single entity out of a map file
 */
 
-static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage )
+static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage, qboolean externalFile )
 {
 	epair_t			*ep;
 	const char		*classname, *value;
@@ -1407,7 +1401,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	qboolean		funcGroup;
 	char			castShadows, recvShadows;
 	qboolean		forceNonSolid, forceNoClip, forceNoTJunc;
-	vec3_t          minlight, ambient, colormod;
+	vec3_t          minlight, minvertexlight, ambient, colormod;
 	
 	/* eof check */
 	if( !GetToken( qtrue ) )
@@ -1416,15 +1410,13 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	/* conformance check */
 	if( strcmp( token, "{" ) )
 	{
-		Sys_Printf( "WARNING: ParseEntity: { not found, found %s on line %d - last entity was at: <%4.2f, %4.2f, %4.2f>...\n"
-			"Continuing to process map, but resulting BSP may be invalid.\n",
-			token, scriptline, entities[ numEntities ].origin[ 0 ], entities[ numEntities ].origin[ 1 ], entities[ numEntities ].origin[ 2 ] );
+		Sys_Warning( numMapEntities, "ParseEntity: { not found, found %s on line %d - last entity was at: <%4.2f, %4.2f, %4.2f>. Continuing to process map, but resulting BSP may be invalid.", token, scriptline, entities[ numEntities ].origin[ 0 ], entities[ numEntities ].origin[ 1 ], entities[ numEntities ].origin[ 2 ] );
 		return qfalse;
 	}
 	
 	/* range check */
 	if( numEntities >= MAX_MAP_ENTITIES )
-		Error( "numEntities == MAX_MAP_ENTITIES" );
+		Sys_Error( "MAX_MAP_ENTITIES (%d) exceeded", MAX_MAP_ENTITIES );
 	
 	/* setup */
 	entitySourceBrushes = 0;
@@ -1433,8 +1425,13 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	memset( mapEnt, 0, sizeof( *mapEnt ) );
 	
 	/* ydnar: true entity numbering */
-	mapEnt->mapEntityNum = numMapEntities;
-	numMapEntities++;
+	if( externalFile )
+		mapEnt->mapEntityNum = 0 - numEntities;
+	else
+	{
+		mapEnt->mapEntityNum = numMapEntities;
+		numMapEntities++;
+	}
 	
 	/* loop */
 	while( 1 )
@@ -1442,8 +1439,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 		/* get initial token */
 		if( !GetToken( qtrue ) )
 		{
-			Sys_Printf( "WARNING: ParseEntity: EOF without closing brace\n"
-				"Continuing to process map, but resulting BSP may be invalid.\n" );
+			Sys_Warning( numMapEntities, "ParseEntity: EOF without closing brace. Continuing to process map, but resulting BSP may be invalid." );
 			return qfalse;
 		}
 		
@@ -1465,12 +1461,12 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 			else if( !strcmp( token, "terrainDef" ) )
 			{
 				//% ParseTerrain();
-				Sys_Printf( "WARNING: Terrain entity parsing not supported in this build.\n" );	/* ydnar */
+				Sys_Error( numMapEntities, 0, "Terrain entity parsing not supported in this build." );	/* ydnar */
 			}
 			else if( !strcmp( token, "brushDef" ) )
 			{
 				if( g_bBrushPrimit == BPRIMIT_OLDBRUSHES )
-					Error( "Old brush format not allowed in new brush format map" );
+					Sys_Error( "Old brush format not allowed in new brush format map" );
 				g_bBrushPrimit = BPRIMIT_NEWBRUSHES;
 				
 				/* parse brush primitive */
@@ -1479,7 +1475,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 			else
 			{
 				if( g_bBrushPrimit == BPRIMIT_NEWBRUSHES )
-					Error( "New brush format not allowed in old brush format map" );
+					Sys_Error( "New brush format not allowed in old brush format map" );
 				g_bBrushPrimit = BPRIMIT_OLDBRUSHES;
 				
 				/* parse old brush format */
@@ -1544,8 +1540,16 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	/* vortex: per-entity normal smoothing */
 	GetEntityNormalSmoothing( mapEnt, &smoothNormals, 0);
 
-	/* vortex: per-entity _minlight, _ambient, _color, _colormod */
-	GetEntityMinlightAmbientColor( mapEnt, NULL, minlight, ambient, colormod, qtrue );
+	/* vortex: per-entity _minlight, _ambient, _color, _colormod  */
+	GetEntityMinlightAmbientColor( mapEnt, NULL, minlight, minvertexlight, ambient, colormod, qtrue );
+	if( mapEnt == &entities[ 0 ] )
+	{
+		/* worldspawn have it empty, since it's keys sets global parms */
+		VectorSet( minlight, 0, 0, 0 );
+		VectorSet( minvertexlight, 0, 0, 0 );
+		VectorSet( ambient, 0, 0, 0 );
+		VectorSet( colormod, 1, 1, 1 );
+	}
 
 	/* vortex: vertical texture projection */
 	if( strcmp( "", ValueForKey( mapEnt, "_vtcproj" ) ) || strcmp( "", ValueForKey( mapEnt, "_vp" ) ) )
@@ -1572,7 +1576,11 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 
 	/* vortex: _nonsolid forces detail non-solid brush */
 	forceNonSolid = ((IntForKey(mapEnt, "_nonsolid") > 0) || (IntForKey(mapEnt, "_ns") > 0)) ? qtrue : qfalse;
+
+	/* vortex: preserve original face winding, don't clip by bsp tree */
 	forceNoClip = ((IntForKey(mapEnt, "_noclip") > 0) || (IntForKey(mapEnt, "_nc") > 0)) ? qtrue : qfalse;
+
+	/* vortex: do not apply t-junction fixing (preserve original face winding) */
 	forceNoTJunc = ((IntForKey(mapEnt, "_notjunc") > 0) || (IntForKey(mapEnt, "_ntj") > 0)) ? qtrue : qfalse;
 
 	/* attach stuff to everything in the entity */
@@ -1589,6 +1597,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 		brush->noTJunc = forceNoTJunc; /* vortex */
 		brush->vertTexProj = vertTexProj; /* vortex */
 		VectorCopy( minlight, brush->minlight ); /* vortex */
+		VectorCopy( minvertexlight, brush->minvertexlight ); /* vortex */
 		VectorCopy( ambient, brush->ambient ); /* vortex */
 		VectorCopy( colormod, brush->colormod ); /* vortex */
 		brush->celShader = celShader;
@@ -1612,8 +1621,16 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 		patch->vertTexProj = vertTexProj; /* vortex */
 		patch->celShader = celShader;
 		VectorCopy( minlight, patch->minlight ); /* vortex */
+		VectorCopy( minvertexlight, patch->minvertexlight ); /* vortex */
 		VectorCopy( ambient, patch->ambient ); /* vortex */
 		VectorCopy( colormod, patch->colormod ); /* vortex */
+	}
+
+	/* vortex: store map entity num */
+	{
+		char buf[32];
+		sprintf( buf, "%i", mapEnt->mapEntityNum ); 
+		SetKeyValue( mapEnt, "_mapEntityNum", buf );
 	}
 	
 	/* ydnar: gs mods: set entity bounds */
@@ -1653,7 +1670,7 @@ LoadMapFile()
 loads a map file into a list of entities
 */
 
-void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage )
+void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage, qboolean externalFile )
 {		
 	FILE		*file;
 	brush_t		*b;
@@ -1661,7 +1678,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 
 	/* note it */
 	if( onlyFoliage == qfalse )
-		Sys_FPrintf( SYS_VRB, "--- LoadMapFile ---\n" );
+		Sys_Printf( "--- LoadMapFile ---\n" );
 	
 	/* hack */
 	file = SafeOpenRead( filename );
@@ -1688,7 +1705,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 	}
 
 	/* parse the map file */
-	while( ParseMapEntity( onlyLights, onlyLightBrushes, onlyFoliage ) );
+	while( ParseMapEntity( onlyLights, onlyLightBrushes, onlyFoliage, externalFile ) );
 	
 	/* light loading */
 	if ( onlyFoliage )
@@ -1699,11 +1716,12 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 	else if( onlyLights )
 	{
 		/* emit some statistics */
-		Sys_FPrintf( SYS_VRB, "%9d light entities\n", numEntities - oldNumEntities );
+		Sys_Printf( "%9d light entities\n", numEntities - oldNumEntities );
 	}
 	else if( onlyLightBrushes )
 	{
 		/* emit some statistics */
+		Sys_Printf( "%9d lightgrid brushes\n", numGridAreas );
 	}
 	else
 	{
@@ -1718,6 +1736,14 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 		/* region seal */
 		if ( mapRegion == qtrue )
 		{
+			/* vortex 03.01.2015: just ignore leaks instead */
+			SetKeyValue( &entities[ 0 ], "_ignoreleaks", "1" );
+			if ( mapRegionBrushes == qfalse )
+			{
+				VectorCopy( mapMins, mapRegionMins );
+				VectorCopy( mapMaxs, mapRegionMaxs );
+			}
+			/*
 			brush_t *b[6];
 
 			if ( mapRegionBrushes == qfalse )
@@ -1741,20 +1767,21 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 			b[5]->next = entities[ 0 ].brushes;
 			entities[ 0 ].brushes = b[0];
 			entities[ 0 ].numBrushes += 6;
+			*/
 		}
-		
+
 		/* get brush counts */
 		numMapBrushes = CountBrushList( entities[ 0 ].brushes );
 		if( (float) c_detail / (float) numMapBrushes < 0.10f && numMapBrushes > 500 )
-			Sys_Printf( "WARNING: Over 90 percent structural map detected. Compile time may be adversely affected.\n" );
+			Sys_Warning( "Over 90 percent structural map detected. Compile time may be adversely affected." );
 		
 		/* emit some statistics */
-		Sys_FPrintf( SYS_VRB, "%9d total world brushes\n", numMapBrushes );
+		Sys_Printf(  "%9d total world brushes\n", numMapBrushes );
 		Sys_FPrintf( SYS_VRB, "%9d detail brushes\n", c_detail );
 		Sys_FPrintf( SYS_VRB, "%9d patches\n", numMapPatches);
 		Sys_FPrintf( SYS_VRB, "%9d boxbevels\n", c_boxbevels);
 		Sys_FPrintf( SYS_VRB, "%9d edgebevels\n", c_edgebevels);
-		Sys_FPrintf( SYS_VRB, "%9d entities\n", numEntities );
+		Sys_Printf( "%9d entities\n", numEntities );
 		Sys_FPrintf( SYS_VRB, "%9d planes\n", nummapplanes);
 		Sys_FPrintf( SYS_VRB, "%9d areaportals\n", c_areaportals);
 		Sys_FPrintf( SYS_VRB, "Size: { %.0f %.0f %.0f } { %.0f %.0f %.0f }\n", mapMins[ 0 ], mapMins[ 1 ], mapMins[ 2 ], mapMaxs[ 0 ], mapMaxs[ 1 ], mapMaxs[ 2 ]);
@@ -1779,43 +1806,99 @@ int CheckMapForErrors( void )
 	int entityNum, numErrors = 0, i;
 	qboolean foundDuplicate;
 	const char *classname, *saveid, *saveid2;
-	char msg[2048];
+	shaderInfo_t *si;
+	brush_t *b;
+	parseMesh_t *pm;
 	entity_t *e;
 
-	if ( useEntitySaveId == qtrue )
+	for( entityNum = 0; entityNum < numEntities; entityNum++ )
 	{
-		/* check map for duplicate or missing entity save id */
-		for( entityNum = 1; entityNum < numEntities; entityNum++ )
-		{
-			e = &entities[ entityNum ];
-			
-			/* exclude entities to be merged to worldspawn */
-			classname = ValueForKey( e, "classname" );
-			if (!Q_stricmp(classname, "func_group") || !Q_stricmp(classname, "misc_model") || !Q_stricmp(classname, "_skybox") || !Q_strncasecmp(classname, "light", 5))
-				continue;
-	
-			/* get saveid */
-			saveid = ValueForKey( e, "sid" ); 
-			if( saveid[ 0 ] == '\0' )
-			{
-				xml_Select( "Missing SaveID", e->mapEntityNum, 0, qfalse );
-				numErrors++;
-				continue;
-			}
+		e = &entities[ entityNum ];
+		classname = ValueForKey( e, "classname" );
 
-			/* get entity with duplicate saveid */
-			foundDuplicate = qfalse;
-			for( i = entityNum + 1; i < numEntities; i++ )
+		/* check brushes for missing textures */
+		for( b = e->brushes; b; b = b->next )
+		{
+			for( i = 0; i < b->numsides; i++ )
 			{
-				saveid2 = ValueForKey( &entities[ i ], "sid" ); 
-				if( !Q_stricmp( saveid, saveid2) )
+				si = b->sides[ i ].shaderInfo;
+				if( si == NULL )
+					continue;
+				if( si->warnNoShaderImage == qtrue )
 				{
-					sprintf(msg, "Duplicate SaveID (%s)", saveid );
-					if ( foundDuplicate == qfalse )
-						xml_Select( msg, e->mapEntityNum, 0, qfalse );
-					xml_Select( msg, entities[ i ].mapEntityNum, 0, qfalse );
+					if( e->mapEntityNum >= 0 )
+						Sys_Warning( b->entityNum, b->brushNum, "Failed to load shader image '%s'", si->shader );
+					else
+					{
+						/* external entity, just show single warning */
+						Sys_Warning( "Failed to load shader image '%s' for entity '%s'", si->shader, classname );
+						si->warnNoShaderImage = qfalse;
+					}
+				}
+			}
+		}
+		
+		/* check patches for missing textures */
+		for( pm = e->patches; pm; pm = pm->next )
+		{
+			si = pm->shaderInfo;
+			if( si == NULL )
+				continue;
+			if( si->warnNoShaderImage == qtrue )
+			{
+				if( e->mapEntityNum >= 0 )
+					Sys_Warning( pm->entityNum, pm->brushNum, "Failed to load shader image '%s'", si->shader );
+				else
+				{
+					/* external entity, just show single warning */
+					Sys_Warning( "Failed to load shader image '%s' for entity '%s'", si->shader, classname );
+					si->warnNoShaderImage = qfalse;
+				}
+			}
+		}
+
+		/* skip the rest of checks for worldspawn and external entities */
+		if( entityNum == 0 || e->mapEntityNum < 0 )
+			continue;
+
+		/* check for func_ entities with no geometry added */
+		if( !Q_strncasecmp(classname, "func_", 5) || !Q_stricmp(classname, "effect_glares") || !Q_stricmp(classname, "trigger_changelevel") || !Q_stricmp(classname, "trigger_hurt") ||
+			!Q_stricmp(classname, "trigger_environment") || !Q_stricmp(classname, "trigger_event") || !Q_stricmp(classname, "trigger_exit") || !Q_stricmp(classname, "trigger_multi") ||
+			!Q_stricmp(classname, "trigger_once") || !Q_stricmp(classname, "trigger_savegame") || !Q_stricmp(classname, "trigger_speech") || !Q_stricmp(classname, "trigger_teleport") )
+		{
+			if( !e->brushes && !e->patches )
+				Sys_Warning( e->mapEntityNum, "Group entity %s with no brushes/patches attached", classname );
+		}
+
+		/* check for duplicate or missing entity save id */
+		if ( useEntitySaveId == qtrue )
+		{
+			/* exclude entities to be merged to worldspawn */
+			if (Q_stricmp(classname, "func_group") && Q_stricmp(classname, "misc_model") && Q_stricmp(classname, "_skybox") && Q_strncasecmp(classname, "light", 5))
+			{
+				/* get saveid */
+				saveid = ValueForKey( e, "sid" ); 
+				if( saveid[ 0 ] == '\0' )
+				{
+					Sys_Warning( e->mapEntityNum, "Missing SaveID" );
 					numErrors++;
-					foundDuplicate = qtrue;
+				}
+				else
+				{
+					/* get entity with duplicate saveid */
+					foundDuplicate = qfalse;
+					for( i = entityNum + 1; i < numEntities; i++ )
+					{
+						saveid2 = ValueForKey( &entities[ i ], "sid" ); 
+						if( !Q_stricmp( saveid, saveid2) )
+						{
+							if ( foundDuplicate == qfalse )
+								Sys_Warning( e->mapEntityNum, "Duplicate SaveID (%s)", saveid );
+							Sys_Warning( entities[ i ].mapEntityNum, "Duplicate SaveID (%s)", saveid );
+							numErrors++;
+							foundDuplicate = qtrue;
+						}
+					}
 				}
 			}
 		}

@@ -61,7 +61,7 @@ mutex_t *MutexAlloc(void)
 {
 	CRITICAL_SECTION *crit;
 
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		return NULL;
 	crit = (CRITICAL_SECTION *) safe_malloc(sizeof(CRITICAL_SECTION));
 	InitializeCriticalSection (crit);
@@ -108,7 +108,7 @@ mutex_t *MutexAlloc(void)
 	pthread_mutex_t	*my_mutex;
 	pthread_mutexattr_t	mattrib;
 
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		return NULL;
 	my_mutex = safe_malloc (sizeof(*my_mutex));
 	if (pthread_mutexattr_create (&mattrib) == -1)
@@ -162,7 +162,7 @@ mutex_t *MutexAlloc(void)
 {
 	abilock_t *lck;
 
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		return NULL;
 	lck = (abilock_t *) safe_malloc(sizeof(abilock_t));
 	init_lock (lck);

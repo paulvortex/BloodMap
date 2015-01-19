@@ -244,11 +244,11 @@ int GetLumpElements( bspHeader_t *header, int lump, int size )
 	{
 		if( force )
 		{
-			Sys_Printf( "WARNING: GetLumpElements: odd lump size (%d) in lump %d\n", header->lumps[ lump ].length, lump );
+			Sys_Warning( "GetLumpElements: odd lump size (%d) in lump %d", header->lumps[ lump ].length, lump );
 			return 0;
 		}
 		else
-			Error( "GetLumpElements: odd lump size (%d) in lump %d", header->lumps[ lump ].length, lump );
+			Sys_Error( "GetLumpElements: odd lump size (%d) in lump %d", header->lumps[ lump ].length, lump );
 	}
 	
 	/* return element count */
@@ -290,11 +290,11 @@ int CopyLump( bspHeader_t *header, int lump, void *dest, int size )
 	{
 		if( force )
 		{
-			Sys_Printf( "WARNING: CopyLump: odd lump size (%d) in lump %d\n", length, lump );
+			Sys_Warning( "CopyLump: odd lump size (%d) in lump %d\n", length, lump );
 			return 0;
 		}
 		else
-			Error( "CopyLump: odd lump size (%d) in lump %d", length, lump );
+			Sys_Error( "CopyLump: odd lump size (%d) in lump %d", length, lump );
 	}
 	
 	/* copy block of memory and return */
@@ -435,7 +435,7 @@ void PrintBSPFileSizes( void )
 	Sys_Printf( "          visibility    %9d\n",
 		numBSPVisBytes );
 
-	Sys_FPrintf( SYS_VRB, " --- BSP models ---\n" );
+	Sys_FPrintf( SYS_VRB, "--- BSP models ---\n" );
 	Sys_FPrintf( SYS_VRB, "modelno : brushes  drawsurfs  firstshader\n" );
 	for (i = 0; i < numBSPModels; i++)
 	{
@@ -524,9 +524,9 @@ qboolean ParseEntity( void )
 	if( !GetToken( qtrue ) )
 		return qfalse;
 	if( strcmp( token, "{" ) )
-		Error( "ParseEntity: { not found" );
+		Sys_Error( "ParseEntity: { not found" );
 	if( numEntities == MAX_MAP_ENTITIES )
-		Error( "numEntities == MAX_MAP_ENTITIES" );
+		Sys_Error( "ParseEntity: MAX_MAP_ENTITIES (%d) exceeded", MAX_MAP_ENTITIES );
 	
 	/* create new entity */
 	mapEnt = &entities[ numEntities ];
@@ -544,6 +544,9 @@ qboolean ParseEntity( void )
 		e->next = mapEnt->epairs;
 		mapEnt->epairs = e;
 	}
+
+	/* vortex: restore mapEntityNum */
+	mapEnt->mapEntityNum = IntForKey( mapEnt, "_mapEntityNum" );
 	
 	/* return to sender */
 	return qtrue;
@@ -612,7 +615,7 @@ void UnparseEntities( qboolean removeQ3map2keys )
 		/* walk epair list */
 		for( ep = entities[ i ].epairs; ep != NULL; ep = ep->next )
 		{
-			if (!strncmp(ep->key, "_", 1) && removeQ3map2keys)
+			if( removeQ3map2keys && !strncmp(ep->key, "_", 1) )
 				continue;
 
 			/* copy and clean */
@@ -961,7 +964,7 @@ GetEntityMinlightAmbientColor() - vortex
 gets an entity's minlight, ambient light, color mod
 */
 
-void GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t minlight, vec3_t ambient, vec3_t colormod, qboolean setDefaults )
+void GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t minlight, vec3_t minvertexlight, vec3_t ambient, vec3_t colormod, qboolean setDefaults )
 {
 	vec3_t _color;
 	float f;
@@ -973,64 +976,91 @@ void GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t mi
 	if( color != NULL )
 		VectorCopy( _color, color );
 
-	/* _minlight key */
+	/* minlight/_minlight key */
 	if( minlight != NULL )
 	{
 		if( setDefaults == qtrue )
 			VectorSet( minlight, 0, 0, 0 );
 		if( KeyExists( ent, "minlight" ) )
 		{
-		if( sscanf( ValueForKey( ent, "minlight"), "%f %f %f", &minlight[0], &minlight[1], &minlight[2] ) != 3 )
-		{
-			f = FloatForKey( ent, "minlight" );
-			VectorScale( _color, f, minlight );
-		}
+			if( sscanf( ValueForKey( ent, "minlight"), "%f %f %f", &minlight[0], &minlight[1], &minlight[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "minlight" );
+				VectorScale( _color, f, minlight );
+			}
+			if( minvertexlight != NULL )
+				VectorCopy( minlight, minvertexlight );
 		}
 		if( KeyExists( ent, "_minlight" ) )
 		{
-		if( sscanf( ValueForKey( ent, "_minlight"), "%f %f %f", &minlight[0], minlight[1], &minlight[2] ) != 3 )
-		{
-			f = FloatForKey( ent, "_minlight" );
-			VectorScale( _color, f, minlight );
-		}
+			if( sscanf( ValueForKey( ent, "_minlight"), "%f %f %f", &minlight[0], &minlight[1], &minlight[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "_minlight" );
+				VectorScale( _color, f, minlight );
+			}
+			if( minvertexlight != NULL )
+				VectorCopy( minlight, minvertexlight );
 		}
 	}
 
-	/* _ambient key */
+	/* minvertexlight/_minvertexlight key */
+	if( minvertexlight != NULL )
+	{
+		if( setDefaults == qtrue )
+			VectorSet( minvertexlight, 0, 0, 0 );
+		if( KeyExists( ent, "minvertexlight" ) )
+		{
+			if( sscanf( ValueForKey( ent, "minvertexlight"), "%f %f %f", &minvertexlight[0], &minvertexlight[1], &minvertexlight[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "minvertexlight" );
+				VectorScale( _color, f, minvertexlight );
+			}
+		}
+		if( KeyExists( ent, "_minvertexlight" ) )
+		{
+			if( sscanf( ValueForKey( ent, "_minvertexlight"), "%f %f %f", &minvertexlight[0], &minvertexlight[1], &minvertexlight[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "_minvertexlight" );
+				VectorScale( _color, f, minvertexlight );
+			}
+		}
+	}
+
+	/* ambient/_ambient key */
 	if( ambient != NULL )
 	{
 		if( setDefaults == qtrue )
 			VectorSet( ambient, 0, 0, 0 );
 		if( KeyExists( ent, "ambient" ) )
 		{
-		if( sscanf( ValueForKey( ent, "ambient"), "%f %f %f", &ambient[0], &ambient[1], &ambient[2] ) != 3 )
-		{
-			f = FloatForKey( ent, "ambient" );
-			VectorScale( _color, f, ambient );
-		}
+			if( sscanf( ValueForKey( ent, "ambient"), "%f %f %f", &ambient[0], &ambient[1], &ambient[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "ambient" );
+				VectorScale( _color, f, ambient );
+			}
 		}
 		if( KeyExists( ent, "_ambient" ) )
 		{
-		if( sscanf( ValueForKey( ent, "_ambient"), "%f %f %f", &ambient[0], &ambient[1], &ambient[2] ) != 3 )
-		{
-			f = FloatForKey( ent, "_ambient" );
-			VectorScale( _color, f, ambient );
-		}
+			if( sscanf( ValueForKey( ent, "_ambient"), "%f %f %f", &ambient[0], &ambient[1], &ambient[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "_ambient" );
+				VectorScale( _color, f, ambient );
+			}
 		}
 	}
 	
-	/* _colormod key */
+	/* colormod/_colormod key */
 	if( colormod != NULL )
 	{
 		if( setDefaults == qtrue )
 			VectorSet( colormod, 1, 1, 1 );
 		if( KeyExists( ent, "_colormod" ) )
 		{
-		if( sscanf( ValueForKey( ent, "_colormod"), "%f %f %f", &colormod[0], &colormod[1], &colormod[2] ) != 3 )
-		{
-			f = FloatForKey( ent, "_colormod" );
-			VectorSet( colormod, f, f, f );
-		}
+			if( sscanf( ValueForKey( ent, "_colormod"), "%f %f %f", &colormod[0], &colormod[1], &colormod[2] ) != 3 )
+			{
+				f = FloatForKey( ent, "_colormod" );
+				VectorSet( colormod, f, f, f );
+			}
 		}
 	}
 }

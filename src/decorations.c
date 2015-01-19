@@ -760,6 +760,7 @@ void LoadDecorationScript( void )
 	Sys_FPrintf( SYS_VRB, "%9i decoration groups\n", numDecoreGroups );
 }
 
+
 /*
 EntityProcessActions()
 processes actions on specific entity
@@ -811,6 +812,7 @@ void EntityProcessActions(entity_t *e, decoreActions_t *actions)
 	}
 }
 
+
 /*
 CreateEntity()
 create an empty entity of given class and returns it
@@ -820,15 +822,18 @@ entity_t *CreateEntity(char *classname)
 {
 	entity_t *e;
 
-	/* range check */
-	if( numEntities >= MAX_MAP_ENTITIES )
-		Error( "numEntities == MAX_MAP_ENTITIES" );
-
-	/* create */
-	e = &entities[ numEntities ];
-	numEntities++;
-	memset( e, 0, sizeof( *e ) );
+	/* create entity */
+	e = AllocateEntity( NULL );
 	SetKeyValue( e, "classname", classname );
+	
+	/* vortex: store map entity num */
+	e->mapEntityNum = 0 - numMapEntities;
+	{
+		char buf[32];
+		sprintf( buf, "%i", e->mapEntityNum ); 
+		SetKeyValue( e, "_mapEntityNum", buf );
+	}
+
 	return e;
 }
 
@@ -874,19 +879,20 @@ void DebugMergeModels(decoreGroup_t *group, decoreNode_t *dstnodes, int numSrcNo
 }
 #endif
 
+
 /*
-ImportFoliage()
+LoadFoliage()
 import foliage models from _foliageX.reg files
 */
 
-void ImportFoliage( char *source )
+void LoadFoliage( char *source )
 {
 	char file[ MAX_OS_PATH ];
 	int startEntities;
 	int i;
 
 	/* note it */
-	Sys_FPrintf(SYS_VRB, "--- ImportFoliage ---\n" );
+	Sys_FPrintf(SYS_VRB, "--- LoadFoliage ---\n" );
 
 	/* import */
 	startEntities = numEntities;
@@ -897,7 +903,7 @@ void ImportFoliage( char *source )
 		else
 			sprintf( file, "%s_foliage%i.reg", source, i );
 		if( FileExists( file ) == qtrue ) 
-			LoadMapFile( file, qfalse, qfalse, qtrue );
+			LoadMapFile( file, qfalse, qfalse, qtrue, qtrue );
 	}
 
 	/* emit some stats */
@@ -905,11 +911,11 @@ void ImportFoliage( char *source )
 }
 
 /*
-ImportRtlights()
+LoadRtlights()
 import lights from .rtlights file
 */
 
-void ImportRtlights( void )
+void LoadRtlights( void )
 {
 	int		i, n, a, style, shadow, flags, size, intensity, numimported;
 	char	tempchar, *s, *t, cubemapname[MAX_OS_PATH], value[128];
@@ -926,7 +932,7 @@ void ImportRtlights( void )
 	SetKeyValue( &entities[ 0 ], "_keepLights", "1" );
 
 	/* note it */
-	Sys_FPrintf(SYS_VRB, "--- ImportRtlights ---\n" );
+	Sys_FPrintf(SYS_VRB, "--- LoadRtlights ---\n" );
 
 	/* open file */
 	strcpy( filename, source );
@@ -1337,26 +1343,23 @@ LoadDecorations()
 load up decoratino scripts
 */
 
-void LoadDecorations( void )
+void LoadDecorations( char *source )
 {
+	/* load decoration script */
 	decoreGroups = NULL;
 	LoadDecorationScript();
-}
 
-/*
-ImportDecorations()
-import decoration entities in map
-*/
-
-void ImportDecorations( char *source )
-{
-	// import foliage
-	if (nofoliage == qfalse)
-		ImportFoliage( source );
-	
-	// import rtlights
-	if (importRtlights)
-		ImportRtlights();
+	/* load external decorations */
+	if( source != NULL )
+	{
+		/* load foliage */
+		if (nofoliage == qfalse)
+			LoadFoliage( source );
+		
+		/* load Darkplaces .rtlights file */
+		if (importRtlights)
+			LoadRtlights();
+	}
 }
 
 /*
@@ -1394,23 +1397,23 @@ void ProcessDecorations( void )
 		numDecoreTestNodes = MAX_DECORE_TESTNODES;
 
 	/* walk all groups and entities */
-	Sys_FPrintf (SYS_VRB, "--- ProcessDecorations ---\n" );
+	Sys_Printf ( "--- ProcessDecorations ---\n" );
 	start = I_FloatTime();
 	fOld = -1;
 	for ( i = 0; i < numDecoreGroups; i++ )
 	{
 		/* print pacifier */
 		f = 10 * i / numDecoreGroups;
-		if( f != fOld )
+		while( fOld < f )
 		{
-			fOld = f;
-			Sys_FPrintf(SYS_VRB, "%d...", f );
+			fOld++;
+			Sys_Printf( "%d...", fOld );
 		}
 
 		/* process */
 		ProcessDecorationGroup( i );
 	}
-	Sys_FPrintf(SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+	Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
 	Sys_FPrintf( SYS_VRB, "%9i tests performed\n", numDecoreTestNodes );
 
 	/* emit stats */

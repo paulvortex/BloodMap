@@ -129,7 +129,7 @@ void ExportLightmaps( void )
 	/* sanity check */
 	if( bspLightBytes == NULL )
 	{
-		Sys_Printf( "WARNING: No BSP lightmap data\n" );
+		Sys_Warning( "No BSP lightmap data" );
 		return;
 	}
 	
@@ -168,7 +168,8 @@ int ExportLightmapsMain( int argc, char **argv )
 	DefaultExtension( source, ".bsp" );
 	
 	/* load the bsp */
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	LoadBSPFile( source );
 	
 	/* export the lightmaps */
@@ -205,7 +206,8 @@ int ImportLightmapsMain( int argc, char **argv )
 	DefaultExtension( source, ".bsp" );
 	
 	/* load the bsp */
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	LoadBSPFile( source );
 	
 	/* note it */
@@ -227,12 +229,12 @@ int ImportLightmapsMain( int argc, char **argv )
 	{
 		/* read a tga image */
 		sprintf( filename, "%s/lightmap_%04d.tga", dirname, i );
-		Sys_Printf( "Loading %s\n", filename );
+		Sys_Printf( "loading %s\n", filename );
 		buffer = NULL;
 		len = vfsLoadFile( filename, (void **)&buffer, -1 );
 		if( len < 0 )
 		{
-			Sys_Printf( "WARNING: Unable to load image %s\n", filename );
+			Sys_Warning( "Unable to load lightmap image %s", filename );
 			continue;
 		}
 		
@@ -244,12 +246,11 @@ int ImportLightmapsMain( int argc, char **argv )
 		/* sanity check it */
 		if( pixels == NULL )
 		{
-			Sys_Printf( "WARNING: Unable to load image %s\n", filename );
+			Sys_Warning( "Unable to load lightmap image %s\n", filename );
 			continue;
 		}
 		if( width != game->lightmapSize || height != game->lightmapSize )
-			Sys_Printf( "WARNING: Image %s is not the right size (%d, %d) != (%d, %d)\n",
-				filename, width, height, game->lightmapSize, game->lightmapSize );
+			Sys_Warning( "Lightmap image %s is not the right size (%d, %d) != (%d, %d)", filename, width, height, game->lightmapSize, game->lightmapSize );
 		
 		/* copy the pixels */
 		in = pixels;
@@ -265,6 +266,7 @@ int ImportLightmapsMain( int argc, char **argv )
 	}
 	
 	/* write the bsp */
+	Sys_Printf( "--- WriteBSPFile ---\n" );
 	Sys_Printf( "writing %s\n", source );
 	WriteBSPFile( source );
 	
@@ -639,7 +641,10 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 			info->si->lmFilterRadius != lm->filterRadius ||
 			info->si->splotchFix != lm->splotchFix || 
 			info->si->aoScale != lm->aoScale ||
-			info->si->aoGainScale != lm->aoGainScale )
+			info->si->aoGainScale != lm->aoGainScale ||
+			VectorCompare( info->ambient, lm->ambient ) != qtrue ||
+			VectorCompare( info->minlight, lm->minlight ) != qtrue ||
+			VectorCompare( info->colormod, lm->colormod ) != qtrue )
 			return qfalse;
 
 		/* must be identical translucent state */
@@ -755,7 +760,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 	/* check for bogus axis */
 	if( faxis[ axisNum ] == 0.0f )
 	{
-		Sys_Printf( "WARNING: ProjectSurfaceLightmap: Chose a 0 valued axis\n" );
+		Sys_Warning( "ProjectSurfaceLightmap: Chose a 0 valued axis" );
 		lm->w = lm->h = 0;
 		return qfalse;
 	}
@@ -781,7 +786,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm )
 			verts[ i ].lightmap[ 0 ][ 0 ] = s * superSample;
 			verts[ i ].lightmap[ 0 ][ 1 ] = t * superSample;
 			if( s > (float) lm->w || t > (float) lm->h )
-				Sys_FPrintf( SYS_VRB, "WARNING: Lightmap texture coords out of range: S %1.4f > %3d || T %1.4f > %3d, shader %s\n", s, lm->w, t, lm->h, info2->si->shader );
+				Sys_Warning( lm->entityNum, "Lightmap texture coords out of range: S %1.4f > %3d || T %1.4f > %3d, shader %s", s, lm->w, t, lm->h, info2->si->shader );
 		}
 	}
 	
@@ -950,7 +955,7 @@ void SetupSurfaceLightmaps( void )
 		superSample = 1;
 	else if( superSample > 8 )
 	{
-		Sys_Printf( "WARNING: Insane supersampling amount (%d) detected.\n", superSample );
+		Sys_Warning( "Insane supersampling amount (%d) detected", superSample );
 		superSample = 8;
 	}
 	
@@ -1018,6 +1023,19 @@ void SetupSurfaceLightmaps( void )
 			GetSurfaceExtraLightmapAxis( num, info->axis );
 			info->shadeAngle = GetSurfaceExtraShadeAngle( num );
 			info->lightmapStitch = GetSurfaceExtraLightmapStitch( num );
+			GetSurfaceExtraAmbient( num, info->ambient );
+			GetSurfaceExtraMinLight( num, info->minlight );
+			GetSurfaceExtraMinVertexLight( num, info->minvertexlight );
+			GetSurfaceExtraColormod( num, info->colormod );
+
+			/* add shader-based and global ambient/minlight/colormod (entity-based stuff already added by surface extra data) */
+			for( k = 0; k < 3; k++ )
+			{
+				info->ambient[ k ] = info->ambient[ k ] + info->si->ambient[ k ] + ambientColor[ k ];
+				info->minlight[ k ] = max( max( info->minlight[ k ], info->si->minlight[ k ] ), minLight[ k ] );
+				info->minvertexlight[ k ] = max( max( info->minvertexlight[ k ], info->si->minvertexlight[ k ] ), minVertexLight[ k ] );
+				info->colormod[ k ] = info->colormod[ k ] * info->si->colormod[ k ] * colorMod[ k ];
+			}
 
 			/* mark parent */
 			if( info->parentSurfaceNum >= 0 )
@@ -1138,7 +1156,12 @@ void SetupSurfaceLightmaps( void )
 		lm->recvShadows = info->recvShadows;
 		lm->brightness = info->si->lmBrightness;
 		lm->filterRadius = info->si->lmFilterRadius;
-		lm->stitch = (info->si->lightmapNoStitch == qtrue) ? qfalse : (stitch == qtrue || info->si->lightmapForceStitch == qtrue) ? qtrue : qfalse;
+		if( info->si->lightmapNoStitch == qtrue )
+			lm->stitch = qfalse;
+		else if( stitch == qtrue || info->si->lightmapForceStitch == qtrue )
+			lm->stitch = qtrue;
+		else
+			lm->stitch = qfalse;
 		VectorCopy(info->si->floodlightRGB, lm->floodlightRGB);
 		lm->floodlightDistance = info->si->floodlightDistance;
 		lm->floodlightIntensity = info->si->floodlightIntensity;
@@ -1152,6 +1175,9 @@ void SetupSurfaceLightmaps( void )
 		VectorCopy( info->maxs, lm->maxs );
 		lm->customWidth = info->si->lmCustomWidth;
 		lm->customHeight = info->si->lmCustomHeight;
+		VectorCopy( info->ambient, lm->ambient );
+		VectorCopy( info->minlight, lm->minlight );
+		VectorCopy( info->colormod, lm->colormod );
 
 		/* add the surface to the raw lightmap */
 		AddSurfaceToRawLightmap( num, lm );
@@ -1241,9 +1267,9 @@ void AllocateSurfaceLightmaps(void)
 		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* emit some stats */
-	Sys_FPrintf( SYS_VRB, "%9d surfaces\n", numBSPDrawSurfaces );
-	Sys_FPrintf( SYS_VRB, "%9d raw lightmaps\n", numRawLightmaps );
-	Sys_FPrintf( SYS_VRB, "%9d surfaces lightmapped\n", numSurfsLightmapped );
+	Sys_Printf( "%9d surfaces\n", numBSPDrawSurfaces );
+	Sys_Printf( "%9d raw lightmaps\n", numRawLightmaps );
+	Sys_Printf( "%9d surfaces lightmapped\n", numSurfsLightmapped );
 	Sys_FPrintf( SYS_VRB, "%9d planar surfaces lightmapped\n", numPlanarsLightmapped );
 	Sys_FPrintf( SYS_VRB, "%9d non-planar surfaces lightmapped\n", numNonPlanarsLightmapped );
 	Sys_FPrintf( SYS_VRB, "%9d patches lightmapped\n", numPatchesLightmapped );
@@ -1263,19 +1289,20 @@ void AllocateSurfaceLightmaps(void)
 
 	/* emit some stats */
 	Sys_FPrintf( SYS_VRB, "%9d vertexes\n", numBSPDrawVerts );
-	Sys_FPrintf( SYS_VRB, "%9d surfaces vertex lit\n", numSurfsVertexLit );
+	Sys_Printf( "%9d surfaces vertex lit\n", numSurfsVertexLit );
 }
 
 
 /*
-StitchSurfaceLightmaps()
+StitchRawLightmap()
 stitches lightmap edges
 2002-11-20 update: use this func only for stitching nonplanar patch lightmap seams
 2014-06-20 vortex: re-enabled, cleaned up, fixed bugs, multithreaded
+marks luxels for stitching (which are done in the second pass)
 */
 
 #define MAX_STITCH_CANDIDATES	1024
-#define MAX_STITCH_LUXELS       16
+#define MAX_STITCH_LUXELS       20
 #define GROW_STITCH_LUXELS      32768
 
 typedef struct
@@ -1351,13 +1378,10 @@ stitch single lightmap
 void StitchRawLightmap( int rawLightmapNum )
 {
 	int	j, x, y, x2, y2, as, bs, *cluster, *cluster2, numCandidates, numLuxels, stitchLightmaps[ MAX_STITCH_LUXELS ], stitchXy[ MAX_STITCH_LUXELS ];
-	float *luxel, *luxel2, *origin, *origin2, *normal, *normal2, stitchRadius, shadeAngle, *mins, *maxs, minLightAmt, f;
+	float *luxel, *luxel2, *origin, *origin2, *normal, *normal2, stitchRadius, shadeAngle, *mins, *maxs, f;
 	stitchCandidate_t candidates[ MAX_STITCH_CANDIDATES ], *candidate;
 	rawLightmap_t *lm, *a, *b;
 	vec3_t dist;
-
-	/* get min light amount */
-	minLightAmt = VectorLength( minLight );
 
 	/* get lightmap */
 	a = &rawLightmaps[ rawLightmapNum ];
@@ -1402,7 +1426,7 @@ void StitchRawLightmap( int rawLightmapNum )
 		candidate->lmIndex = j;
 
 		/* calc stitch radius */
-		candidate->stitchRadius = 1.10f * (a->actualSampleSize < b->actualSampleSize ? a->actualSampleSize : b->actualSampleSize);
+		candidate->stitchRadius = ( 0.85f * min(a->actualSampleSize, b->actualSampleSize) ) / sqrt( sqrt( (float)superSample ) );
 
 		/* get smoothing angle */
 		candidate->shadeAngle = DEG2RAD(b->shadeAngle);
@@ -1438,9 +1462,7 @@ void StitchRawLightmap( int rawLightmapNum )
 				if( *cluster2 < 0 )
 					continue;
 				luxel2 = SUPER_LUXEL( 0, x2, y2 );
-				if (luxel2[ 3 ] <= 0.0f)
-					continue;
-				if (VectorLength( luxel2 ) <= minLightAmt)
+				if (luxel2[ 4 ] <= 0.0f)
 					continue;
 
 				/* add to bounds */
@@ -1521,9 +1543,7 @@ void StitchRawLightmap( int rawLightmapNum )
 						if( *cluster2 < 0 )
 							continue;
 						luxel2 = SUPER_LUXEL( 0, x2, y2 );
-						if (luxel2[ 3 ] <= 0.0f)
-							continue;
-						if (VectorLength( luxel2 ) <= minLightAmt)
+						if( luxel2[ 4 ] <= 0.0f )
 							continue;
 
 						/* test radius */
@@ -1609,20 +1629,20 @@ int StitchLuxelsCompare( const void *elem1, const void *elem2 )
 }
 
 /*
-StitchSurfaceLightmaps()
+StitchRawLightmaps()
 does the job
 */
 
-void StitchSurfaceLightmaps( void )
+void StitchRawLightmaps( void )
 {
-	int i, j, ls, f, fOld, start, *cluster, numStitches = 0;
+	int i, j, ls, f, fOld, start, *cluster, numStitches = 0, bestLuxel;
 	rawLightmap_t *lm;
 	stitchLuxel_t *stitch;
 	vec3_t average;
-	float *luxel, scale;
+	float *luxel, *normal, *origin, scale, d, bestD;
 
 	/* disabled? */
-	if( noStitch )
+	if( gridOnly || noStitch )
 		return;
 
 	/* nothing to stitch */
@@ -1630,7 +1650,7 @@ void StitchSurfaceLightmaps( void )
 		return;
 
 	/* apply stitch */
-	Sys_Printf( "--- StitchLightmaps ---\n");
+	Sys_Printf( "--- StitchRawLightmap ---\n");
 	start = I_FloatTime();
 	fOld = -1;
 	if (stitchLuxels != NULL)
@@ -1654,10 +1674,11 @@ void StitchSurfaceLightmaps( void )
 			/* apply stitch */
 			if( debugStitch )
 			{
-				// stitch debug:
-				// purple - luxels which are stiched
-				// green - luxels which are stitched from
-				// yellow - luxels which are both stitched and stitched from
+				/* stitch debug:
+				 purple - luxels which are stiched
+				 green - luxels which are stitched from
+				 yellow - luxels which are both stitched and stitched from
+				*/
 
 				/* stitch base luxel */
 				lm = &rawLightmaps[ stitch->lightmap ];
@@ -1679,18 +1700,18 @@ void StitchSurfaceLightmaps( void )
 					numStitches++;
 				}
 			}
-			else
+			else if (0)
 			{
-				/* average */
-				if ( stitch->cluster < 0)
+				/* average (old formula) */
+				lm = &rawLightmaps[ stitch->lightmap ];
+				luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+				if ( stitch->cluster < 0 || luxel[ 4 ] <= 0 )
 				{
 					VectorClear(average);
 					ls = 0;
 				}
 				else
 				{
-					lm = &rawLightmaps[ stitch->lightmap ];
-					luxel = SUPER_LUXEL_XY( 0, stitch->xy );
 					VectorCopy(luxel, average);
 					ls = 1;
 				}
@@ -1699,17 +1720,19 @@ void StitchSurfaceLightmaps( void )
 					lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
 					luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
 					cluster = SUPER_CLUSTER_XY( stitch->stitchXy[ j ] );
-					if( *cluster < 0 )
+					if( *cluster < 0 || luxel[ 4 ] <= 0.0f )
 						continue;
 					VectorAdd(average, luxel, average);
 					numStitches++;
+					ls++;
 				}
-				scale = 1.0f / (ls + stitch->numLuxels);
+				if( ls <= 1 )
+					continue;
+				scale = 1.0f / ls;
 
 				/* stitch luxel */
 				lm = &rawLightmaps[ stitch->lightmap ];
 				luxel = SUPER_LUXEL_XY( 0, stitch->xy );
-				luxel[ 3 ] = 1.0f;
 				VectorScale( average, scale, average );
 				VectorCopy( average, luxel );
 
@@ -1718,21 +1741,66 @@ void StitchSurfaceLightmaps( void )
 				{
 					lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
 					luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
-					luxel[ 3 ] = 1.0f;
 					VectorAdd( luxel, average, luxel );
 					VectorScale( luxel, 0.5, luxel );
 				}
 			}
+			else
+			{
+				/* new formula */
+				/* find out best color to average to */
+				lm = &rawLightmaps[ stitch->lightmap ];
+				normal = SUPER_TRINORMAL_XY( stitch->xy );
+				for( bestLuxel = -1, bestD = -1, j = 0; j < stitch->numLuxels; j++ )
+				{
+					lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
+					luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
+					cluster = SUPER_CLUSTER_XY( stitch->stitchXy[ j ] );
+					if( *cluster < 0 || luxel[ 4 ] <= 0.0f )
+						continue;
+					origin = SUPER_TRIORIGIN_XY( stitch->stitchXy[ j ] );
+					d = DotProduct( normal, origin );
+					if( d > bestD )
+					{
+						bestLuxel = j;
+						bestD = d;
+					}
+					numStitches++;
+				}
+				if( bestLuxel < 0 )
+					continue;
 
-			/* flood unmapped cluster */
+				/* set average color */
+				lm = &rawLightmaps[ stitch->stitchLightmaps[ bestLuxel ] ];
+				luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ bestLuxel ] );
+				VectorCopy( luxel, average );
+
+				/* stitch luxel */
+				lm = &rawLightmaps[ stitch->lightmap ];
+				luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+				VectorCopy( average, luxel );
+
+				/* if luxel is lit, stitch neighbours together (only at half power) */
+				if( stitch->cluster >= 0 && luxel[ 4 ] > 0.0f )
+				{
+					for (j = 0; j < stitch->numLuxels; j++)
+					{
+						lm = &rawLightmaps[ stitch->stitchLightmaps[ j ] ];
+						luxel = SUPER_LUXEL_XY( 0, stitch->stitchXy[ j ] );
+						VectorAdd( luxel, average, luxel );
+						VectorScale( luxel, 0.5, luxel );
+					}
+				}
+			}
+
+			/* flood unmapped luxel */
 			lm = &rawLightmaps[ stitch->lightmap ];
-			if ( stitch->cluster < 0)
+			luxel = SUPER_LUXEL_XY( 0, stitch->xy );
+			if ( stitch->cluster < 0 )
 			{
 				cluster = SUPER_CLUSTER_XY( stitch->xy );
 				*cluster = CLUSTER_FLOODED;
 			}
-			luxel = SUPER_LUXEL_XY( 0, stitch->xy );
-			luxel[ 3 ] = 1.0f;
 		}
 
 		/* free stitch queue */
@@ -1766,8 +1834,7 @@ static qboolean CompareBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, 
 	float			*aLuxel, *bLuxel;
 	
 	/* styled lightmaps will never be collapsed to non-styled lightmaps when there is _minlight */
-	if( (minLight[ 0 ] || minLight[ 1 ] || minLight[ 2 ]) &&
-		((aNum == 0 && bNum != 0) || (aNum != 0 && bNum == 0)))
+	if( ( a->minlight[ 0 ] || a->minlight[ 1 ] || a->minlight[ 2 ]) && ((aNum == 0 && bNum != 0) || (aNum != 0 && bNum == 0)))
 		return qfalse;
 	
 	/* basic tests */
@@ -1952,7 +2019,7 @@ static qboolean ApproximateLuxel( rawLightmap_t *lm, bspDrawVert_t *dv )
 		if( luxel[ 0 ] < 0.0f || luxel[ 1 ] < 0.0f || luxel[ 2 ] < 0.0f )
 			return qtrue;
 		
-		/* copy, set min color and compare */
+		/* copy and compare */
 		VectorCopy( luxel, color );
 		VectorCopy( dv->color[ 0 ], vertexColor );
 
@@ -1962,13 +2029,13 @@ static qboolean ApproximateLuxel( rawLightmap_t *lm, bspDrawVert_t *dv )
 			for( i = 0; i < 3; i++ )
 			{
 				/* set min color */
-				if( color[ i ] < minLight[ i ] )
-					color[ i ] = minLight[ i ];
-				if( vertexColor[ i ] < minLight[ i ] )	/* note NOT minVertexLight */
-					vertexColor[ i ] = minLight[ i ];
+				if( color[ i ] < lm->minlight[ i ] )
+					color[ i ] = lm->minlight[ i ];
+				if( vertexColor[ i ] < lm->minlight[ i ] )	/* note NOT info->minvertexlight */
+					vertexColor[ i ] = lm->minlight[ i ];
 			}
 		}
-		
+
 		/* set to bytes */
 		ColorToBytes( color, cb, 1.0f, qfalse );
 		ColorToBytes( vertexColor, vcb, 1.0f, qfalse );
@@ -2553,10 +2620,16 @@ static void FindOutLightmaps( rawLightmap_t *lm )
 				/* styles are not affected by minlight */
 				if ( lightmapNum == 0 )
 				{
+					/* set min color */
 					for ( i = 0; i < 3; i++ )
-						if ( color[ i ] < minLight[ i ] )
-							color[ i ] = minLight[ i ];
+						if ( color[ i ] < lm->minlight[ i ] )
+							color[ i ] = lm->minlight[ i ];
 				}
+
+				/* set color mod */
+				if( !bouncing )
+					for( i = 0; i < 3; i++ )
+						color[ i ] *= lm->colormod[ i ];
 
 				/* get bsp lightmap coords  */
 				ox = x + lm->lightmapX[ lightmapNum ];
@@ -2939,7 +3012,6 @@ void StoreSurfaceLightmaps( void )
 	
 	/* walk the list of raw lightmaps */
 	numUsed = 0;
-	numTwins = 0;
 	numTwinLuxels = 0;
 	numSolidLightmaps = 0;
 	for( i = 0; i < numRawLightmaps; i++ )
@@ -2951,7 +3023,7 @@ void StoreSurfaceLightmaps( void )
 			if( f != fOld )
 			{
 				fOld = f;
-				Sys_FPrintf( SYS_VRB, "%d...", f );
+				Sys_Printf( "%d...", f );
 			}
 		}
 
@@ -3024,16 +3096,19 @@ void StoreSurfaceLightmaps( void )
 								VectorSet( sample, 255.0f, 0.0f, 0.0f );
 								samples += 1.0f;
 							}
-							
+
 							/* handle debug */
-							else if( debug && *cluster < 0 )
+							else if( debug && ( *cluster < 0 || luxel[ 4 ] <= 0 ) )
 							{
-								if( *cluster == CLUSTER_UNMAPPED )
+								if( *cluster == CLUSTER_UNMAPPED ) /* yellow for unmapped luxels */
 									VectorSet( luxel, 255, 204, 0 );
-								else if( *cluster == CLUSTER_OCCLUDED )
+								else if( *cluster == CLUSTER_OCCLUDED ) /* purple for occluded luxels */
 									VectorSet( luxel, 255, 0, 255 );
-								else if( *cluster == CLUSTER_FLOODED )
+								else if( *cluster == CLUSTER_FLOODED ) /* blue for flooded luxels */
 									VectorSet( luxel, 0, 32, 255 );
+								else if( luxel[ 4 ] <= 0 ) /* green for unlit luxels */
+									VectorSet( luxel, 0, 255, 0 );
+
 								VectorAdd( occludedSample, luxel, occludedSample );
 								occludedSamples += 1.0f;
 							}
@@ -3095,7 +3170,10 @@ void StoreSurfaceLightmaps( void )
 					else if( mappedSamples > 0 )
 					{
 						if( lightmapNum == 0 )
-							VectorCopy( ambientColor, luxel );
+						{
+							/* set ambient color */
+							VectorCopy( lm->ambient, luxel );
+						}
 						else
 							VectorClear( luxel );
 						luxel[ 3 ] = 1.0f;
@@ -3309,7 +3387,10 @@ void StoreSurfaceLightmaps( void )
 
 	/* print time */
 	if (numRawLightmaps > 10)
-		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
+
+	/* emit some stats */
+	Sys_Printf( "%9d solid surface lightmaps\n", numSolidLightmaps );
 
 	/* -----------------------------------------------------------------
 	   convert modelspace BSP deluxels to tangentspace
@@ -3338,7 +3419,7 @@ void StoreSurfaceLightmaps( void )
 					if( f != fOld )
 					{
 						fOld = f;
-						Sys_FPrintf( SYS_VRB, "%d...", f );
+						Sys_Printf( "%d...", f );
 					}
 				}
 
@@ -3420,7 +3501,7 @@ void StoreSurfaceLightmaps( void )
 
 			/* print time */
 			if (numRawLightmaps > 10)
-				Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+				Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
 		}
 	}
 
@@ -3438,6 +3519,7 @@ void StoreSurfaceLightmaps( void )
 		start = I_FloatTime();
 		
 		/* set all twin refs to null */
+		numTwins = 0;
 		for( i = 0; i < numRawLightmaps; i++ )
 		{
 			for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
@@ -3458,7 +3540,7 @@ void StoreSurfaceLightmaps( void )
 				if( f != fOld )
 				{
 					fOld = f;
-					Sys_FPrintf( SYS_VRB, "%d...", f );
+					Sys_Printf( "%d...", f );
 				}
 			}
 
@@ -3510,7 +3592,10 @@ void StoreSurfaceLightmaps( void )
 
 		/* print time */
 		if (numRawLightmaps > 10)
-			Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+			Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
+
+		/* emit some stats */
+		Sys_Printf( "%9d identical surface lightmaps, using %d luxels\n", numTwins, numTwinLuxels );
 	}
 
 	/* -----------------------------------------------------------------
@@ -3564,7 +3649,7 @@ void StoreSurfaceLightmaps( void )
 			if( f != fOld )
 			{
 				fOld = f;
-				Sys_FPrintf( SYS_VRB, "%d...", f );
+				Sys_Printf( "%d...", f );
 			}
 		}
 
@@ -3597,7 +3682,14 @@ void StoreSurfaceLightmaps( void )
 
 	/* print time */
 	if (numRawLightmaps > 10)
-		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
+
+	/* emit some stats */
+	if( numSurfsVertexForced || verbose )
+		Sys_Printf( "%9d vertex forced surfaces\n", numSurfsVertexForced );
+	if( numSurfsVertexApproximated || verbose )
+		Sys_Printf( "%9d vertex approximated surfaces\n", numSurfsVertexApproximated );
+	Sys_Printf( "%9d unique lightmap/shader combinations\n", numLightmapShaders );
 
 	/* -----------------------------------------------------------------
 	cleanup external lightmaps
@@ -3642,7 +3734,8 @@ void StoreSurfaceLightmaps( void )
 		if (!any_deleted)
 			break;
 	}
-	Sys_Printf( "%9d files deleted\n", f );
+	if( f || verbose )
+		Sys_Printf( "%9d files deleted\n", f );
 
 	/* delete compressed lightmaps */
 	Sys_Printf( "--- CleanupCompressedLightmaps ---\n");
@@ -3666,7 +3759,8 @@ void StoreSurfaceLightmaps( void )
 		f++;
 		remove( filename );
 	}
-	Sys_Printf( "%9d files deleted\n", f );
+	if( f || verbose )
+		Sys_Printf( "%9d files deleted\n", f );
 
 	
 	/* -----------------------------------------------------------------
@@ -3705,7 +3799,7 @@ void StoreSurfaceLightmaps( void )
 			if( f != fOld )
 			{
 				fOld = f;
-				Sys_FPrintf( SYS_VRB, "%d...", f );
+				Sys_Printf( "%d...", f );
 			}
 		}
 
@@ -3772,7 +3866,7 @@ void StoreSurfaceLightmaps( void )
 
 	/* print time */
 	if (numOutLightmaps > 10)
-		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
 
 	/* -----------------------------------------------------------------
 	   project the lightmaps onto the bsp surfaces
@@ -3795,7 +3889,7 @@ void StoreSurfaceLightmaps( void )
 			if( f != fOld )
 			{
 				fOld = f;
-				Sys_FPrintf( SYS_VRB, "%d...", f );
+				Sys_Printf( "%d...", f );
 			}
 		}
 
@@ -3909,18 +4003,30 @@ void StoreSurfaceLightmaps( void )
 					luxel = VERTEX_LUXEL( lightmapNum, ds->firstVert + j );
 					VectorCopy( luxel, color );
 					
-					/* set minimum light */
+					/* set min color */
 					if( lightmapNum == 0 )
 					{
 						for( k = 0; k < 3; k++ )
-							if( color[ k ] < minVertexLight[ k ] )
-								color[ k ] = minVertexLight[ k ];
+							if( color[ k ] < info->minvertexlight[ k ] )
+								color[ k ] = info->minvertexlight[ k ];
+					}
+
+					/* set color mod */
+					if( !bouncing )
+					{
+						for( k = 0; k < 3; k++ )
+							color[ k ] = color[ k ] * info->colormod[ k ];
 					}
 				}
 				
 				/* store to bytes */
 				if( !info->si->noVertexLight )
-					ColorToBytes( color, dv[ j ].color[ lightmapNum ], info->si->vertexScale * vertexScale, qfalse );
+				{
+					if( gridOnly && lightmapNum == 0 )
+						ColorToBytes( color, dv[ j ].color[ lightmapNum ], 1.0f, qfalse );
+					else
+						ColorToBytes( color, dv[ j ].color[ lightmapNum ], info->si->vertexScale * vertexScale, qfalse );
+				}
 			}
 		}
 		
@@ -4067,7 +4173,7 @@ void StoreSurfaceLightmaps( void )
 	
 	/* print time */
 	if (numBSPDrawSurfaces > 10)
-		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
+		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
 	
 	/* calc num stored */
 	numStored = numBSPLightBytes / 3;
@@ -4076,13 +4182,8 @@ void StoreSurfaceLightmaps( void )
 	/* print stats */
 	Sys_Printf( "%9d luxels used\n", numUsed );
 	Sys_Printf( "%9d luxels stored (%3.2f percent efficiency)\n", numStored, efficiency * 100.0f );
-	Sys_Printf( "%9d solid surface lightmaps\n", numSolidLightmaps );
-	Sys_Printf( "%9d identical surface lightmaps, using %d luxels\n", numTwins, numTwinLuxels );
-	Sys_Printf( "%9d vertex forced surfaces\n", numSurfsVertexForced );
-	Sys_Printf( "%9d vertex approximated surfaces\n", numSurfsVertexApproximated );
 	Sys_Printf( "%9d BSP lightmaps\n", numBSPLightmaps );
 	Sys_Printf( "%9d total lightmaps\n", numOutLightmaps );
-	Sys_Printf( "%9d unique lightmap/shader combinations\n", numLightmapShaders );
 	
 	/* write map shader file */
 	WriteMapShaderFile();

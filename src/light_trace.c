@@ -1340,10 +1340,10 @@ void SetupTraceNodes( void )
 	
 	/* emit some stats */
 	//%	Sys_FPrintf( SYS_VRB, "%9d original triangles\n", numOriginalTriangles );
-	Sys_FPrintf( SYS_VRB, "%9d trace windings (%.2fMB)\n", numTraceWindings, (float) (numTraceWindings * sizeof( *traceWindings )) / (1024.0f * 1024.0f) );
-	Sys_FPrintf( SYS_VRB, "%9d trace triangles (%.2fMB)\n", numTraceTriangles, (float) (numTraceTriangles * sizeof( *traceTriangles )) / (1024.0f * 1024.0f) );
-	Sys_FPrintf( SYS_VRB, "%9d trace nodes (%.2fMB)\n", numTraceNodes, (float) (numTraceNodes * sizeof( *traceNodes )) / (1024.0f * 1024.0f) );
-	Sys_FPrintf( SYS_VRB, "%9d leaf nodes (%.2fMB)\n", numTraceLeafNodes, (float) (numTraceLeafNodes * sizeof( *traceNodes )) / (1024.0f * 1024.0f) );
+	Sys_Printf( "%9d trace windings (%.2fMB)\n", numTraceWindings, (float) (numTraceWindings * sizeof( *traceWindings )) / (1024.0f * 1024.0f) );
+	Sys_Printf( "%9d trace triangles (%.2fMB)\n", numTraceTriangles, (float) (numTraceTriangles * sizeof( *traceTriangles )) / (1024.0f * 1024.0f) );
+	Sys_Printf( "%9d trace nodes (%.2fMB)\n", numTraceNodes, (float) (numTraceNodes * sizeof( *traceNodes )) / (1024.0f * 1024.0f) );
+	Sys_Printf( "%9d leaf nodes (%.2fMB)\n", numTraceLeafNodes, (float) (numTraceLeafNodes * sizeof( *traceNodes )) / (1024.0f * 1024.0f) );
 	//%	Sys_FPrintf( SYS_VRB, "%9d average triangles per leaf node\n", numTraceTriangles / numTraceLeafNodes );
 	Sys_FPrintf( SYS_VRB, "%9d average windings per leaf node\n", numTraceWindings / (numTraceLeafNodes + 1) );
 	Sys_FPrintf( SYS_VRB, "%9d max trace depth\n", maxTraceDepth );
@@ -1409,12 +1409,12 @@ based on code originally written by tomas moller and ben trumbore, journal of gr
 qboolean TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace )
 {
 	int				i;
-	float			tvec[ 3 ], pvec[ 3 ], qvec[ 3 ];
-	float			det, invDet, depth;
-	float			u, v, w, s, t;
+	double			tvec[ 3 ], pvec[ 3 ], qvec[ 3 ];
+	double			det, invDet, depth;
+	double			u, v, w, s, t;
 	int				is, it;
 	byte			*pixel;
-	float			shadow;
+	double			shadow;
 	shaderInfo_t	*si;
 	
 	/* don't double-trace against sky */
@@ -1517,6 +1517,11 @@ skipShadowGroups:
 		return qfalse;
 	}
 	
+	/* try to avoid double shadows near triangle seams */
+	if( u < -ASLF_EPSILON || u > (1.0f + ASLF_EPSILON) ||
+		v < -ASLF_EPSILON || (u + v) > (1.0f + ASLF_EPSILON) )
+		return qfalse;
+
 	/* most surfaces are completely opaque */
 	if( !(si->compileFlags & (C_ALPHASHADOW | C_LIGHTFILTER)) || si->lightImage == NULL || si->lightImage->pixels == NULL )
 	{
@@ -1526,11 +1531,6 @@ skipShadowGroups:
 		return qtrue;
 	}
 	
-	/* try to avoid double shadows near triangle seams */
-	if( u < -ASLF_EPSILON || u > (1.0f + ASLF_EPSILON) ||
-		v < -ASLF_EPSILON || (u + v) > (1.0f + ASLF_EPSILON) )
-		return qfalse;
-
 	/* calculate w parameter */
 	w = 1.0f - (u + v);
 	

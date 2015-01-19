@@ -50,7 +50,7 @@ portal_t *AllocPortal (void)
 {
 	portal_t	*p;
 	
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		c_active_portals++;
 	if (c_active_portals > c_peak_portals)
 		c_peak_portals = c_active_portals;
@@ -65,7 +65,7 @@ void FreePortal (portal_t *p)
 {
 	if (p->winding)
 		FreeWinding (p->winding);
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		c_active_portals--;
 	free (p);
 }
@@ -513,11 +513,8 @@ void MakeTreePortals_r (node_t *node)
 	CalcNodeBounds (node);
 	if (node->mins[0] >= node->maxs[0])
 	{
-		Sys_Printf ("WARNING: node without a volume\n");
-		Sys_Printf("node has %d tiny portals\n", node->tinyportals);
-		Sys_Printf("node reference point %1.2f %1.2f %1.2f\n", node->referencepoint[0],
-															node->referencepoint[1],
-															node->referencepoint[2]);
+		Sys_Warning( node->referencepoint, "Node without a volume" );
+		Sys_Warning( node->referencepoint, "Node has %d tiny portals", node->tinyportals );
 	}
 
 	for (i=0 ; i<3 ; i++)
@@ -525,7 +522,7 @@ void MakeTreePortals_r (node_t *node)
 		if (node->mins[i] < MIN_WORLD_COORD || node->maxs[i] > MAX_WORLD_COORD)
 		{
 			if (node->portals && node->portals->winding)
-				xml_Winding("WARNING: Node With Unbounded Volume", node->portals->winding->p, node->portals->winding->numpoints, qfalse);
+				Sys_Warning( node->portals->winding, "Node With Unbounded Volume" );
 			break;
 		}
 	}
@@ -544,13 +541,29 @@ void MakeTreePortals_r (node_t *node)
 MakeTreePortals
 ==================
 */
-void MakeTreePortals (tree_t *tree)
+
+void MakeTreePortals (tree_t *tree, qboolean quiet)
 {
-	Sys_FPrintf (SYS_VRB, "--- MakeTreePortals ---\n");
+	c_tinyportals = 0;
+	c_badportals = 0;
+
+	if( !quiet )
+		Sys_FPrintf (SYS_VRB, "--- MakeTreePortals ---\n");
+
 	MakeHeadnodePortals (tree);
 	MakeTreePortals_r (tree->headnode);
+
+	if( !quiet )
+	{
+		Sys_FPrintf( SYS_VRB, "%9d tiny portals\n", c_tinyportals );
+		Sys_FPrintf( SYS_VRB, "%9d bad portals\n", c_badportals );
+	}
+}
+
+void MakeTreePortalsStats( void )
+{
 	Sys_FPrintf( SYS_VRB, "%9d tiny portals\n", c_tinyportals );
-	Sys_FPrintf( SYS_VRB, "%9d bad portals\n", c_badportals );	/* ydnar */
+	Sys_FPrintf( SYS_VRB, "%9d bad portals\n", c_badportals );
 }
 
 /*
@@ -659,7 +672,7 @@ Marks all nodes that can be reached by entites
 =============
 */
 
-qboolean FloodEntities( tree_t *tree )
+qboolean FloodEntities( tree_t *tree, qboolean quiet )
 {
 	int			i, j, s, frame;
 	vec3_t		origin, offset, scale, angles, absmin, absmax;
@@ -671,7 +684,8 @@ qboolean FloodEntities( tree_t *tree )
 	entity_t	*e;
 	qboolean    tripped;
 	
-	Sys_FPrintf( SYS_VRB,"--- FloodEntities ---\n" );
+	if( !quiet )
+		Sys_FPrintf( SYS_VRB,"--- FloodEntities ---\n" );
 	inside = qfalse;
 	tree->outside_node.occupied = 0;
 	tripped = qfalse;
@@ -693,7 +707,8 @@ qboolean FloodEntities( tree_t *tree )
 			continue;
 
 		/* check for noflood key */
-		if ( IntForKey(e, "_noflood") > 0 || IntForKey(e, "_nf") > 0 )
+		/* vortex: we also do not flood from external entities (imported rtlights, foliage), this ents have mapEntityNum < 0 */
+		if ( IntForKey(e, "_noflood") > 0 || IntForKey(e, "_nf") > 0 || e->mapEntityNum < 0)
 			continue;
 		
 		/* handle skybox entities */
@@ -813,27 +828,38 @@ qboolean FloodEntities( tree_t *tree )
 		{
 			if (tree->outside_node.occupied)
 			{
-				Sys_Printf( "entity: '%s' at '%f %f %f' reached from outside\n", classname, origin[ 0 ], origin[ 1 ], origin[ 2 ] );
+				if( !quiet )
+					Sys_Warning( origin, "FloodEntities: entity '%s' reached from outside\n", classname );
 				tripped = qtrue;
 			}
 			if( !r || tree->outside_node.occupied)
 			{
-				if (m)
-					xml_Select( "Model entity leaked", e->mapEntityNum, 0, qfalse );
-				else
-					xml_Select( "Entity leaked", e->mapEntityNum, 0, qfalse );
+				if( !quiet )
+				{
+					if (m)
+						Sys_Warning( e->mapEntityNum, "Model entity leaked" );
+					else
+						Sys_Warning( e->mapEntityNum, "Entity leaked" );
+				}
 			}
 		}
 	}
 	
-	Sys_FPrintf( SYS_VRB, "%9d flooded leafs\n", c_floodedleafs );
-	
-	if( !inside )
-		Sys_FPrintf( SYS_VRB, "no entities in open -- no filling\n" );
-	else if( tree->outside_node.occupied )
-		Sys_FPrintf( SYS_VRB, "entity reached from outside -- no filling\n" );
-	
+	if( !quiet )
+	{
+		Sys_FPrintf( SYS_VRB, "%9d flooded leafs\n", c_floodedleafs );
+		if( !inside )
+			Sys_FPrintf( SYS_VRB, "FloodEntities: no entities in open -- no filling\n" );
+		else if( tree->outside_node.occupied )
+			Sys_FPrintf( SYS_VRB, "FloodEntities: entity reached from outside -- no filling\n" );
+	}
+
 	return (qboolean) (inside && !tree->outside_node.occupied);
+}
+
+void FloodEntitiesStats( void )
+{
+	Sys_FPrintf( SYS_VRB, "%9d flooded leafs\n", c_floodedleafs );
 }
 
 /*
@@ -875,7 +901,7 @@ void FloodAreas_r( node_t *node )
 		// note the current area as bounding the portal
 		if( b->portalareas[ 1 ] != -1 )
 		{
-			Sys_Printf( "WARNING: areaportal brush %i touches > 2 areas\n", b->brushNum );
+			Sys_Warning( b->entityNum, b->brushNum, "Areaportal brush %i touches > 2 areas" );
 			return;
 		}
 		if( b->portalareas[ 0 ] != -1 )
@@ -956,15 +982,19 @@ void CheckAreas_r (node_t *node)
 		return;
 
 	if (node->cluster != -1)
+	{
 		if (node->area == -1)
-			Sys_Printf("WARNING: cluster %d has area set to -1\n", node->cluster);
+		{
+			b = node->brushlist->original;
+			Sys_Warning( b->entityNum, b->brushNum, "Node cluster %d has area set to -1", node->cluster );
+		}
+	}
 	if (node->areaportal)
 	{
 		b = node->brushlist->original;
-
 		// check if the areaportal touches two areas
 		if (b->portalareas[0] == -1 || b->portalareas[1] == -1)
-			Sys_Printf ("WARNING: areaportal brush %i doesn't touch two areas\n", b->brushNum);
+			Sys_Warning( b->entityNum, b->brushNum, "Areaportal brush %i doesn't touch two areas" );
 	}
 }
 
@@ -1054,18 +1084,20 @@ FillOutside
 Fill all nodes that can't be reached by entities
 =============
 */
+
 void FillOutside (node_t *headnode)
 {
 	c_outside = 0;
 	c_inside = 0;
 	c_solid = 0;
-	Sys_FPrintf( SYS_VRB,"--- FillOutside ---\n" );
 	FillOutside_r( headnode );
-	Sys_FPrintf( SYS_VRB,"%9d solid leafs\n", c_solid );
+}
+
+void FillOutsideStats (void)
+{
+	Sys_FPrintf( SYS_VRB, "%9d solid leafs\n", c_solid );
 	Sys_Printf( "%9d leafs filled\n", c_outside );
 	Sys_FPrintf( SYS_VRB, "%9d inside leafs\n", c_inside );
 }
 
-
 //==============================================================
-

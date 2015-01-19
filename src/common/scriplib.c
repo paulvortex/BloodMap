@@ -144,7 +144,7 @@ void UnGetToken (void)
 qboolean EndOfScript (qboolean crossline)
 {
 	if (!crossline)
-		Error ("Line %i is incomplete\n",scriptline);
+		Sys_Error("Script %s: line %i is incomplete\n", script->filename, scriptline);
 
 	if (!strcmp (script->filename, "memory buffer"))
 	{
@@ -153,7 +153,7 @@ qboolean EndOfScript (qboolean crossline)
 	}
 	
 	if( script->buffer == NULL )
-		Sys_Printf( "WARNING: Attempt to free already freed script buffer\n" );
+		Sys_Warning( "Attempt to free already freed script buffer" );
 	else
 		free( script->buffer );
 	script->buffer = NULL;
@@ -202,7 +202,7 @@ skipspace:
 		if (*script->script_p++ == '\n')
 		{
 			if (!crossline)
-				Error ("Line %i is incomplete\n",scriptline);
+				Sys_Error("Script %s: line %i is incomplete\n", script->filename, scriptline);
 			script->line++;
 			scriptline = script->line;
 		}
@@ -216,7 +216,7 @@ skipspace:
 		|| ( script->script_p[0] == '/' && script->script_p[1] == '/') )
 	{
 		if (!crossline)
-			Error ("Line %i is incomplete\n",scriptline);
+			Sys_Error("Script %s: line %i is incomplete\n", script->filename, scriptline);
 		while (*script->script_p++ != '\n')
 			if (script->script_p >= script->end_p)
 				return EndOfScript (crossline);
@@ -229,7 +229,7 @@ skipspace:
 	if (script->script_p[0] == '/' && script->script_p[1] == '*')
 	{
 		if (!crossline)
-			Error ("Line %i is incomplete\n",scriptline);
+			Sys_Error("Script %s: line %i is incomplete\n", script->filename, scriptline);
 		script->script_p+=2;
 		while (script->script_p[0] != '*' && script->script_p[1] != '/')
 		{

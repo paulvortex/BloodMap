@@ -206,7 +206,7 @@ void ClusterMerge (int leafnum)
 	numvis = LeafVectorFromPortalVector (portalvector, uncompressed);
 
 //	if (uncompressed[leafnum>>3] & (1<<(leafnum&7)))
-//		Sys_Printf ("WARNING: Leaf portals saw into leaf\n");
+//		Sys_Warning ("Leaf portals saw into leaf");
 		
 //	uncompressed[leafnum>>3] |= (1<<(leafnum&7));
 
@@ -253,10 +253,10 @@ void CalcPassageVis(void)
 	RunThreadsOnIndividual (numportals*2, qfalse, PassageFlow);
 	_printf("\n");
 #else
-	Sys_Printf( "--- CreatePassages (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- CreatePassages ---\n" );
 	RunThreadsOnIndividual( numportals*2, qtrue, CreatePassages );
 	
-	Sys_Printf( "--- PassageFlow (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- PassageFlow ---\n" );
 	RunThreadsOnIndividual( numportals * 2, qtrue, PassageFlow );
 #endif
 }
@@ -278,10 +278,10 @@ void CalcPassagePortalVis(void)
 	RunThreadsOnIndividual (numportals*2, qfalse, PassagePortalFlow);
 	Sys_Printf("\n");
 #else
-	Sys_Printf( "--- CreatePassages (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- CreatePassages ---\n" );
 	RunThreadsOnIndividual( numportals * 2, qtrue, CreatePassages);
 	
-	Sys_Printf( "--- PassagePortalFlow (%d) ---\n", numportals * 2 );
+	Sys_Printf( "--- PassagePortalFlow  ---\n" );
 	RunThreadsOnIndividual( numportals * 2, qtrue, PassagePortalFlow );
 #endif
 }
@@ -329,11 +329,12 @@ void CalcVis (void)
 			farPlaneDist = 0.0f;
 	}
 	
-	Sys_Printf( "--- BasePortalVis (%d) ---\n", numportals * 2 );
+	/* base portal vis */
+	Sys_Printf( "--- BasePortalVis ---\n" );
 	RunThreadsOnIndividual( numportals * 2, qtrue, BasePortalVis );
 
+	/* fast/passage vis */
 	SortPortals ();
-
 	if (fastvis)
 		CalcFastVis();
 	else if ( noPassageVis )
@@ -342,12 +343,16 @@ void CalcVis (void)
 		CalcPassageVis();
 	else
 		CalcPassagePortalVis();
+
 	/* assemble the leaf vis lists by oring and compressing the portal lists */
-	Sys_Printf("creating leaf vis...\n");
-	for (i=0 ; i<portalclusters ; i++)
-		ClusterMerge (i);
-	Sys_Printf( "Total visible clusters: %i\n", totalvis );
-	Sys_Printf( "Average clusters visible: %i\n", totalvis / portalclusters );
+	Sys_Printf( "--- CreateLeafVis ---\n" );
+	for( i = 0; i < portalclusters; i++ )
+		ClusterMerge( i );
+
+	/* emit some stats */
+	Sys_Printf( "%9d clusters\n", portalclusters );
+	Sys_Printf( "%9d total visible clusters\n", totalvis );
+	Sys_Printf( "%9d average clusters visible\n", totalvis / portalclusters );
 }
 
 /*
@@ -744,8 +749,8 @@ int CountActivePortals(void)
 			hints++;
 		num++;
 	}
-	Sys_Printf("%6d active portals\n", num);
-	Sys_Printf("%6d hint portals\n", hints);
+	Sys_Printf("%9d active portals\n", num);
+	Sys_Printf("%9d hint portals\n", hints);
 	return num;
 }
 
@@ -857,9 +862,9 @@ void LoadPortals (char *name)
 	if (strcmp(magic,PORTALFILE))
 		Error ("LoadPortals: not a portal file");
 
-	Sys_Printf ("%6i portalclusters\n", portalclusters);
-	Sys_Printf ("%6i numportals\n", numportals);
-	Sys_Printf ("%6i numfaces\n", numfaces);
+	Sys_Printf ("%9d portalclusters\n", portalclusters);
+	Sys_Printf ("%9d numportals\n", numportals);
+	Sys_Printf ("%9d numfaces\n", numfaces);
 	
 	// these counts should take advantage of 64 bit systems automatically
 	leafbytes = ((portalclusters+63)&~63)>>3;
@@ -1027,41 +1032,42 @@ int VisMain (int argc, char **argv)
 	Sys_Printf( "--- Vis ---\n" );
 	
 	/* process arguments */
-	for (i=1 ; i < (argc - 1) ; i++)
+	Sys_Printf( "--- CommandLine ---\n" );
+	for (i=1 ; i < (argc - 1) && argv[ i ]; i++)
 	{
 		if (!strcmp(argv[i], "-fast")) 
 		{
-			Sys_Printf ("fastvis = true\n");
+			Sys_Printf (" FastVis = true\n");
 			fastvis = qtrue;
 		} 
 		else if (!strcmp(argv[i], "-full")) 
 		{
-			Sys_Printf ("fastvis = false\n");
+			Sys_Printf (" FastVis = false\n");
 			fastvis = qfalse;
 		} 
 		else if (!strcmp(argv[i], "-merge")) 
 		{
-			Sys_Printf ("merge = true\n");
+			Sys_Printf (" Merge = true\n");
 			mergevis = qtrue;
 		} 
 		else if (!strcmp(argv[i], "-nopassage"))
 		{
-			Sys_Printf ("nopassage = true\n");
+			Sys_Printf (" NoPassage = true\n");
 			noPassageVis = qtrue;
 		} 
 		else if (!strcmp(argv[i], "-passageOnly"))
 		{
-			Sys_Printf ("passageOnly = true\n");
+			Sys_Printf (" PassageOnly = true\n");
 			passageVisOnly = qtrue;
 		} 
 		else if (!strcmp (argv[i],"-nosort"))
 		{
-			Sys_Printf ("nosort = true\n");
+			Sys_Printf (" NoSort = true\n");
 			nosort = qtrue;
 		} 
 		else if (!strcmp (argv[i],"-saveprt"))
 		{
-			Sys_Printf ("saveprt = true\n");
+			Sys_Printf (" Saveprt = true\n");
 			saveprt = qtrue;
 		} 
 		else if (!strcmp (argv[i],"-tmpin"))
@@ -1077,13 +1083,13 @@ int VisMain (int argc, char **argv)
 		/* ydnar: -hint to merge all but hint portals */
 		else if( !strcmp( argv[ i ], "-hint" ) )
 		{
-			Sys_Printf( "hint = true\n" );
+			Sys_Printf( " Hint = true\n" );
 			hint = qtrue;
 			mergevis = qtrue;
 		}
 		
 		else
-			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown option \"%s\"", argv[ i ] );
 	}
 
 	if( i != argc - 1 )
@@ -1091,17 +1097,18 @@ int VisMain (int argc, char **argv)
 	
 
 	/* load the bsp */
+	Sys_Printf( "--- LoadBSPFile ---\n" );
 	sprintf( source, "%s%s", inbase, ExpandArg( argv[ i ] ) );
 	StripExtension( source );
 	strcat( source, ".bsp" );
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "loading %s\n", source );
 	LoadBSPFile( source );
 	
 	/* load the portal file */
 	sprintf( portalfile, "%s%s", inbase, ExpandArg( argv[ i ] ) );
 	StripExtension( portalfile );
 	strcat( portalfile, ".prt" );
-	Sys_Printf( "Loading %s\n", portalfile );
+	Sys_Printf( "loading %s\n", portalfile );
 	LoadPortals( portalfile );
 	
 	/* ydnar: exit if no portals, hence no vis */
@@ -1130,6 +1137,7 @@ int VisMain (int argc, char **argv)
 		remove( portalfile );
 
 	/* write the bsp file */
+	Sys_Printf( "--- WriteBSPFile ---\n" );
 	Sys_Printf( "Writing %s\n", source );
 	WriteBSPFile( source );
 

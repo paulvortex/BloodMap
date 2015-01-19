@@ -266,6 +266,7 @@ static void SurfaceToMetaTriangles( mapDrawSurface_t *ds )
 			src.castShadows = ds->castShadows;
 			src.recvShadows = ds->recvShadows;
 			VectorCopy( ds->minlight, src.minlight );
+			VectorCopy( ds->minvertexlight, src.minvertexlight );
 			VectorCopy( ds->ambient, src.ambient );
 			VectorCopy( ds->colormod, src.colormod );
 			src.smoothNormals = ds->smoothNormals;
@@ -1416,6 +1417,8 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 		return 0;
 	if (ds->minlight[ 0 ] != tri->minlight[ 0 ] || ds->minlight[ 1 ] != tri->minlight[ 1 ] || ds->minlight[ 2 ] != tri->minlight[ 2 ] )
 		return 0;
+	if (ds->minvertexlight[ 0 ] != tri->minvertexlight[ 0 ] || ds->minvertexlight[ 1 ] != tri->minvertexlight[ 1 ] || ds->minvertexlight[ 2 ] != tri->minvertexlight[ 2 ] )
+		return 0;
 	if (ds->ambient[ 0 ] != tri->ambient[ 0 ] || ds->ambient[ 1 ] != tri->ambient[ 1 ] || ds->ambient[ 2 ] != tri->ambient[ 2 ] )
 		return 0;
 	if (ds->colormod[ 0 ] != tri->colormod[ 0 ] || ds->colormod[ 1 ] != tri->colormod[ 1 ] || ds->colormod[ 2 ] != tri->colormod[ 2 ] )
@@ -1529,10 +1532,11 @@ static int AddMetaTriangleToSurface( mapDrawSurface_t *ds, metaTriangle_t *tri, 
 			(ci == ds->indexes[ i ] && ai == ds->indexes[ i + 2 ] && bi == ds->indexes[ i + 1 ]) )
 		{
 			/* warn about it */
-			//Sys_Printf( "WARNING: Flipped triangle: (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f)\n",
-			//	ds->verts[ ai ].xyz[ 0 ], ds->verts[ ai ].xyz[ 1 ], ds->verts[ ai ].xyz[ 2 ],
-			//	ds->verts[ bi ].xyz[ 0 ], ds->verts[ bi ].xyz[ 1 ], ds->verts[ bi ].xyz[ 2 ],
-			//	ds->verts[ ci ].xyz[ 0 ], ds->verts[ ci ].xyz[ 1 ], ds->verts[ ci ].xyz[ 2 ] );
+			vec3_t p[3];
+			VectorCopy( ds->verts[ ai ].xyz, p[ 0 ]);
+			VectorCopy( ds->verts[ bi ].xyz, p[ 1 ]);
+			VectorCopy( ds->verts[ ci ].xyz, p[ 2 ]);
+			Sys_Warning( p, 3, "Flipped triangle" );
 			
 			/* reverse triangle already present */
 			memcpy( ds, &old, sizeof( *ds ) );
@@ -1622,6 +1626,7 @@ static void MetaTrianglesToSurface( int numPossibles, metaTriangle_t *possibles,
 		ds->fogNum = seed->fogNum;
 		ds->sampleSize = seed->sampleSize;
 		VectorCopy( seed->minlight, ds->minlight );
+		VectorCopy( seed->minvertexlight, ds->minvertexlight);
 		VectorCopy( seed->ambient, ds->ambient );
 		VectorCopy( seed->colormod, ds->colormod );
 		ds->smoothNormals = seed->smoothNormals;

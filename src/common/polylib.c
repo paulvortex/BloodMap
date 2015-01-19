@@ -51,7 +51,7 @@ void pw(winding_t *w)
 AllocWinding
 =============
 */
-winding_t	*AllocWinding (int points)
+winding_t *AllocWinding(int points)
 {
 	winding_t	*w;
 	int			s;
@@ -59,7 +59,7 @@ winding_t	*AllocWinding (int points)
   if (points >= MAX_POINTS_ON_WINDING)
     Error ("AllocWinding failed: MAX_POINTS_ON_WINDING exceeded");
 
-	if (numthreads == 1)
+	if( numthreads == 1 )
 	{
 		c_winding_allocs++;
 		c_winding_points += points;
@@ -78,8 +78,7 @@ void FreeWinding (winding_t *w)
 	if (*(unsigned *)w == 0xdeaddead)
 		Error ("FreeWinding: freed a freed winding");
 	*(unsigned *)w = 0xdeaddead;
-
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		c_active_windings--;
 	free (w);
 }
@@ -113,11 +112,9 @@ void	RemoveColinearPoints (winding_t *w)
 			nump++;
 		}
 	}
-
-	if (nump == w->numpoints)
+	if( nump == w->numpoints )
 		return;
-
-	if (numthreads == 1)
+	if( numthreads == 1 )
 		c_removed += w->numpoints - nump;
 	w->numpoints = nump;
 	memcpy (w->p, p, nump*sizeof(p[0]));
@@ -760,7 +757,6 @@ qboolean FixWinding( winding_t *w )
 		if( dist < FIXWINDING_DEGENERATE_EPSILON )
 		{
 			valid = qfalse;
-			//Sys_FPrintf( SYS_VRB, "WARNING: Degenerate winding edge found, fixing...\n" );
 			/* create an average point (ydnar 2002-01-26: using nearest-integer weld preference) */
 			SnapWeldVector( w->p[ i ], w->p[ j ], vec );
 			VectorCopy( vec, w->p[ i ] );

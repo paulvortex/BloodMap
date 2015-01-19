@@ -177,6 +177,9 @@ _md3_load()
 loads a quake3 arena md3 model file.
 */
 
+extern const picoModule_t picoModuleASE;
+int PicoModuleLoadModel( const picoModule_t* pm, char* fileName, picoByte_t* buffer, int bufSize, int frameNum, picoModel_t **outmodel );
+
 static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 {
 	int				i, j;
@@ -189,19 +192,60 @@ static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 	md3Triangle_t	*triangle;
 	md3Vertex_t		*vertex;
 	double			lat, lng;
-	
+
 	picoModel_t		*picoModel;
 	picoSurface_t	*picoSurface;
 	picoShader_t	*picoShader;
 	picoVec3_t		xyz, normal;
 	picoVec2_t		st;
 	picoColor_t		color;
-	
-	
+
+	/* -------------------------------------------------
+	vortex: model.md3 can be overriden by model.md3.ase
+	this allows us to have a nice vertex alpha and smooth groups features
+	when compiling misc_model, without changing the map and engine routines
+	alternative ways is:
+	1) provide extension for MD3 to store smooth groups and vertex alpha
+	2) allow engine to load ASE and change the map
+	------------------------------------------------- */
+	{
+		char aseFilename[ 2048 ];
+		picoByte_t *aseBuffer;
+		int aseBufSize;
+		
+		/* get <modelname>.md3.ase filename */
+		strncpy( aseFilename, fileName, 2048 );
+		strncpy( aseFilename + strlen( fileName ), ".ase", 2048 );
+		
+		/* try load file */
+		_pico_load_file( aseFilename, &aseBuffer, &aseBufSize );
+		if( aseBufSize > 0 )
+		{
+			/* try to load ASE model */
+			picoModel = NULL;
+			PicoModuleLoadModel( &picoModuleASE, aseFilename, aseBuffer, aseBufSize, frameNum, &picoModel );
+			_pico_free_file( aseBuffer );
+
+			/* return if loaded succesfully */
+			if( picoModel != NULL )
+			{
+				/* load up external files */
+				PicoLoadSkinFiles( aseFilename, picoModel );
+
+				/* override model setup */
+				PicoSetModelName( picoModel, fileName );
+				PicoSetModelFileName( picoModel, aseFilename );
+							
+				/* return the new pico model */
+				//_pico_printf( PICO_NORMAL, "picoModuleMD3: %s ASE OVERRIDE\n", fileName );
+				return picoModel;
+			}
+		}
+	}
+
 	/* -------------------------------------------------
 	md3 loading
 	------------------------------------------------- */
-
 
 	/* set as md3 */
 	bb = (picoByte_t*) buffer;
@@ -401,7 +445,7 @@ static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 		/* get next surface */
 		surface = (md3Surface_t*) ((picoByte_t*) surface + surface->ofsEnd);
 	}
-	
+
 	/* return the new pico model */
 	return picoModel;
 }

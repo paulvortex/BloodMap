@@ -342,6 +342,7 @@ picoIndex_t					*PicoGetSurfaceIndexes( picoSurface_t *surface, int num );
 picoVec_t					*PicoGetFaceNormal( picoSurface_t *surface, int num );
 int							PicoGetSurfaceSpecial( picoSurface_t *surface, int num );
 char                        *PicoGetSurfaceShaderNameForSkin( picoSurface_t *surface, int skinnum );
+int                         PicoGetSurfaceNumColorArrays( picoSurface_t *surface );
 
 
 /* hashtable related functions */

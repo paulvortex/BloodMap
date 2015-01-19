@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 
-extern	int		numthreads;
+extern int numthreads;
 
 /* threads */
 void ThreadSetDefault (void);

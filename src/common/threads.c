@@ -76,8 +76,8 @@ void RunThreadsOnIndividualThread(int threadnum)
 // run threads on individual numbers
 void RunThreadsOnIndividual(int workcnt, qboolean showpacifier, void(*func)(int))
 {
-	if (numthreads == -1)
-		ThreadSetDefault ();
+	if( numthreads <= 0 )
+		ThreadSetDefault();
 	if ( threaded == qtrue )
 		Error("RunThreadsOnIndividual: recursively entered!");
 
@@ -89,9 +89,9 @@ void RunThreadsOnIndividual(int workcnt, qboolean showpacifier, void(*func)(int)
 void _RunThreadsOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int));
 void RunThreadsOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int))
 {
-	if (numthreads == -1)
-		ThreadSetDefault ();
-	if ( threaded == qtrue )
+	if( numthreads <= 0 )
+		ThreadSetDefault();
+	if( threaded == qtrue )
 		Error("RunThreadsOn: recursively entered!");
 
 	threaded = qtrue;
@@ -104,8 +104,8 @@ void RunSameThreadOn(int workcnt, qboolean showpacifier, void(*threadfunc)(int))
 {
 	int	start, end;
 
-	if (numthreads == -1)
-		ThreadSetDefault ();
+	if( numthreads <= 0 )
+		ThreadSetDefault();
 	if ( threaded == qtrue )
 		Error("RunSameThreadOn: recursively entered!");
 
@@ -132,9 +132,9 @@ void RunSameThreadOnIndividual(int workcnt, qboolean showpacifier, void(*func)(i
 {
 	int	start, end;
 
-	if (numthreads == -1)
-		ThreadSetDefault ();
-	if ( threaded == qtrue )
+	if( numthreads <= 0 )
+		ThreadSetDefault();
+	if( threaded == qtrue )
 		Error("RunSameThreadOnIndividual: recursively entered!");
 
 	start = I_FloatTime ();
@@ -175,23 +175,28 @@ WIN32 / WIN64
 
 #if defined(WIN32) || defined(WIN64)
 
-int	numthreads = -1;
+int	numthreads = 0;
 CRITICAL_SECTION crit;
 static int enter;
 
 void ThreadStats (void)
 {
-	Sys_Printf ("%i threads\n", numthreads);
+	if( numthreads <= 0 )
+		ThreadSetDefault();
+	Sys_Printf (" %i threads\n", numthreads);
 }
 
 void ThreadSetDefault (void)
 {
 	SYSTEM_INFO info;
+	int num;
 
-	if (numthreads == -1)	// not set manually
+	/* not set manually? */
+	if (numthreads <= 0)
 	{
-		GetSystemInfo (&info);
-		numthreads = info.dwNumberOfProcessors;
+		GetSystemInfo(&info);
+		num = info.dwNumberOfProcessors;
+		numthreads = num + numthreads;
 		if (numthreads < 1 || numthreads > MAX_THREADS)
 			numthreads = 1;
 	}
@@ -233,7 +238,7 @@ void _RunThreadsOn(int workcnt, qboolean showpacifier, void(*func)(int))
 	// run threads in parallel
 	InitializeCriticalSection (&crit);
 
-	if (numthreads == 1)
+	if( numthreads == 1 )
 	{	// use same thread
 		func (0);
 	}
@@ -326,14 +331,12 @@ OSF1
 #ifdef __osf__
 #define	USED
 
-int		numthreads = 4;
+int	numthreads = 4;
 
 void ThreadSetDefault (void)
 {
-	if (numthreads == -1)	// not set manually
-	{
+	if (numthreads == -1) // not set manually
 		numthreads = 4;
-	}
 }
 
 

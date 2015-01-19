@@ -346,15 +346,11 @@ winding_t *WindingFromDrawSurf( mapDrawSurface_t *ds )
 	{
 		int max = ds->numVerts;
 		vec3_t p[256];
-
-		if(max > 256)
+		if( max > 256 )
 			max = 256;
-
-		for ( i = 0 ; i < max ; i++ ) {
+		for ( i = 0 ; i < max ; i++ )
 			VectorCopy( ds->verts[i].xyz, p[i] );
-		}
-
-		xml_Winding( "WindingFromDrawSurf failed: MAX_POINTS_ON_WINDING exceeded", p, max, qtrue );
+		Sys_Error( p, max, "WindingFromDrawSurf failed: MAX_POINTS_ON_WINDING (%d) exceeded", MAX_POINTS_ON_WINDING );
 	}
 
 	w = AllocWinding( ds->numVerts );

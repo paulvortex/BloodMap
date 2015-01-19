@@ -68,7 +68,7 @@ static void LoadDDSBuffer( byte *buffer, int size, byte **pixels, int *width, in
 	/* get dds info */
 	if( DDSGetInfo( (ddsBuffer_t*) buffer, &w, &h, &pf ) )
 	{
-		Sys_Printf( "WARNING: Invalid DDS texture\n" );
+		Sys_Warning( "WARNING: Invalid DDS texture\n" );
 		return;
 	}
 	

@@ -37,7 +37,7 @@ several games based on the Quake III Arena engine, in the form of "Q3Map2."
 #include "q3map2.h"
 
 
-
+int			c_faces;
 int			c_faceLeafs;
 
 
@@ -303,26 +303,30 @@ FaceBSP
 List will be freed before returning
 ================
 */
-tree_t *FaceBSP( face_t *list ) {
-	tree_t		*tree;
-	face_t	*face;
-	int			i;
-	int			count;
 
-	Sys_FPrintf (SYS_VRB, "--- FaceBSP ---\n" );
+tree_t *FaceBSP( face_t *list, qboolean quiet ) 
+{
+	tree_t *tree;
+	face_t *face;
+	int	i;
 
+	if( !quiet )
+		Sys_FPrintf (SYS_VRB, "--- FaceBSP ---\n" );
+	
 	tree = AllocTree ();
 
-	count = 0;
+	c_faces = 0;
 	for( face = list; face != NULL; face = face->next )
 	{
-		count++;
+		c_faces++;
 		for( i = 0; i < face->w->numpoints; i++ )
 		{
 			AddPointToBounds( face->w->p[ i ], tree->mins, tree->maxs );
 		}
 	}
-	Sys_FPrintf( SYS_VRB, "%9d faces\n", count );
+
+	if( !quiet )
+		Sys_FPrintf( SYS_VRB, "%9d faces\n", c_faces );
 
 	tree->headnode = AllocNode();
 	VectorCopy( tree->mins, tree->headnode->mins );
@@ -331,11 +335,17 @@ tree_t *FaceBSP( face_t *list ) {
 
 	BuildFaceTree_r ( tree->headnode, list );
 
-	Sys_FPrintf( SYS_VRB, "%9d leafs\n", c_faceLeafs );
+	if( !quiet )
+		Sys_FPrintf( SYS_VRB, "%9d leafs\n", c_faceLeafs );
 
 	return tree;
 }
 
+void FaceBSPStats( void ) 
+{
+	Sys_FPrintf( SYS_VRB, "%9d faces\n", c_faces );
+	Sys_FPrintf( SYS_VRB, "%9d leafs\n", c_faceLeafs );
+}
 
 
 /*

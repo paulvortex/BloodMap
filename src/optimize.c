@@ -285,13 +285,14 @@ typedef struct bspDrawSurfaceMeta_s
 	vec3_t            absmin;
 	vec3_t            absmax;
 	bspDrawSurface_t *ds;
+	shaderInfo_t     *si;
 }
 bspDrawSurfaceMeta_t;
 
 void MergeDrawSurfaces(void)
 {
 	int i, f, start, fOld, modelnum, surfacenum, leafnum, leafsurfacenum;
-	int numNewSurfaces, numMergedSurfaces, numDrawSurfacesProcessed, numDrawVertsProcessed, numDrawIndexesProcessed, numLeafSurfacesProcessed;
+	int numNewSurfaces, numSkipSurfaces, numMergedSurfaces, numDrawSurfacesProcessed, numDrawVertsProcessed, numDrawIndexesProcessed, numLeafSurfacesProcessed;
 	bspDrawSurfaceMeta_t *metaSurfaces, *ms, *ms2;
 	bspModel_t *model;
 	bspLeaf_t *leaf;
@@ -332,6 +333,7 @@ void MergeDrawSurfaces(void)
 
 			/* allocate meta surface */
 			ms = &metaSurfaces[ model->firstBSPSurface + surfacenum ];
+			ms->si = ShaderInfoForShader( bspShaders[ ds->shaderNum ].shader );
 			ms->index = model->firstBSPSurface + surfacenum;
 			ms->ds = ds;
 
@@ -373,6 +375,7 @@ void MergeDrawSurfaces(void)
 	numDrawVertsProcessed = 0;
 	numDrawIndexesProcessed = 0;
 	numNewSurfaces = 0;
+	numSkipSurfaces = 0;
 	for( modelnum = 0; modelnum < numBSPModels; modelnum++ )
 	{
 		model = &bspModels[ modelnum ];
@@ -404,11 +407,23 @@ void MergeDrawSurfaces(void)
 				continue;
 			}
 
+			/* not mergeable? */
+			if( ms->si->noMerge == qtrue )
+			{
+				ms->mergeable = qtrue;
+				ms->newIndex = numNewSurfaces;
+				numNewSurfaces++;
+				numSkipSurfaces++;
+				continue;
+			}
+
 			/* check if this surface can be merged to other surfaces */
 			for( i = 0; i < model->numBSPSurfaces; i++ )
 			{
 				ms2 = &metaSurfaces[ model->firstBSPSurface + i ];
-				if (ms == ms2 || ms2->mergeable == qfalse)
+				if( ms == ms2 || ms2->mergeable == qfalse )
+					continue;
+				if( ms2->si->noMerge == qtrue )
 					continue;
 				ds2 = ms2->ds;
 
@@ -417,7 +432,7 @@ void MergeDrawSurfaces(void)
 				{
 					vec3_t testBlock;
 
-					/* calc new size) */
+					/* calc new size */
 					VectorCopy(ms2->absmin, newmins);
 					VectorCopy(ms2->absmax, newmaxs);
 					testBlock[ 0 ] = max(mergeBlock[ 0 ], fabs(newmaxs[ 0 ] - newmins[ 0 ]));
@@ -428,6 +443,7 @@ void MergeDrawSurfaces(void)
 					newsize[ 0 ] = fabs(newmaxs[ 0 ] - newmins[ 0 ]);
 					newsize[ 1 ] = fabs(newmaxs[ 1 ] - newmins[ 1 ]);
 					newsize[ 2 ] = fabs(newmaxs[ 2 ] - newmins[ 2 ]);
+
 					/* test size */
 					if (newsize[ 0 ] <= testBlock[ 0 ] && newsize[ 1 ] <= testBlock[ 1 ] && newsize[ 2 ] <= testBlock[ 2 ])
 					{
@@ -446,7 +462,7 @@ void MergeDrawSurfaces(void)
 				}
 			}
 
-			/* failed to find any surface to merge, so this surface could be a merge candidate */
+			/* failed to find any surface to merge, so this surface could be a merge host */
 			if (i >= model->numBSPSurfaces)
 			{
 				ms->mergeable = qtrue;
@@ -462,6 +478,7 @@ void MergeDrawSurfaces(void)
 	Sys_Printf( "%9d unique verts\n", numDrawVertsProcessed );
 	Sys_Printf( "%9d unique indexes\n", numDrawIndexesProcessed );
 	Sys_Printf( "%9d surfaces to be merged\n", numMergedSurfaces );
+	Sys_Printf( "%9d skipped (nomerge) surfaces\n", numSkipSurfaces );
 
 	/* if there are no verts to merge, bail */
 	if (numMergedSurfaces == 0)
@@ -532,34 +549,38 @@ void MergeDrawSurfaces(void)
 				numDrawVertsProcessed += ds->numVerts;
 			}
 
-			/* merge surfaces */
-			for (ms2 = (bspDrawSurfaceMeta_t *)ms->next; ms2; ms2 = (bspDrawSurfaceMeta_t *)ms2->next)
+			/* not mergeable surface are only copied */
+			if( ms->si->noMerge == qfalse )
 			{
-				/* copy draw indexes */
-				if (ms2->ds->numIndexes)
+				/* merge surfaces */
+				for (ms2 = (bspDrawSurfaceMeta_t *)ms->next; ms2; ms2 = (bspDrawSurfaceMeta_t *)ms2->next)
 				{
-					di = &bspDrawIndexes[ ms2->ds->firstIndex ];
-					di2 = &newDrawIndexes[ numDrawIndexesProcessed ];
-					ds2->numIndexes += ms2->ds->numIndexes;
-					for(i = 0; i < ms2->ds->numIndexes; i += 3)
+					/* copy draw indexes */
+					if (ms2->ds->numIndexes)
 					{
-						di2[0] = di[0] + ds2->numVerts;
-						di2[1] = di[1] + ds2->numVerts;
-						di2[2] = di[2] + ds2->numVerts;
-						di2 += 3;
-						di += 3;
+						di = &bspDrawIndexes[ ms2->ds->firstIndex ];
+						di2 = &newDrawIndexes[ numDrawIndexesProcessed ];
+						ds2->numIndexes += ms2->ds->numIndexes;
+						for(i = 0; i < ms2->ds->numIndexes; i += 3)
+						{
+							di2[0] = di[0] + ds2->numVerts;
+							di2[1] = di[1] + ds2->numVerts;
+							di2[2] = di[2] + ds2->numVerts;
+							di2 += 3;
+							di += 3;
+						}
+						numDrawIndexesProcessed += ms2->ds->numIndexes;
 					}
-					numDrawIndexesProcessed += ms2->ds->numIndexes;
-				}
 
-				/* copy draw verts */
-				if ( ms2->ds->numVerts)
-				{
-					dv = &bspDrawVerts[ ms2->ds->firstVert ];
-					dv2 = &newDrawVerts[ numDrawVertsProcessed ];
-					ds2->numVerts += ms2->ds->numVerts;
-					memcpy(dv2, dv, sizeof(bspDrawVert_t) * ms2->ds->numVerts);
-					numDrawVertsProcessed += ms2->ds->numVerts;
+					/* copy draw verts */
+					if ( ms2->ds->numVerts)
+					{
+						dv = &bspDrawVerts[ ms2->ds->firstVert ];
+						dv2 = &newDrawVerts[ numDrawVertsProcessed ];
+						ds2->numVerts += ms2->ds->numVerts;
+						memcpy(dv2, dv, sizeof(bspDrawVert_t) * ms2->ds->numVerts);
+						numDrawVertsProcessed += ms2->ds->numVerts;
+					}
 				}
 			}
 		}
@@ -593,7 +614,7 @@ void MergeDrawSurfaces(void)
 		for( leafsurfacenum = 0; leafsurfacenum < leaf->numBSPLeafSurfaces; leafsurfacenum++ )
 		{
 			/* print pacifier */
-			f = 10 * numLeafSurfacesProcessed / numBSPLeafSurfaces;
+			f = 10 * (numLeafSurfacesProcessed / numBSPLeafSurfaces);
 			if( f != fOld )
 			{
 				fOld = f;
@@ -631,11 +652,11 @@ typedef struct bspDrawVertMeta_s
 bspDrawVertMeta_t;
 
 #define VERTMERGE_ORIGIN_EPSILON  0.05
-#define VERTMERGE_NORMAL_EPSILON  0.2
-#define VERTMERGE_TC_EPSILON      0.005
-#define VERTMERGE_LMTC_EPSILON    0.0005
-#define VERTMERGE_COLOR_EPSILON   32
-#define VERTMERGE_ALPHA_EPSILON   32
+#define VERTMERGE_NORMAL_EPSILON  0.05
+#define VERTMERGE_TC_EPSILON      0.0001
+#define VERTMERGE_LMTC_EPSILON    0.00001
+#define VERTMERGE_COLOR_EPSILON   8
+#define VERTMERGE_ALPHA_EPSILON   8
 
 qboolean Vec3ByteCompareExt(byte n1[3], byte n2[3], byte epsilon)
 {
@@ -855,18 +876,18 @@ void MergeDrawVerts(void)
 				j = ds->firstVert + bspDrawIndexes[ds->firstIndex + indexnum + 1];
 				k = ds->firstVert + bspDrawIndexes[ds->firstIndex + indexnum + 2];
 				if (i < 0 || i > numBSPDrawVerts)
-					Sys_Printf("WARNING: drawvert %i out of range 0 - %i\n", i, numBSPDrawVerts);
+					Sys_Warning("Drawvert %i out of range 0 - %i", i, numBSPDrawVerts);
 				else if (j < 0 || j > numBSPDrawVerts)
-					Sys_Printf("WARNING: drawvert %i out of range 0 - %i\n", j, numBSPDrawVerts);
+					Sys_Warning("Drawvert %i out of range 0 - %i", j, numBSPDrawVerts);
 				else if (k < 0 || k > numBSPDrawVerts)
-					Sys_Printf("WARNING: drawvert %i out of range 0 - %i\n", k, numBSPDrawVerts);
+					Sys_Warning("Drawvert %i out of range 0 - %i", k, numBSPDrawVerts);
 				else
 				{
 					a = ((metaVerts[i].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[i].mergedto)->newIndex : metaVerts[i].newIndex) - firstVert;
 					b = ((metaVerts[j].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[j].mergedto)->newIndex : metaVerts[j].newIndex) - firstVert;
 					c = ((metaVerts[k].mergedto) ? ((bspDrawVertMeta_t *)metaVerts[k].mergedto)->newIndex : metaVerts[k].newIndex) - firstVert;
 					if (a < 0 || b < 0 || c < 0)
-						Sys_Printf("WARNING: Degraded new index %i %i %i\n", a, b, c);
+						Sys_Warning("Degraded new index %i %i %i", a, b, c);
 					else if (a == b || a == c || b == c)
 						numRemovedTriangles++;
 					else
@@ -1702,10 +1723,11 @@ int OptimizeBSPMain( int argc, char **argv )
 	}
 
 	/* note it */
-	Sys_Printf( "--- Optimize ---\n" );
+	Sys_Printf( "--- OptimizeBSP ---\n" );
 
 	/* process arguments */
-	for( i = 1; i < (argc - 1); i++ )
+	Sys_Printf( "--- CommandLine ---\n" );
+	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
 		/* -mergeblock */
 		if( !strcmp( argv[ i ],  "-mergeblock") )
@@ -1726,7 +1748,7 @@ int OptimizeBSPMain( int argc, char **argv )
 					}
 				}
 			}
-			Sys_Printf( "Merge block set to {%.1f %.1f %.1f}\n", mergeBlock[0], mergeBlock[1], mergeBlock[2]);
+			Sys_Printf( " Merge block set to {%.1f %.1f %.1f}\n", mergeBlock[0], mergeBlock[1], mergeBlock[2]);
 		}
 		/* -onlyshaders */
 		else if( !strcmp( argv[ i ],  "-onlyshaders") )
@@ -1734,77 +1756,71 @@ int OptimizeBSPMain( int argc, char **argv )
 			tidyShaders = qtrue;
 			mergeDrawSurfaces = qfalse;
 			mergeDrawVerts = qfalse;
-			Sys_Printf( "Only optimizing material references\n" );
+			Sys_Printf( " Only optimizing material references\n" );
 		}
 		/* -tidyshaders */
 		else if( !strcmp( argv[ i ],  "-tidyshaders") )
 		{
 			tidyShaders = qtrue;
-			Sys_Printf( "Enabled optimisation of material references\n" );
+			Sys_Printf( " Enabled optimisation of material references\n" );
 		}
 		/* -notidyshaders */
 		else if( !strcmp( argv[ i ],  "-notidyshaders") )
 		{
 			tidyShaders = qfalse;
-			Sys_Printf( "Disabled optimisation of material references\n" );
+			Sys_Printf( " Disabled optimisation of material references\n" );
 		}
 		/* -mergesurfaces */
 		else if( !strcmp( argv[ i ],  "-mergesurfaces") )
 		{
 			mergeDrawSurfaces = qtrue;
-			Sys_Printf( "Enabled merging of same-shader draw surfaces\n" );
+			Sys_Printf( " Enabled merging of same-shader draw surfaces\n" );
 		}
 		/* -nomergesurfaces */
 		else if( !strcmp( argv[ i ],  "-nomergesurfaces") )
 		{
 			mergeDrawSurfaces = qfalse;
-			Sys_Printf( "Disabled merging of same-shader draw surfaces\n" );
+			Sys_Printf( " Disabled merging of same-shader draw surfaces\n" );
 		}
 		/* -mergeverts */
 		else if( !strcmp( argv[ i ],  "-mergeverts") )
 		{
 			mergeDrawVerts = qtrue;
-			Sys_Printf( "Enabled merging of coincident draw vertices\n" );
+			Sys_Printf( " Enabled merging of coincident draw vertices\n" );
 		}
 		/* -nomergeverts */
 		else if( !strcmp( argv[ i ],  "-nomergeverts") )
 		{
 			mergeDrawVerts = qfalse;
-			Sys_Printf( "Disabled merging of coincident draw vertices\n" );
+			Sys_Printf( " Disabled merging of coincident draw vertices\n" );
 		}
 		/* -tidyentities */
 		else if( !strcmp( argv[ i ],  "-tidyents") )
 		{
 			tidyEntities = qtrue;
-			Sys_Printf( "Enabled optimisation of entity data lump\n" );
+			Sys_Printf( " Enabled optimisation of entity data lump\n" );
 		}
 		/* -notidyentities */
 		else if( !strcmp( argv[ i ],  "-notidyents") )
 		{
 			tidyEntities = qfalse;
-			Sys_Printf( "Disabled optimisation of entity data lump\n" );
+			Sys_Printf( " Disabled optimisation of entity data lump\n" );
 		}
 		/* -resmap */
 		else if( !strcmp( argv[ i ],  "-resmap") )
 		{
 			makeResMap = qtrue;
-			Sys_Printf( "Generating resource map\n" );
-		}
-		/* -custinfoparms */
-		else if( !strcmp( argv[ i ],  "-custinfoparms") )
-		{
-			useCustomInfoParms = qtrue;
-			Sys_Printf( "Custom info parms enabled\n" );
+			Sys_Printf( " Generating resource map\n" );
 		}
 		/* -entitysaveid */
 		else if( !strcmp( argv[ i ],  "-entitysaveid") )
 		{
-			Sys_Printf( "Entity unique savegame identifiers enabled\n" );
+			Sys_Printf( " Entity unique savegame identifiers enabled\n" );
 			useEntitySaveId = qtrue;
 		}
 
 		else
-			Sys_Printf( "WARNING: Unknown option \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown option \"%s\"", argv[ i ] );
 	}
 
 	/* clean up map name */
@@ -1816,7 +1832,8 @@ int OptimizeBSPMain( int argc, char **argv )
 	LoadShaderInfo();
 	
 	/* load map */
-	Sys_Printf( "Loading %s\n", source );
+	Sys_Printf( "--- LoadBSPFile ---\n" );
+	Sys_Printf( "loading %s\n", source );
 	
 	/* load surface file */
 	LoadBSPFile( source );
@@ -1832,13 +1849,14 @@ int OptimizeBSPMain( int argc, char **argv )
 		TidyEntities();
 
 	/* write back */
+	Sys_Printf( "--- WriteBSPFile ---\n" );
 	Sys_Printf( "Writing %s\n", source );
 	WriteBSPFile( source );
 
 	/* transform and write a resource map */
 	if ( makeResMap )
 	{
-		/* resources bsp file */
+		Sys_Printf( "--- WriteResourceOBJFile ---\n" );
 		strcpy( source, ExpandArg( argv[ i ] ) );
 		strcpy( mapname, source );
 		StripExtension( mapname );

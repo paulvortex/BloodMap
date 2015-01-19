@@ -124,7 +124,7 @@ void FreeBrush( brush_t *b )
 	/* error check */
 	if( *((int*) b) == 0xFEFEFEFE )
 	{
-		Sys_FPrintf( SYS_VRB, "WARNING: Attempt to free an already freed brush!\n" );
+		Sys_Warning( "Attempt to free an already freed brush!" );
 		return;
 	}
 	
@@ -392,7 +392,7 @@ void WriteBSPBrushMap( char *name, brush_t *list )
 	
 	
 	/* note it */
-	Sys_Printf( "Writing %s\n", name );
+	Sys_Printf( "writing %s\n", name );
 	
 	/* open the map file */
 	f = fopen( name, "wb" );
@@ -529,13 +529,16 @@ FilterStructuralBrushesIntoTree
 Mark the leafs as opaque and areaportals
 =====================
 */
-void FilterStructuralBrushesIntoTree( entity_t *e, tree_t *tree ) {
-	brush_t			*b, *newb;
-	int					r;
-	int					c_unique, c_clusters;
-	int					i;
 
-	Sys_FPrintf (SYS_VRB, "--- FilterStructuralBrushesIntoTree ---\n");
+int	c_unique, c_clusters;
+
+void FilterStructuralBrushesIntoTree( entity_t *e, tree_t *tree, qboolean quiet ) 
+{
+	brush_t *b, *newb;
+	int r, i;
+
+	if( !quiet )
+		Sys_FPrintf (SYS_VRB, "--- FilterStructuralBrushesIntoTree ---\n");
 
 	c_unique = 0;
 	c_clusters = 0;
@@ -559,6 +562,12 @@ void FilterStructuralBrushesIntoTree( entity_t *e, tree_t *tree ) {
 	}
 	
 	/* emit some statistics */
+	if( !quiet )
+		FilterStructuralBrushesIntoTreeStats();
+}
+
+void FilterStructuralBrushesIntoTreeStats( void ) 
+{
 	Sys_FPrintf( SYS_VRB, "%9d structural brushes\n", c_unique );
 	Sys_FPrintf( SYS_VRB, "%9d cluster references\n", c_clusters );
 }
@@ -763,9 +772,9 @@ void SplitBrush( brush_t *brush, int planenum, brush_t **front, brush_t **back )
 			*back = CopyBrush (brush);
 		return;
 	}
-	
+
 	if( WindingIsHuge( w ) )
-		Sys_FPrintf( SYS_VRB,"WARNING: huge winding\n" );
+		Sys_Warning( w, "Huge winding" );
 
 	midwinding = w;
 

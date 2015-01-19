@@ -1450,8 +1450,8 @@ void PassageMemory(void)
 			totalportals++;
 		}
 	}
-	Sys_Printf("%7i average number of passages per leaf\n", totalportals / numportals);
-	Sys_Printf("%7i MB required passage memory\n", totalmem >> 10 >> 10);
+	Sys_Printf("%9d average number of passages per leaf\n", totalportals / numportals );
+	Sys_Printf("%9d MB required passage memory\n", totalmem >> 10 >> 10 );
 }
 
 /*

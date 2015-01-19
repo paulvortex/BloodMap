@@ -1599,6 +1599,13 @@ char *PicoGetSurfaceShaderNameForSkin( picoSurface_t *surface, int skinnum )
 	return shaderName;
 }
 
+int PicoGetSurfaceNumColorArrays( picoSurface_t *surface )
+{
+	if( surface == NULL )
+		return 0;
+	return surface->numColorArrays;
+}
+
 
 /* ----------------------------------------------------------------------------
 hashtable related functions
@@ -1787,10 +1794,13 @@ finds a vertex matching the set parameters
 fixme: needs non-naive algorithm
 */
 
+#define TEXCOORD_EPSILON  0.0001f
+#define NORMAL_EPSILON    0.02f
+
 int PicoFindSurfaceVertexNum( picoSurface_t *surface, picoVec3_t xyz, picoVec3_t normal, int numSTs, picoVec2_t *st, int numColors, picoColor_t *color, picoIndex_t smoothingGroup)
 {
-	int		i, j;
-	
+	picoByte_t *color1, *color2;
+	int	i, j, k;
 	
 	/* dummy check */
 	if( surface == NULL || surface->numVertexes <= 0 )
@@ -1804,31 +1814,36 @@ int PicoFindSurfaceVertexNum( picoSurface_t *surface, picoVec3_t xyz, picoVec3_t
 			continue;
 		
 		/* check normal */
-		if( normal != NULL && (surface->normal[ i ][ 0 ] != normal[ 0 ] || surface->normal[ i ][ 1 ] != normal[ 1 ] || surface->normal[ i ][ 2 ] != normal[ 2 ]) )
+		if( normal != NULL && ( fabs( surface->normal[ i ][ 0 ] - normal[ 0 ] ) > NORMAL_EPSILON || fabs( surface->normal[ i ][ 1 ] - normal[ 1 ] ) > NORMAL_EPSILON || fabs( surface->normal[ i ][ 2 ] - normal[ 2 ]) > NORMAL_EPSILON ) )
 			continue;
-		
-		/* check normal */
+
+		/* check smoothing group */
 		if( surface->smoothingGroup[ i ] != smoothingGroup )
 			continue;
 
-    /* check st */
+		/* check texture coordinates */
 		if( numSTs > 0 && st != NULL )
 		{
 			for( j = 0; j < numSTs; j++ )
 			{
-				if( surface->st[ j ][ i ][ 0 ] != st[ j ][ 0 ] || surface->st[ j ][ i ][ 1 ] != st[ j ][ 1 ] )
+				if( fabs( surface->st[ j ][ i ][ 0 ] - st[ j ][ 0 ] ) > TEXCOORD_EPSILON || fabs( surface->st[ j ][ i ][ 1 ] - st[ j ][ 1 ] ) > TEXCOORD_EPSILON )
 					break;
 			}
 			if( j != numSTs )
 				continue;
 		}
-		
+
 		/* check color */
 		if( numColors > 0 && color != NULL )
 		{
-			for( j = 0; j < numSTs; j++ )
+			for( j = 0; j < numColors; j++ )
 			{
-				if( *((int*) surface->color[ j ]) != *((int*) color[ j ]) )
+				color1 = (picoByte_t *)surface->color[ j ][ i ];
+				color2 = color[ j ];
+				for( k = 0; k < 4; k++ )
+					if( color1[ k ] != color2[ k ] )
+						break;
+				if( k != 4 )
 					break;
 			}
 			if( j != numColors )
@@ -2437,9 +2452,7 @@ A nice way to add individual triangles to the model.
 Chooses an appropriate surface based on the shader, or adds a new surface if necessary
 */
 
-void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** normals, 
-							int numSTs, picoVec2_t **st, int numColors, picoColor_t **colors,
-							picoShader_t* shader, picoIndex_t* smoothingGroup, char *nodeName )
+void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** normals, int numSTs, picoVec2_t **st, int numColors, picoColor_t **colors, picoShader_t* shader, picoIndex_t* smoothingGroup, char *nodeName )
 {
 	int i,j;
 	int vertDataIndex;
@@ -2459,7 +2472,7 @@ void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** 
 	}
 
 	/* no surface uses this shader yet, so create a new surface */
-	if ( !workSurface || i >=model->numSurfaces )
+	if ( !workSurface || i >= model->numSurfaces )
 	{
 		/* create a new surface in the model for the unique shader */
 		workSurface = PicoNewSurface(model);
@@ -2496,14 +2509,9 @@ void PicoAddTriangleToModel( picoModel_t *model, picoVec3_t** xyz, picoVec3_t** 
 
 			/* make sure to copy over all available ST's and colors for the vertex */
 			for ( j = 0 ; j < numColors ; j++ )
-			{
 				PicoSetSurfaceColor( workSurface , j , vertDataIndex , colors[i][j] );
-			}
 			for ( j = 0 ; j < numSTs ; j++ )
-			{
 				PicoSetSurfaceST ( workSurface , j , vertDataIndex , st[i][j] );
-			}
-
 			PicoSetSurfaceSmoothingGroup ( workSurface , vertDataIndex , smoothingGroup[i] );			
 		}
 

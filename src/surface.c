@@ -552,7 +552,7 @@ void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
 				{
 					//%	if( ds->planeNum >= 0 )
 					//%	{
-					//%		Sys_Printf( "WARNING: Planar surface marked unplanar (%f > %f)\n", fabs( dist ), PLANAR_EPSILON );
+					//%		Sys_Warning( "Planar surface marked unplanar (%f > %f)\n", fabs( dist ), PLANAR_EPSILON );
 					//%		ds->verts[ i ].color[ 0 ][ 0 ] = ds->verts[ i ].color[ 0 ][ 2 ] = 0;
 					//%	}
 					ds->planar = qfalse;
@@ -573,7 +573,7 @@ void ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds )
 			ds->planeNum = -1;
 			VectorClear( ds->lightmapVecs[ 2 ] );
 			//% if( ds->type == SURF_META || ds->type == SURF_FACE )
-			//%		Sys_Printf( "WARNING: Non-planar face (%d): %s\n", ds->planeNum, ds->shaderInfo->shader );
+			//%		Sys_Warning( "Non-planar face (%d): %s\n", ds->planeNum, ds->shaderInfo->shader );
 		}
 		
 		/* -----------------------------------------------------------------
@@ -914,6 +914,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	ds->lightmapScale = b->lightmapScale;
 	VectorCopy(b->lightmapAxis, ds->lightmapAxis);
 	VectorCopy(b->minlight, ds->minlight);
+	VectorCopy(b->minvertexlight, ds->minvertexlight);
 	VectorCopy(b->ambient, ds->ambient);
 	VectorCopy(b->colormod, ds->colormod);
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : b->smoothNormals; /* vortex */
@@ -1136,6 +1137,7 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	ds->lightmapScale = p->lightmapScale;	/* ydnar */
 	VectorCopy( p->lightmapAxis, ds->lightmapAxis );
 	VectorCopy( p->minlight, ds->minlight );
+	VectorCopy( p->minvertexlight, ds->minvertexlight);
 	VectorCopy( p->ambient, ds->ambient );
 	VectorCopy( p->colormod, ds->colormod );
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : p->smoothNormals; /* vortex: patch really need this? */
@@ -1634,10 +1636,6 @@ void CullSides( entity_t *e )
 	brush_t	*b1, *b2;
 	side_t		*side1, *side2;
 	
-	
-	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- CullSides ---\n" );
-	
 	g_numHiddenFaces = 0;
 	g_numCoinFaces = 0;
 	
@@ -1782,13 +1780,13 @@ void CullSides( entity_t *e )
 			}
 		}
 	}
-	
-	/* emit some stats */
+}
+
+void CullSidesStats( void )
+{
 	Sys_FPrintf( SYS_VRB, "%9d hidden faces culled\n", g_numHiddenFaces );
 	Sys_FPrintf( SYS_VRB, "%9d coincident faces culled\n", g_numCoinFaces );
 }
-
-
 
 
 /*
@@ -1805,7 +1803,7 @@ to be trimmed off automatically.
 vec3_t ClipVertexCache[ CLIP_MAX_VERTEX_CACHE ];
 int ClipVertexesInCache;
 
-void ClipSidesIntoTree( entity_t *e, tree_t *tree )
+void ClipSidesIntoTree( entity_t *e, tree_t *tree, qboolean quiet )
 {
 	brush_t	*b;
 	int	 i;
@@ -1813,11 +1811,12 @@ void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 	side_t *side, *newSide;
 	shaderInfo_t *si;
 
+	/* note it */
+	if( !quiet )
+		Sys_FPrintf( SYS_VRB, "--- ClipSidesIntoTree ---\n" );
+
 	/* ydnar: cull brush sides */
 	CullSides( e );
-	
-	/* note it */
-	Sys_FPrintf( SYS_VRB, "--- ClipSidesIntoTree ---\n" );
 	
 	/* walk the brush list */
 	ClipVertexesInCache = 0;
@@ -1873,8 +1872,16 @@ void ClipSidesIntoTree( entity_t *e, tree_t *tree )
 			DrawSurfaceForSide( e, b, newSide, w, ClipVertexCache, &ClipVertexesInCache, CLIP_MAX_VERTEX_CACHE );
 		}
 	}
+
+	/* emit some stats */
+	if( !quiet )
+		ClipSidesIntoTreeStats();
 }
 
+void ClipSidesIntoTreeStats( void )
+{
+	CullSidesStats();
+}
 
 
 /*
@@ -2409,7 +2416,7 @@ void EmitDrawIndexes( mapDrawSurface_t *ds, bspDrawSurface_t *out )
 		for( i = 0; i < ds->numIndexes; i++ )
 		{
 			if( numBSPDrawIndexes == MAX_MAP_DRAW_INDEXES )
-				Error( "MAX_MAP_DRAW_INDEXES" );
+				Sys_Error( "MAX_MAP_DRAW_INDEXES (%d) exceeded", MAX_MAP_DRAW_INDEXES );
 			bspDrawIndexes[ numBSPDrawIndexes ] = ds->indexes[ i ];
 
 			/* validate the index */
@@ -2417,7 +2424,13 @@ void EmitDrawIndexes( mapDrawSurface_t *ds, bspDrawSurface_t *out )
 			{
 				if( bspDrawIndexes[ numBSPDrawIndexes ] < 0 || bspDrawIndexes[ numBSPDrawIndexes ] >= ds->numVerts )
 				{
-					Sys_Printf( "WARNING: %d %s has invalid index %d (%d)\n", numBSPDrawSurfaces, ds->shaderInfo->shader, bspDrawIndexes[ numBSPDrawIndexes ], i );
+					int max = ds->numVerts;
+					vec3_t p[256];
+					if( max > 256 )
+						max = 256;
+					for ( i = 0 ; i < max ; i++ )
+						VectorCopy( ds->verts[i].xyz, p[i] );
+					Sys_Warning( p, max, "Drawsurface %d %s has invalid index %d (%d)\n", numBSPDrawSurfaces, ds->shaderInfo->shader, bspDrawIndexes[ numBSPDrawIndexes ], i );
 					bspDrawIndexes[ numBSPDrawIndexes ] = 0;
 				}
 			}
@@ -3185,7 +3198,7 @@ int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, surfaceModel_t *model, b
 			}
 			
 			/* insert the model */
-			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->mapEntityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, ds->minlight, ds->ambient, ds->colormod, NULL, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0, ds->skybox, NULL, NULL, NULL, NULL );
+			InsertModel( (char *) model->model, 0, 0, transform, 1.0, NULL, ds->celShader, ds->entityNum, ds->mapEntityNum, ds->castShadows, ds->recvShadows, 0, ds->lightmapScale, ds->minlight, ds->minvertexlight, ds->ambient, ds->colormod, NULL, 0, ds->smoothNormals, ds->vertTexProj, ds->noAlphaFix, 0, ds->skybox, NULL, NULL, NULL, NULL );
 			
 			/* return to sender */
 			return 1;
@@ -3437,10 +3450,10 @@ static void VolumeColorMods( entity_t *e, mapDrawSurface_t *ds )
 				if( d > 1.0f )
 					break;
 			}
-			
+
 			/* apply colormods */
 			if( j == b->numsides )
-				ColorMod( ds, b->contentShader->colorMod, b, i, 1 );
+				ColorMod( e, ds, b->contentShader->colorMod, b, i, 1 );
 		}
 	}
 }
@@ -3636,7 +3649,7 @@ void FixVertexAlpha(entity_t *e, qboolean showpacifier)
 
 	/* note it */
 	if( showpacifier == qtrue )
-		Sys_Printf( "--- FixVertexAlpha ---\n" );
+		Sys_FPrintf( SYS_VRB, "--- FixVertexAlpha ---\n" );
 
 	numSurfs = numMapDrawSurfs - e->firstDrawSurf;
 
@@ -3652,7 +3665,7 @@ void FixVertexAlpha(entity_t *e, qboolean showpacifier)
 		/* iterate crossing drawsurfaces */
 		alphaFixEntity = e;
 		numAlphaFixedVerts = 0;
-		RunThreadsOnIndividual(numSurfs, showpacifier, FixDrawsurfVertexAlpha);
+		RunThreadsOnIndividual(numSurfs, ((showpacifier == qtrue) && (verbose == qtrue)) ? qtrue : qfalse, FixDrawsurfVertexAlpha);
 
 		/* delete mutexes */
 		for( i = 0; i < numSurfs; i++)
@@ -3685,7 +3698,7 @@ void ApplyVertexMods(entity_t *e, qboolean showpacifier)
 
 	/* note it */
 	if( showpacifier == qtrue )
-		Sys_Printf( "--- ApplyVertexMods ---\n" );
+		Sys_FPrintf( SYS_VRB, "--- ApplyVertexMods ---\n" );
 
 	/* init pacifier */
 	start = I_FloatTime();
@@ -3701,7 +3714,7 @@ void ApplyVertexMods(entity_t *e, qboolean showpacifier)
 			if( f != fOld )
 			{
 				fOld = f;
-				Sys_Printf( "%d...", f );
+				Sys_FPrintf( SYS_VRB, "%d...", f );
 			}
 		}
 
@@ -3720,7 +3733,7 @@ void ApplyVertexMods(entity_t *e, qboolean showpacifier)
 			TCMod( si->mod, ds->verts[ j ].st );
 		
 		/* ydnar: apply shader colormod */
-		ColorMod( ds, ds->shaderInfo->colorMod, NULL, 0, ds->numVerts );
+		ColorMod( e, ds, ds->shaderInfo->colorMod, NULL, 0, ds->numVerts );
 			
 		/* ydnar: apply brush colormod */
 		VolumeColorMods( e, ds );
@@ -3743,7 +3756,7 @@ void ApplyVertexMods(entity_t *e, qboolean showpacifier)
 
 	/* print time */
 	if( showpacifier == qtrue )
-		Sys_Printf( " (%d)\n", (int) (I_FloatTime() - start) );
+		Sys_FPrintf( SYS_VRB, " (%d)\n", (int) (I_FloatTime() - start) );
 }
 
 /*
@@ -3949,17 +3962,23 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier )
 	Sys_FPrintf( SYS_VRB, "%9d skybox surfaces generated\n", numSkyboxSurfaces );
 }
 
-void EmitDrawsurfsStats()
+void EmitDrawsurfsSimpleStats( void )
 {
 	int i;
 
-	Sys_FPrintf( SYS_VRB, "%9d emitted drawsurfs\n", numBSPDrawSurfaces );
+	Sys_Printf( "%9d emitted drawsurfs\n", numBSPDrawSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d stripped face surfaces\n", numStripSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d fanned face surfaces\n", numFanSurfaces );
 	Sys_FPrintf( SYS_VRB, "%9d surface models generated\n", numSurfaceModels );
 	for( i = 0; i < NUM_SURFACE_TYPES; i++ )
 		if ( numSurfacesByType[ i ] )
-			Sys_FPrintf( SYS_VRB, "%9d %s surfaces\n", numSurfacesByType[ i ], surfaceTypes[ i ] );
+			Sys_Printf( "%9d %s surfaces\n", numSurfacesByType[ i ], surfaceTypes[ i ] );
+}
+
+void EmitDrawsurfsStats( void )
+{
+	if( verbose )
+		EmitDrawsurfsSimpleStats();
 	Sys_FPrintf( SYS_VRB, "%9d redundant indexes supressed, saving %d Kbytes\n", numRedundantIndexes, (numRedundantIndexes * 4 / 1024) );
 }
 

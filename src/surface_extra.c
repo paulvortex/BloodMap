@@ -57,6 +57,10 @@ typedef struct surfaceExtra_s
 	vec3_t					lightmapAxis;
 	float                   shadeAngle;
 	qboolean                lightmapStitch, unused1;
+	vec3_t                  ambient;        /* vortex: ambient (lightmapping/vertexlight) */
+	vec3_t                  minlight;       /* vortex: minlight (lightmapping/vertexlight) */
+	vec3_t                  minvertexlight; /* vortex: minvertexlight (vertexlight) */
+	vec3_t                  colormod;       /* vortex: colormod (lightmapping/vertexlight) */
 }
 surfaceExtra_t;
 
@@ -65,9 +69,25 @@ surfaceExtra_t;
 int							numSurfaceExtras = 0;
 int							maxSurfaceExtras = 0;
 surfaceExtra_t				*surfaceExtras;
-surfaceExtra_t				seDefault = { NULL, NULL, -1, 0, 0, WORLDSPAWN_CAST_SHADOWS, WORLDSPAWN_RECV_SHADOWS, 0, 0, { 0, 0, 0 } };
-
-
+surfaceExtra_t				seDefault = 
+{ 
+	NULL, 
+	NULL, 
+	-1, 
+	0, 
+	0, 
+	WORLDSPAWN_CAST_SHADOWS, WORLDSPAWN_RECV_SHADOWS, 
+	0, 
+	0, 
+	{ 0, 0, 0 },
+	0,
+	qfalse,
+	qfalse,
+	{ 0, 0, 0 }, /* ambient */
+	{ 0, 0, 0 }, /* minlight */
+	{ 0, 0, 0 }, /* minvertexlight */
+	{ 1, 1, 1 }  /* colormod */
+};
 
 /*
 AllocSurfaceExtra()
@@ -146,12 +166,14 @@ void SetSurfaceExtra( mapDrawSurface_t *ds, int num )
 	se->shadeAngle = ds->smoothNormals;
 	se->lightmapStitch = (ds->shaderInfo->lightmapNoStitch == qtrue) ? qfalse : qtrue;
 	VectorCopy( ds->lightmapAxis, se->lightmapAxis );
+	VectorCopy( ds->ambient, se->ambient );
+	VectorCopy( ds->minlight, se->minlight );
+	VectorCopy( ds->minvertexlight, se->minvertexlight );
+	VectorCopy( ds->colormod, se->colormod );
 	
 	/* debug code */
 	//%	Sys_FPrintf( SYS_VRB, "SetSurfaceExtra(): entityNum = %d\n", ds->entityNum );
 }
-
-
 
 /*
 GetSurfaceExtra*()
@@ -238,6 +260,30 @@ qboolean GetSurfaceExtraLightmapStitch( int num )
 	return se->lightmapStitch;
 }
 
+void GetSurfaceExtraAmbient( int num, vec3_t ambient )
+{
+	surfaceExtra_t	*se = GetSurfaceExtra( num );
+	VectorCopy( se->ambient, ambient );
+}
+
+void GetSurfaceExtraMinLight( int num, vec3_t minlight )
+{
+	surfaceExtra_t	*se = GetSurfaceExtra( num );
+	VectorCopy( se->minlight, minlight );
+}
+
+void GetSurfaceExtraMinVertexLight( int num, vec3_t minvertexlight )
+{
+	surfaceExtra_t	*se = GetSurfaceExtra( num );
+	VectorCopy( se->minvertexlight, minvertexlight );
+}
+
+void GetSurfaceExtraColormod( int num, vec3_t colormod )
+{
+	surfaceExtra_t	*se = GetSurfaceExtra( num );
+	VectorCopy( se->colormod, colormod );
+}
+
 /*
 WriteSurfaceExtraFile()
 writes out a surface info file (<map>.srf)
@@ -262,7 +308,7 @@ void WriteSurfaceExtraFile( const char *path )
 	strcpy( srfPath, path );
 	StripExtension( srfPath );
 	strcat( srfPath, ".srf" );
-	Sys_Printf( "Writing %s\n", srfPath );
+	Sys_Printf( "writing %s\n", srfPath );
 	sf = fopen( srfPath, "w" );
 	if( sf == NULL )
 		Error( "Error opening %s for writing", srfPath );
@@ -294,50 +340,66 @@ void WriteSurfaceExtraFile( const char *path )
 		/* open braces */
 		fprintf( sf, "{\n" );
 		
-			/* shader */
-			if( se->si != NULL )
-				fprintf( sf, "\tshader %s\n", se->si->shader );
-			
-			/* parent surface number */
-			if( se->parentSurfaceNum != seDefault.parentSurfaceNum )
-				fprintf( sf, "\tparent %d\n", se->parentSurfaceNum );
-			
-			/* entity number */
-			if( se->entityNum != seDefault.entityNum )
-				fprintf( sf, "\tentity %d\n", se->entityNum );
-
-			/* map entity number */
-			if( se->mapEntityNum != seDefault.mapEntityNum )
-				fprintf( sf, "\tmapEntity %d\n", se->mapEntityNum );
-			
-			/* cast shadows */
-			if( se->castShadows != seDefault.castShadows || se == &seDefault )
-				fprintf( sf, "\tcastShadows %d\n", se->castShadows );
-			
-			/* recv shadows */
-			if( se->recvShadows != seDefault.recvShadows || se == &seDefault )
-				fprintf( sf, "\treceiveShadows %d\n", se->recvShadows );
-			
-			/* lightmap sample size */
-			if( se->sampleSize != seDefault.sampleSize || se == &seDefault )
-				fprintf( sf, "\tsampleSize %f\n", se->sampleSize );
-			
-			/* longest curve */
-			if( se->longestCurve != seDefault.longestCurve || se == &seDefault )
-				fprintf( sf, "\tlongestCurve %f\n", se->longestCurve );
-			
-			/* lightmap axis vector */
-			if( VectorCompare( se->lightmapAxis, seDefault.lightmapAxis ) == qfalse )
-				fprintf( sf, "\tlightmapAxis ( %f %f %f )\n", se->lightmapAxis[ 0 ], se->lightmapAxis[ 1 ], se->lightmapAxis[ 2 ] );
-
-			/* normal smoothing */
-			if( se->shadeAngle != 0.0f )
-				fprintf( sf, "\tshadeAngle %f\n", se->shadeAngle );
+		/* shader */
+		if( se->si != NULL )
+			fprintf( sf, "\tshader %s\n", se->si->shader );
 		
-			/* lightmap stitching */
-			if( se->lightmapStitch == qtrue )
-				fprintf( sf, "\tlightmapStitch 1\n" );
+		/* parent surface number */
+		if( se->parentSurfaceNum != seDefault.parentSurfaceNum )
+			fprintf( sf, "\tparent %d\n", se->parentSurfaceNum );
 		
+		/* entity number */
+		if( se->entityNum != seDefault.entityNum )
+			fprintf( sf, "\tentity %d\n", se->entityNum );
+
+		/* map entity number */
+		if( se->mapEntityNum != seDefault.mapEntityNum )
+			fprintf( sf, "\tmapEntity %d\n", se->mapEntityNum );
+		
+		/* cast shadows */
+		if( se->castShadows != seDefault.castShadows || se == &seDefault )
+			fprintf( sf, "\tcastShadows %d\n", se->castShadows );
+		
+		/* recv shadows */
+		if( se->recvShadows != seDefault.recvShadows || se == &seDefault )
+			fprintf( sf, "\treceiveShadows %d\n", se->recvShadows );
+		
+		/* lightmap sample size */
+		if( se->sampleSize != seDefault.sampleSize || se == &seDefault )
+			fprintf( sf, "\tsampleSize %f\n", se->sampleSize );
+		
+		/* longest curve */
+		if( se->longestCurve != seDefault.longestCurve || se == &seDefault )
+			fprintf( sf, "\tlongestCurve %f\n", se->longestCurve );
+		
+		/* lightmap axis vector */
+		if( VectorCompare( se->lightmapAxis, seDefault.lightmapAxis ) == qfalse )
+			fprintf( sf, "\tlightmapAxis ( %f %f %f )\n", se->lightmapAxis[ 0 ], se->lightmapAxis[ 1 ], se->lightmapAxis[ 2 ] );
+
+		/* normal smoothing */
+		if( se->shadeAngle != 0.0f )
+			fprintf( sf, "\tshadeAngle %f\n", se->shadeAngle );
+	
+		/* lightmap stitching */
+		if( se->lightmapStitch == qtrue )
+			fprintf( sf, "\tlightmapStitch 1\n" );
+
+		/* ambient light */
+		if( VectorCompare( se->ambient, seDefault.ambient ) == qfalse )
+			fprintf( sf, "\tambient ( %f %f %f )\n", se->ambient[ 0 ], se->ambient[ 1 ], se->ambient[ 2 ] );
+
+		/* min light */
+		if( VectorCompare( se->minlight, seDefault.minlight ) == qfalse )
+			fprintf( sf, "\tminLight ( %f %f %f )\n", se->minlight[ 0 ], se->minlight[ 1 ], se->minlight[ 2 ] );
+
+		/* min vertex light */
+		if( VectorCompare( se->minvertexlight, seDefault.minvertexlight ) == qfalse )
+			fprintf( sf, "\tminVertexLight ( %f %f %f )\n", se->minvertexlight[ 0 ], se->minvertexlight[ 1 ], se->minvertexlight[ 2 ] );
+
+		/* colormod */
+		if( VectorCompare( se->colormod, seDefault.colormod ) == qfalse )
+			fprintf( sf, "\tcolorMod ( %f %f %f )\n", se->colormod[ 0 ], se->colormod[ 1 ], se->colormod[ 2 ] );
+
 		/* close braces */
 		fprintf( sf, "}\n\n" );
 	}
@@ -369,12 +431,11 @@ void LoadSurfaceExtraFile( const char *path )
 	strcpy( srfPath, path );
 	StripExtension( srfPath );
 	strcat( srfPath, ".srf" );
-	Sys_Printf( "Loading %s\n", srfPath );
+	Sys_Printf( "loading %s\n", srfPath );
 	size = LoadFile( srfPath, (void**) &buffer );
 	if( size <= 0 )
-
 	{
-		Sys_Printf( "WARNING: Unable to find surface file %s, using defaults.\n", srfPath );
+		Sys_Warning( "Unable to find surface file %s, using defaults.", srfPath );
 		return;
 	}
 	
@@ -486,6 +547,22 @@ void LoadSurfaceExtraFile( const char *path )
 				GetToken( qfalse );
 				se->lightmapStitch = qtrue;
 			}
+
+			/* ambient */
+			else if( !Q_stricmp( token, "ambient" ) )
+				Parse1DMatrix( 3, se->ambient );
+
+			/* minlight */
+			else if( !Q_stricmp( token, "minLight" ) )
+				Parse1DMatrix( 3, se->minlight );
+
+			/* minvertexlight */
+			else if( !Q_stricmp( token, "minVertexLight" ) )
+				Parse1DMatrix( 3, se->minvertexlight );
+
+			/* colormod */
+			else if( !Q_stricmp( token, "colorMod" ) )
+				Parse1DMatrix( 3, se->colormod );
 
 			/* ignore all other tokens on the line */
 			while( TokenAvailable() )
