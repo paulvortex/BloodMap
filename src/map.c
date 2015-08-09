@@ -1003,7 +1003,7 @@ ParseBrush()
 parses a brush out of a map file and sets it up
 */
 
-static void ParseBrush( qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage )
+static void ParseBrush( qboolean onlyLights, qboolean onlyLightgridBrushes, qboolean onlyFoliage )
 {
 	brush_t	*b;
 
@@ -1029,7 +1029,7 @@ static void ParseBrush( qboolean onlyLights, qboolean onlyLightBrushes, qboolean
 	SetBrushContents( buildBrush );
 
 	/* only go this far? */
-	if( onlyLights || onlyLightBrushes )
+	if( onlyLights || onlyLightgridBrushes )
 	{
 		/* register lightgrid brush */
 		if( buildBrush->compileFlags & C_LIGHTGRID )
@@ -1386,7 +1386,7 @@ ParseMapEntity()
 parses a single entity out of a map file
 */
 
-static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage, qboolean externalFile )
+static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightgridBrushes, qboolean onlyFoliage, qboolean externalFile )
 {
 	epair_t			*ep;
 	const char		*classname, *value;
@@ -1470,7 +1470,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 				g_bBrushPrimit = BPRIMIT_NEWBRUSHES;
 				
 				/* parse brush primitive */
-				ParseBrush( onlyLights, onlyLightBrushes, onlyFoliage );
+				ParseBrush( onlyLights, onlyLightgridBrushes, onlyFoliage );
 			}
 			else
 			{
@@ -1480,7 +1480,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 				
 				/* parse old brush format */
 				UnGetToken();
-				ParseBrush( onlyLights, onlyLightBrushes, onlyFoliage );
+				ParseBrush( onlyLights, onlyLightgridBrushes, onlyFoliage );
 			}
 			entitySourceBrushes++;
 		}
@@ -1516,10 +1516,13 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightBrushes, 
 	}
 
 	/* vortex: only light brushes */
-	if( onlyLightBrushes )
-	{
-		numEntities--;
-		return qtrue;
+	if( onlyLightgridBrushes )
+	{	
+		if( !onlyLights || Q_strncasecmp( classname, "light", 5 ) )
+		{
+			numEntities--;
+			return qtrue;
+		}
 	}
 	
 	/* ydnar: determine if this is a func_group */
@@ -1670,7 +1673,7 @@ LoadMapFile()
 loads a map file into a list of entities
 */
 
-void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage, qboolean externalFile )
+void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightgridBrushes, qboolean onlyFoliage, qboolean externalFile )
 {		
 	FILE		*file;
 	brush_t		*b;
@@ -1679,7 +1682,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 	/* note it */
 	if( onlyFoliage == qfalse )
 		Sys_Printf( "--- LoadMapFile ---\n" );
-	
+
 	/* hack */
 	file = SafeOpenRead( filename );
 	fclose( file );
@@ -1688,7 +1691,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 	LoadScriptFile( filename, -1 );
 	
 	/* setup */
-	if( onlyLights || onlyFoliage || onlyLightBrushes )
+	if( onlyLights || onlyFoliage || onlyLightgridBrushes )
 		oldNumEntities = numEntities;
 	else
 		numEntities = 0;
@@ -1705,7 +1708,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 	}
 
 	/* parse the map file */
-	while( ParseMapEntity( onlyLights, onlyLightBrushes, onlyFoliage, externalFile ) );
+	while( ParseMapEntity( onlyLights, onlyLightgridBrushes, onlyFoliage, externalFile ) );
 	
 	/* light loading */
 	if ( onlyFoliage )
@@ -1718,7 +1721,7 @@ void LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes
 		/* emit some statistics */
 		Sys_Printf( "%9d light entities\n", numEntities - oldNumEntities );
 	}
-	else if( onlyLightBrushes )
+	else if( onlyLightgridBrushes )
 	{
 		/* emit some statistics */
 		Sys_Printf( "%9d lightgrid brushes\n", numGridAreas );

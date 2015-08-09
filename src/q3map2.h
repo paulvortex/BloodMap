@@ -1514,6 +1514,7 @@ typedef struct rawGridPoint_s
 	byte				styles[ MAX_LIGHTMAPS ];
 	qboolean            mapped;        // vortex: inside lightgrid brush (if any)
 	qboolean            flooded;       // vortex: inside wall, flood from the neightbors
+	qboolean            floodOnlyColor;// vortex: do not flood direction
 	qboolean            unused1;       // 
 	qboolean            unused2;
 	int                 contributions; // vortex: how many lights contributed to this point
@@ -1618,7 +1619,7 @@ void						PutMeshOnCurve( mesh_t in );
 
 /* map.c */
 int                         CheckMapForErrors( void );
-void 						LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightBrushes, qboolean onlyFoliage, qboolean externalFile );
+void 						LoadMapFile( char *filename, qboolean onlyLights, qboolean onlyLightgridBrushes, qboolean onlyFoliage, qboolean externalFile );
 int							FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points );
 int							PlaneTypeForNormal( vec3_t normal );
 void						AddBrushBevels( void );
@@ -1854,6 +1855,7 @@ float						FloodLightForSample( trace_t *trace , float floodLightDistance, qbool
 void						FloodLightRawLightmap(int num);
 
 void						IlluminateRawLightmap(int num);
+void						LightGridRawLightmap(int num);
 void						FilterRawLightmap(int num);
 void						StitchRawLightmap(int num);
 void						IlluminateVertexes(int num);
@@ -2266,6 +2268,7 @@ Q_EXTERN float				shadeAngleDegrees Q_ASSIGN( 0.0f );
 Q_EXTERN int				superSample Q_ASSIGN( 0 );
 Q_EXTERN int				gridSuperSample Q_ASSIGN( 0 );
 Q_EXTERN qboolean           gridOnly Q_ASSIGN( qfalse );
+Q_EXTERN qboolean           gridFromLightmap Q_ASSIGN( qfalse );
 Q_EXTERN int				lightSamples Q_ASSIGN( 1 );
 Q_EXTERN qboolean			filter Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			dark Q_ASSIGN( qfalse );

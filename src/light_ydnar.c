@@ -2507,6 +2507,96 @@ static void SubsampleRawLuxel_r( rawLightmap_t *lm, trace_t *trace, vec3_t sampl
 }
 
 /*
+LightGridRawLightmap()
+samples lightmap from lightgrid
+*/
+
+void LightGridRawLightmap(int rawLightmapNum)
+{
+	vec3_t ambient, diffuse, dir;
+	int	i, x, y, *cluster;
+	float *origin, *luxel, *normal, *deluxel, brightness, shade;
+	rawLightmap_t *lm;
+	qboolean twoSided;
+	surfaceInfo_t *info;
+
+	/* bail if this number exceeds the number of raw lightmaps */
+	if( rawLightmapNum >= numRawLightmaps )
+		return;
+	
+	/* get lightmap */
+	lm = &rawLightmaps[rawLightmapNum];
+
+	/* twosided lighting (may or may not be a good idea for lightmapped stuff) */
+	twoSided = qfalse;
+	for( i = 0; i < lm->numLightSurfaces; i++ )
+	{
+		/* get surface */
+		info = &surfaceInfos[ lightSurfaces[ i ] ];
+		
+		/* check twosidedness */
+		if( info->si->twoSided )
+		{
+			twoSided = qtrue;
+			break;
+		}
+	}
+
+	/* sample luxels from lightgrid */
+	for( y = 0; y < lm->sh; y++ )
+	{
+		for( x = 0; x < lm->sw; x++ )
+		{
+			/* get luxel */
+			cluster = SUPER_CLUSTER( x, y );
+			luxel = SUPER_LUXEL( 0, x, y );
+			origin = SUPER_ORIGIN( x, y );
+			normal = SUPER_NORMAL( x, y );
+			deluxel = SUPER_DELUXEL( x, y );
+
+			/* sample */
+			if( *cluster < 0 )
+			{
+				/* blacken unmapped clusters */
+				VectorClear( luxel );
+				VectorClear( deluxel );
+			}
+			else
+			{
+				/* sample grid */
+				SampleGrid( origin, ambient, diffuse, dir );
+
+				/* apply shading */
+				shade = DotProduct( normal, dir );
+				if (twoSided == qtrue)
+					shade = fabs(shade);
+				shade = max(0, shade);
+
+				/* color the luxel */
+				luxel[ 0 ] = (ambient[0] + shade * diffuse[0]) * 255.0f;
+				luxel[ 1 ] = (ambient[1] + shade * diffuse[1]) * 255.0f;
+				luxel[ 2 ] = (ambient[2] + shade * diffuse[2]) * 255.0f;
+
+				/* add to light direction */
+				if( deluxemap )
+				{
+					/* ambient */
+					brightness = ambient[ 0 ] * 0.3f + ambient[ 1 ] * 0.59f + ambient[ 2 ] * 0.11f;
+					VectorMA( deluxel, brightness, normal, deluxel );
+
+					/* diffuse */
+					brightness = (diffuse[ 0 ] * 0.3f + diffuse[ 1 ] * 0.59f + diffuse[ 2 ] * 0.11f) * shade;
+					VectorMA( deluxel, brightness, dir, deluxel );
+				}
+			}
+		}
+	}
+
+	/* set counts */
+	numLuxelsIlluminated += (lm->sw * lm->sh);
+}
+
+/*
 IlluminateRawLightmap()
 illuminates the luxels
 */
@@ -2530,7 +2620,14 @@ void IlluminateRawLightmap(int rawLightmapNum)
 	/* bail if this number exceeds the number of raw lightmaps */
 	if( rawLightmapNum >= numRawLightmaps )
 		return;
-	
+
+	/* illuminate by grid */
+	if( gridOnly )
+	{
+		LightGridRawLightmap( rawLightmapNum );
+		return;
+	}
+
 	/* get lightmap */
 	lm = &rawLightmaps[rawLightmapNum];
 	
@@ -2663,396 +2760,345 @@ void IlluminateRawLightmap(int rawLightmapNum)
 				luxel[ 4 ] += 1.0f;
 			}
 		}
-	}
-	else if( gridOnly )
-	{
-		vec3_t ambient, diffuse, dir;
-		float shade;
 
-		/* sample luxels from lightgrid */
+		/* set counts */
+		numLuxelsIlluminated += (lm->sw * lm->sh);
+
+		/* return to sender */
+		return;
+	}
+
+	/* create a culled light list for this raw lightmap */
+	CreateTraceLightsForBounds( qfalse, lm->mins, lm->maxs, lm->plane, lm->numLightClusters, lm->lightClusters, LIGHT_SURFACES, &trace );
+
+	/* allocate temporary per-light luxel storage */
+	llSize = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
+	if( llSize <= (STACK_LL_SIZE * sizeof( float )) )
+		lightLuxels = stackLightLuxels;
+	else
+		lightLuxels = (float *)safe_malloc( llSize );
+	
+	/* clear luxels */
+	for( y = 0; y < lm->sh; y++ )
+	{
+		for( x = 0; x < lm->sw; x++ )
+		{
+			/* get luxel */
+			cluster = SUPER_CLUSTER( x, y );
+			luxel = SUPER_LUXEL( 0, x, y );
+			normal = SUPER_NORMAL( x, y );
+			deluxel = SUPER_DELUXEL( x, y );
+
+			/* clear color */
+			if( *cluster < 0 )
+			{
+				/* blacken unmapped clusters */
+				VectorClear( luxel );
+				VectorClear( deluxel );
+			}
+			else
+			{
+				/* set ambient color */
+				VectorCopy( lm->ambient, luxel );
+				if( deluxemap )
+					VectorScale( normal, 0.00390625f, deluxel );
+				luxel[ 3 ] = 1.0f;
+			}
+		}
+	}
+	
+	/* clear styled lightmaps */
+	size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
+	for( lightmapNum = 1; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
+	{
+		if( lm->superLuxels[ lightmapNum ] != NULL )
+			memset( lm->superLuxels[ lightmapNum ], 0, size );
+	}
+	
+	/* debugging code */
+	//%	if( trace.numLights <= 0 )
+	//%		Sys_Printf( "Lightmap %9d: 0 lights, axis: %.2f, %.2f, %.2f\n", rawLightmapNum, lm->axis[ 0 ], lm->axis[ 1 ], lm->axis[ 2 ] );
+	
+	/* walk light list */
+	for( i = 0; i < trace.numLights; i++ )
+	{
+		/* setup trace */
+		trace.light = trace.lights[ i ];
+		
+		/* style check */
+		for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
+		{
+			if( lm->styles[ lightmapNum ] == trace.light->style ||
+				lm->styles[ lightmapNum ] == LS_NONE )
+				break;
+		}
+		
+		/* max of MAX_LIGHTMAPS (4) styles allowed to hit a surface/lightmap */
+		if( lightmapNum >= MAX_LIGHTMAPS )
+		{
+			Sys_Warning( lm->entityNum, "Hit per-surface style limit (%d)", MAX_LIGHTMAPS );
+			continue;
+		}
+		
+		/* setup */
+		memset( lightLuxels, 0, llSize );
+		totalLighted = 0;
+		
+		/* initial pass, one sample per luxel */
 		for( y = 0; y < lm->sh; y++ )
 		{
 			for( x = 0; x < lm->sw; x++ )
 			{
-				/* get luxel */
+				/* get cluster */
 				cluster = SUPER_CLUSTER( x, y );
-				luxel = SUPER_LUXEL( 0, x, y );
+				if( *cluster < 0 )
+					continue;
+				
+				/* get particulars */
+				lightLuxel = LIGHT_LUXEL( x, y );
+				deluxel = SUPER_DELUXEL( x, y );
 				origin = SUPER_ORIGIN( x, y );
 				normal = SUPER_NORMAL( x, y );
-				deluxel = SUPER_DELUXEL( x, y );
 
-				/* sample */
-				if( *cluster < 0 )
+				/* set contribution count */
+				lightLuxel[ 3 ] = 1.0f;
+
+				/* setup trace */
+				trace.cluster = *cluster;
+				VectorCopy( origin, trace.origin );
+				VectorCopy( normal, trace.normal );
+					
+				/* get light for this sample */
+				LightContribution( &trace, LIGHT_SURFACES, qfalse );
+				VectorCopy( trace.color, lightLuxel );
+
+				/* add to count */
+				if( trace.color[ 0 ] || trace.color[ 1 ] || trace.color[ 2 ] )
 				{
-					/* blacken unmapped clusters */
-					VectorClear( luxel );
-					VectorClear( deluxel );
+					lightLuxel[ 4 ] += 1.0f;
+					totalLighted++;
 				}
-				else
+			
+				/* add to light direction map */
+				if( deluxemap )
 				{
-					/* sample grid */
-					SampleGrid( origin, ambient, diffuse, dir );
-
-					/* apply shading */
-					shade = DotProduct( normal, dir );
-					if (trace.twoSided == qtrue)
-						shade = fabs(shade);
-					shade = max(0, shade);
-
-					/* color the luxel */
-					luxel[ 0 ] = (ambient[0] + shade * diffuse[0]) * 255.0f;
-					luxel[ 1 ] = (ambient[1] + shade * diffuse[1]) * 255.0f;
-					luxel[ 2 ] = (ambient[2] + shade * diffuse[2]) * 255.0f;
-
-					/* add to light direction */
-					if(deluxemap )
+					/* vortex: use noShadow color */
+					/* color to grayscale */
+					brightness = trace.colorNoShadow[ 0 ] * 0.3f + trace.colorNoShadow[ 1 ] * 0.59f + trace.colorNoShadow[ 2 ] * 0.11f;
+					brightness *= (1.0 / 255.0);
+					VectorScale( trace.direction, brightness, trace.direction );
+					VectorAdd( deluxel, trace.direction, deluxel );
+				}
+			}
+		}
+		
+		/* don't even bother with everything else if nothing was lit */
+		if( totalLighted == 0 )
+			continue;
+		
+		/* determine filter radius */
+		filterRadius = lm->filterRadius > trace.light->filterRadius ? lm->filterRadius : trace.light->filterRadius;
+		if( filterRadius < 0.0f )
+			filterRadius = 0.0f;
+		
+		/* set luxel filter radius */
+		luxelFilterRadius = superSample * filterRadius / lm->sampleSize;
+		if( luxelFilterRadius == 0 && (filterRadius > 0.0f || filter) )
+			luxelFilterRadius = 1;
+		
+		/* secondary pass, adaptive supersampling (fixme: use a contrast function to determine if subsampling is necessary) */
+		/* 2003-09-27: changed it so filtering disamples supersampling, as it would waste time */
+		if( lightSamples > 1 && luxelFilterRadius == 0 )
+		{
+			/* walk luxels */
+			for( y = 0; y < (lm->sh - 1); y++ )
+			{
+				for( x = 0; x < (lm->sw - 1); x++ )
+				{
+					/* setup */
+					mapped = 0;
+					lighted = 0;
+					VectorClear( total );
+					
+					/* test 2x2 stamp */
+					for( t = 0; t < 4; t++ )
 					{
-						/* ambient */
-						brightness = ambient[ 0 ] * 0.3f + ambient[ 1 ] * 0.59f + ambient[ 2 ] * 0.11f;
-						VectorMA( deluxel, brightness, normal, deluxel );
-
-						/* diffuse */
-						brightness = (diffuse[ 0 ] * 0.3f + diffuse[ 1 ] * 0.59f + diffuse[ 2 ] * 0.11f) * shade;
-						VectorMA( deluxel, brightness, dir, deluxel );
+						/* set sample coords */
+						sx = x + tests[ t ][ 0 ];
+						sy = y + tests[ t ][ 1 ];
+						
+						/* get cluster */
+						cluster = SUPER_CLUSTER( sx, sy );
+						if( *cluster < 0 )
+							continue;
+						mapped++;
+						
+						/* get luxel */
+						lightLuxel = LIGHT_LUXEL( sx, sy );
+						VectorAdd( total, lightLuxel, total );
+						if( (lightLuxel[ 0 ] + lightLuxel[ 1 ] + lightLuxel[ 2 ]) > 0.0f )
+							lighted++;
 					}
-				}
-			}
-		}
-	}
-	else
-	{
-		/* create a culled light list for this raw lightmap */
-		CreateTraceLightsForBounds( qfalse, lm->mins, lm->maxs, lm->plane, lm->numLightClusters, lm->lightClusters, LIGHT_SURFACES, &trace );
-
-		/* allocate temporary per-light luxel storage */
-		llSize = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
-		if( llSize <= (STACK_LL_SIZE * sizeof( float )) )
-			lightLuxels = stackLightLuxels;
-		else
-			lightLuxels = (float *)safe_malloc( llSize );
-		
-		/* clear luxels */
-		for( y = 0; y < lm->sh; y++ )
-		{
-			for( x = 0; x < lm->sw; x++ )
-			{
-				/* get luxel */
-				cluster = SUPER_CLUSTER( x, y );
-				luxel = SUPER_LUXEL( 0, x, y );
-				normal = SUPER_NORMAL( x, y );
-				deluxel = SUPER_DELUXEL( x, y );
-
-				/* clear color */
-				if( *cluster < 0 )
-				{
-					/* blacken unmapped clusters */
-					VectorClear( luxel );
-					VectorClear( deluxel );
-				}
-				else
-				{
-					/* set ambient color */
-					VectorCopy( lm->ambient, luxel );
-					if( deluxemap )
-						VectorScale( normal, 0.00390625f, deluxel );
-					luxel[ 3 ] = 1.0f;
-				}
-			}
-		}
-		
-		/* clear styled lightmaps */
-		size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
-		for( lightmapNum = 1; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
-		{
-			if( lm->superLuxels[ lightmapNum ] != NULL )
-				memset( lm->superLuxels[ lightmapNum ], 0, size );
-		}
-		
-		/* debugging code */
-		//%	if( trace.numLights <= 0 )
-		//%		Sys_Printf( "Lightmap %9d: 0 lights, axis: %.2f, %.2f, %.2f\n", rawLightmapNum, lm->axis[ 0 ], lm->axis[ 1 ], lm->axis[ 2 ] );
-		
-		/* walk light list */
-		for( i = 0; i < trace.numLights; i++ )
-		{
-			/* setup trace */
-			trace.light = trace.lights[ i ];
-			
-			/* style check */
-			for( lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
-			{
-				if( lm->styles[ lightmapNum ] == trace.light->style ||
-					lm->styles[ lightmapNum ] == LS_NONE )
-					break;
-			}
-			
-			/* max of MAX_LIGHTMAPS (4) styles allowed to hit a surface/lightmap */
-			if( lightmapNum >= MAX_LIGHTMAPS )
-			{
-				Sys_Warning( lm->entityNum, "Hit per-surface style limit (%d)", MAX_LIGHTMAPS );
-				continue;
-			}
-			
-			/* setup */
-			memset( lightLuxels, 0, llSize );
-			totalLighted = 0;
-			
-			/* initial pass, one sample per luxel */
-			for( y = 0; y < lm->sh; y++ )
-			{
-				for( x = 0; x < lm->sw; x++ )
-				{
-					/* get cluster */
-					cluster = SUPER_CLUSTER( x, y );
-					if( *cluster < 0 )
+					
+					/* if total color is under a certain amount, then don't bother subsampling */
+					if( total[ 0 ] <= 4.0f && total[ 1 ] <= 4.0f && total[ 2 ] <= 4.0f )
 						continue;
 					
-					/* get particulars */
-					lightLuxel = LIGHT_LUXEL( x, y );
-					deluxel = SUPER_DELUXEL( x, y );
-					origin = SUPER_ORIGIN( x, y );
-					normal = SUPER_NORMAL( x, y );
-
-					/* set contribution count */
-					lightLuxel[ 3 ] = 1.0f;
-
-					/* setup trace */
-					trace.cluster = *cluster;
-					VectorCopy( origin, trace.origin );
-					VectorCopy( normal, trace.normal );
-						
-					/* get light for this sample */
-					LightContribution( &trace, LIGHT_SURFACES, qfalse );
-					VectorCopy( trace.color, lightLuxel );
-
-					/* add to count */
-					if( trace.color[ 0 ] || trace.color[ 1 ] || trace.color[ 2 ] )
+					/* if all 4 pixels are either in shadow or light, then don't subsample */
+					if( lighted != 0 && lighted != mapped )
 					{
-						lightLuxel[ 4 ] += 1.0f;
-						totalLighted++;
-					}
-				
-					/* add to light direction map */
-					if( deluxemap )
-					{
-						/* vortex: use noShadow color */
-						/* color to grayscale */
-						brightness = trace.colorNoShadow[ 0 ] * 0.3f + trace.colorNoShadow[ 1 ] * 0.59f + trace.colorNoShadow[ 2 ] * 0.11f;
-						brightness *= (1.0 / 255.0);
-						VectorScale( trace.direction, brightness, trace.direction );
-						VectorAdd( deluxel, trace.direction, deluxel );
-					}
-				}
-			}
-			
-			/* don't even bother with everything else if nothing was lit */
-			if( totalLighted == 0 )
-				continue;
-			
-			/* determine filter radius */
-			filterRadius = lm->filterRadius > trace.light->filterRadius ? lm->filterRadius : trace.light->filterRadius;
-			if( filterRadius < 0.0f )
-				filterRadius = 0.0f;
-			
-			/* set luxel filter radius */
-			luxelFilterRadius = superSample * filterRadius / lm->sampleSize;
-			if( luxelFilterRadius == 0 && (filterRadius > 0.0f || filter) )
-				luxelFilterRadius = 1;
-			
-			/* secondary pass, adaptive supersampling (fixme: use a contrast function to determine if subsampling is necessary) */
-			/* 2003-09-27: changed it so filtering disamples supersampling, as it would waste time */
-			if( lightSamples > 1 && luxelFilterRadius == 0 )
-			{
-				/* walk luxels */
-				for( y = 0; y < (lm->sh - 1); y++ )
-				{
-					for( x = 0; x < (lm->sw - 1); x++ )
-					{
-						/* setup */
-						mapped = 0;
-						lighted = 0;
-						VectorClear( total );
-						
-						/* test 2x2 stamp */
 						for( t = 0; t < 4; t++ )
 						{
 							/* set sample coords */
 							sx = x + tests[ t ][ 0 ];
 							sy = y + tests[ t ][ 1 ];
 							
-							/* get cluster */
+							/* get luxel */
 							cluster = SUPER_CLUSTER( sx, sy );
 							if( *cluster < 0 )
 								continue;
-							mapped++;
-							
-							/* get luxel */
 							lightLuxel = LIGHT_LUXEL( sx, sy );
-							VectorAdd( total, lightLuxel, total );
-							if( (lightLuxel[ 0 ] + lightLuxel[ 1 ] + lightLuxel[ 2 ]) > 0.0f )
-								lighted++;
-						}
-						
-						/* if total color is under a certain amount, then don't bother subsampling */
-						if( total[ 0 ] <= 4.0f && total[ 1 ] <= 4.0f && total[ 2 ] <= 4.0f )
-							continue;
-						
-						/* if all 4 pixels are either in shadow or light, then don't subsample */
-						if( lighted != 0 && lighted != mapped )
-						{
-							for( t = 0; t < 4; t++ )
-							{
-								/* set sample coords */
-								sx = x + tests[ t ][ 0 ];
-								sy = y + tests[ t ][ 1 ];
-								
-								/* get luxel */
-								cluster = SUPER_CLUSTER( sx, sy );
-								if( *cluster < 0 )
-									continue;
-								lightLuxel = LIGHT_LUXEL( sx, sy );
-								origin = SUPER_ORIGIN( sx, sy );
-								
-								/* only subsample shadowed luxels */
-								//%	if( (lightLuxel[ 0 ] + lightLuxel[ 1 ] + lightLuxel[ 2 ]) <= 0.0f )
-								//%		continue;
-								
-								/* subsample it */
-								SubsampleRawLuxel_r( lm, &trace, origin, sx, sy, 0.25f, lightLuxel );
-								
-								/* debug code to colorize subsampled areas to yellow */
-								//%	luxel = SUPER_LUXEL( lightmapNum, sx, sy );
-								//%	VectorSet( luxel, 255, 204, 0 );
-							}
-						}
-					}
-				}
-			}
-			
-			/* allocate sampling lightmap storage */
-			if( lm->superLuxels[ lightmapNum ] == NULL )
-			{
-				/* allocate sampling lightmap storage */
-				size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
-				lm->superLuxels[ lightmapNum ] = (float *)safe_malloc( size );
-				memset( lm->superLuxels[ lightmapNum ], 0, size );
-			}
-			
-			/* set style */
-			if( lightmapNum > 0 )
-			{
-				lm->styles[ lightmapNum ] = trace.light->style;
-				//%	Sys_Printf( "Surface %6d has lightstyle %d\n", rawLightmapNum, trace.light->style );
-			}
-			
-			/* copy to permanent luxels */
-			for( y = 0; y < lm->sh; y++ )
-			{
-				for( x = 0; x < lm->sw; x++ )
-				{
-					/* get cluster and origin */
-					cluster = SUPER_CLUSTER( x, y );
-					if( *cluster < 0 )
-						continue;
-					origin = SUPER_ORIGIN( x, y );
-					
-					/* filter? */
-					if( luxelFilterRadius )
-					{
-						/* setup */
-						VectorClear( averageColor );
-						averageColor[ 4 ] = 0.0f;
-						samples = 0.0f;
-						
-						/* cheaper distance-based filtering */
-						for( sy = (y - luxelFilterRadius); sy <= (y + luxelFilterRadius); sy++ )
-						{
-							if( sy < 0 || sy >= lm->sh )
-								continue;
+							origin = SUPER_ORIGIN( sx, sy );
 							
-							for( sx = (x - luxelFilterRadius); sx <= (x + luxelFilterRadius); sx++ )
-							{
-								if( sx < 0 || sx >= lm->sw )
-									continue;
-								
-								/* get particulars */
-								cluster = SUPER_CLUSTER( sx, sy );
-								if( *cluster < 0 )
-									continue;
-								lightLuxel = LIGHT_LUXEL( sx, sy );
-								
-								/* create weight */
-								weight = (abs( sx - x ) == luxelFilterRadius ? 0.5f : 1.0f);
-								weight *= (abs( sy - y ) == luxelFilterRadius ? 0.5f : 1.0f);
-								
-								/* scale luxel by filter weight */
-								VectorScale( lightLuxel, weight, color );
-								VectorAdd( averageColor, color, averageColor );
-								averageColor[ 4 ] += lightLuxel[ 4 ];
-								samples += weight;
-							}
+							/* only subsample shadowed luxels */
+							//%	if( (lightLuxel[ 0 ] + lightLuxel[ 1 ] + lightLuxel[ 2 ]) <= 0.0f )
+							//%		continue;
+							
+							/* subsample it */
+							SubsampleRawLuxel_r( lm, &trace, origin, sx, sy, 0.25f, lightLuxel );
+							
+							/* debug code to colorize subsampled areas to yellow */
+							//%	luxel = SUPER_LUXEL( lightmapNum, sx, sy );
+							//%	VectorSet( luxel, 255, 204, 0 );
 						}
-						
-						/* any samples? */
-						if( samples <= 0.0f	)
-							continue;
-						
-						/* scale into luxel */
-						luxel = SUPER_LUXEL( lightmapNum, x, y );
-						luxel[ 3 ] = 1.0f;
-						luxel[ 4 ] = averageColor[ 4 ] / samples;
-						
-						/* handle negative light */
-						if( trace.light->flags & LIGHT_NEGATIVE )
-						{ 
-							luxel[ 0 ] -= averageColor[ 0 ] / samples;
-							luxel[ 1 ] -= averageColor[ 1 ] / samples;
-							luxel[ 2 ] -= averageColor[ 2 ] / samples;
-						}
-						
-						/* handle normal light */
-						else
-						{ 
-							luxel[ 0 ] += averageColor[ 0 ] / samples;
-							luxel[ 1 ] += averageColor[ 1 ] / samples;
-							luxel[ 2 ] += averageColor[ 2 ] / samples;
-						}
-					}
-					
-					/* single sample */
-					else
-					{
-						/* get particulars */
-						lightLuxel = LIGHT_LUXEL( x, y );
-						luxel = SUPER_LUXEL( lightmapNum, x, y );
-						
-						/* handle negative light */
-						if( trace.light->flags & LIGHT_NEGATIVE )
-							VectorNegate( averageColor, averageColor );
-
-						/* add color */
-						luxel[ 3 ] = 1.0f;
-						luxel[ 4 ] += lightLuxel[ 4 ];
-						
-						/* handle negative light */
-						if( trace.light->flags & LIGHT_NEGATIVE )
-							VectorSubtract( luxel, lightLuxel, luxel );
-						
-						/* handle normal light */
-						else
-							VectorAdd( luxel, lightLuxel, luxel );
 					}
 				}
 			}
 		}
 		
-		/* free temporary luxels */
-		if( lightLuxels != stackLightLuxels )
-			free( lightLuxels );
+		/* allocate sampling lightmap storage */
+		if( lm->superLuxels[ lightmapNum ] == NULL )
+		{
+			/* allocate sampling lightmap storage */
+			size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
+			lm->superLuxels[ lightmapNum ] = (float *)safe_malloc( size );
+			memset( lm->superLuxels[ lightmapNum ], 0, size );
+		}
+		
+		/* set style */
+		if( lightmapNum > 0 )
+		{
+			lm->styles[ lightmapNum ] = trace.light->style;
+			//%	Sys_Printf( "Surface %6d has lightstyle %d\n", rawLightmapNum, trace.light->style );
+		}
+		
+		/* copy to permanent luxels */
+		for( y = 0; y < lm->sh; y++ )
+		{
+			for( x = 0; x < lm->sw; x++ )
+			{
+				/* get cluster and origin */
+				cluster = SUPER_CLUSTER( x, y );
+				if( *cluster < 0 )
+					continue;
+				origin = SUPER_ORIGIN( x, y );
+				
+				/* filter? */
+				if( luxelFilterRadius )
+				{
+					/* setup */
+					VectorClear( averageColor );
+					averageColor[ 4 ] = 0.0f;
+					samples = 0.0f;
+					
+					/* cheaper distance-based filtering */
+					for( sy = (y - luxelFilterRadius); sy <= (y + luxelFilterRadius); sy++ )
+					{
+						if( sy < 0 || sy >= lm->sh )
+							continue;
+						
+						for( sx = (x - luxelFilterRadius); sx <= (x + luxelFilterRadius); sx++ )
+						{
+							if( sx < 0 || sx >= lm->sw )
+								continue;
+							
+							/* get particulars */
+							cluster = SUPER_CLUSTER( sx, sy );
+							if( *cluster < 0 )
+								continue;
+							lightLuxel = LIGHT_LUXEL( sx, sy );
+							
+							/* create weight */
+							weight = (abs( sx - x ) == luxelFilterRadius ? 0.5f : 1.0f);
+							weight *= (abs( sy - y ) == luxelFilterRadius ? 0.5f : 1.0f);
+							
+							/* scale luxel by filter weight */
+							VectorScale( lightLuxel, weight, color );
+							VectorAdd( averageColor, color, averageColor );
+							averageColor[ 4 ] += lightLuxel[ 4 ];
+							samples += weight;
+						}
+					}
+					
+					/* any samples? */
+					if( samples <= 0.0f	)
+						continue;
+					
+					/* scale into luxel */
+					luxel = SUPER_LUXEL( lightmapNum, x, y );
+					luxel[ 3 ] = 1.0f;
+					luxel[ 4 ] = averageColor[ 4 ] / samples;
+					
+					/* handle negative light */
+					if( trace.light->flags & LIGHT_NEGATIVE )
+					{ 
+						luxel[ 0 ] -= averageColor[ 0 ] / samples;
+						luxel[ 1 ] -= averageColor[ 1 ] / samples;
+						luxel[ 2 ] -= averageColor[ 2 ] / samples;
+					}
+					
+					/* handle normal light */
+					else
+					{ 
+						luxel[ 0 ] += averageColor[ 0 ] / samples;
+						luxel[ 1 ] += averageColor[ 1 ] / samples;
+						luxel[ 2 ] += averageColor[ 2 ] / samples;
+					}
+				}
+				
+				/* single sample */
+				else
+				{
+					/* get particulars */
+					lightLuxel = LIGHT_LUXEL( x, y );
+					luxel = SUPER_LUXEL( lightmapNum, x, y );
+					
+					/* handle negative light */
+					if( trace.light->flags & LIGHT_NEGATIVE )
+						VectorNegate( averageColor, averageColor );
 
-		/* free light list */
-		FreeTraceLights( &trace );
+					/* add color */
+					luxel[ 3 ] = 1.0f;
+					luxel[ 4 ] += lightLuxel[ 4 ];
+					
+					/* handle negative light */
+					if( trace.light->flags & LIGHT_NEGATIVE )
+						VectorSubtract( luxel, lightLuxel, luxel );
+					
+					/* handle normal light */
+					else
+						VectorAdd( luxel, lightLuxel, luxel );
+				}
+			}
+		}
 	}
+	
+	/* free temporary luxels */
+	if( lightLuxels != stackLightLuxels )
+		free( lightLuxels );
+
+	/* free light list */
+	FreeTraceLights( &trace );
 
 	/* set counts */
 	numLuxelsIlluminated += (lm->sw * lm->sh);
