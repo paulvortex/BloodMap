@@ -1143,6 +1143,7 @@ typedef struct
 	int					firstBrush, numBrushes;		/* only valid during BSP compile */
 	qboolean			forceSubmodel; /* vortex: entity goes thru SubModel code */
 	epair_t				*epairs;
+	vec3_t              originbrush_origin;
 }
 entity_t;
 

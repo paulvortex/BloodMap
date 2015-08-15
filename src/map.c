@@ -583,24 +583,26 @@ brush_t *FinishBrush( void )
 
 	/* origin brushes are removed, but they set the rotation origin for the rest of the brushes in the entity.
 	   after the entire entity is parsed, the planenums and texinfos will be adjusted for the origin brush */
-	if( buildBrush->compileFlags & C_ORIGIN )
+	if ( buildBrush->compileFlags & C_ORIGIN ) 
 	{
-		char	string[ 32 ];
-		vec3_t	origin;
+		vec3_t origin, adjustment;
+		char string[128];
 
-		if( numEntities == 1 )
+		if ( numEntities == 1 ) 
 		{
 			Sys_Warning( mapEnt->mapEntityNum, entitySourceBrushes, "Origin brushes not allowed in world" );
 			return NULL;
 		}
-		
-		VectorAdd (buildBrush->mins, buildBrush->maxs, origin);
-		VectorScale (origin, 0.5, origin);
+		VectorAdd( buildBrush->mins, buildBrush->maxs, origin );
+		VectorScale( origin, 0.5, origin );
 
-		sprintf( string, "%i %i %i", (int) origin[ 0 ], (int) origin[ 1 ], (int) origin[ 2 ] );
-		SetKeyValue( &entities[ numEntities - 1 ], "origin", string);
-
-		VectorCopy( origin, entities[ numEntities - 1 ].origin);
+		/* merge with entity-key-set origin */
+		GetVectorForKey( mapEnt, "origin", mapEnt->origin );
+		VectorMA( origin, -1, mapEnt->originbrush_origin, adjustment );
+		VectorAdd( adjustment, mapEnt->origin, mapEnt->origin );
+		VectorCopy( origin, mapEnt->originbrush_origin );
+		sprintf( string, "%f %f %f", mapEnt->origin[0], mapEnt->origin[1], mapEnt->origin[2] );
+		SetKeyValue( mapEnt, "origin", string );
 
 		/* don't keep this brush */
 		return NULL;
@@ -1071,11 +1073,16 @@ takes all of the brushes from the current entity and
 adds them to the world's brush list
 (used by func_group)
 */
-
+void AdjustBrushesForOrigin( entity_t *ent );
 void MoveBrushesToWorld( entity_t *ent )
 {
-	brush_t		*b, *next;
-	parseMesh_t	*pm;
+	brush_t     *b, *next;
+	parseMesh_t *pm;
+
+	/* we need to undo the common/origin adjustment, and instead shift them by the entity key origin */
+	VectorScale( ent->origin, -1, ent->originbrush_origin );
+	AdjustBrushesForOrigin( ent );
+	VectorClear( ent->originbrush_origin );
 
 	/* move brushes */
 	for( b = ent->brushes; b != NULL; b = next )
@@ -1138,39 +1145,37 @@ AdjustBrushesForOrigin()
 
 void AdjustBrushesForOrigin( entity_t *ent )
 {
-	
-	int			i;
-	side_t		*s;
-	vec_t		newdist;
-	brush_t		*b;
-	parseMesh_t	*p;
-	
-	
+	int i;
+	side_t      *s;
+	vec_t newdist;
+	brush_t     *b;
+	parseMesh_t *p;
+
 	/* walk brush list */
-	for( b = ent->brushes; b != NULL; b = b->next )
+	for ( b = ent->brushes; b != NULL; b = b->next )
 	{
 		/* offset brush planes */
-		for( i = 0; i < b->numsides; i++)
+		for ( i = 0; i < b->numsides; i++ )
 		{
 			/* get brush side */
 			s = &b->sides[ i ];
-			
+
 			/* offset side plane */
-			newdist = mapplanes[ s->planenum ].dist - DotProduct( mapplanes[ s->planenum ].normal, ent->origin );
-			
+			newdist = mapplanes[ s->planenum ].dist - DotProduct( mapplanes[ s->planenum ].normal, ent->originbrush_origin );
+
 			/* find a new plane */
 			s->planenum = FindFloatPlane( mapplanes[ s->planenum ].normal, newdist, 0, NULL );
 		}
-		
+
 		/* rebuild brush windings (ydnar: just offsetting the winding above should be fine) */
 		CreateBrushWindings( b );
 	}
-	
+
 	/* walk patch list */
-	for( p = ent->patches; p != NULL; p = p->next )
+	for ( p = ent->patches; p != NULL; p = p->next )
 	{
-		for( i = 0; i < (p->mesh.width * p->mesh.height); i++ )
-			VectorSubtract( p->mesh.verts[ i ].xyz, ent->origin, p->mesh.verts[ i ].xyz );
+		for ( i = 0; i < ( p->mesh.width * p->mesh.height ); i++ )
+			VectorSubtract( p->mesh.verts[ i ].xyz, ent->originbrush_origin, p->mesh.verts[ i ].xyz );
 	}
 }
 
@@ -1644,7 +1649,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightgridBrush
 	
 	/* get entity origin and adjust brushes */
 	GetVectorForKey( mapEnt, "origin", mapEnt->origin );
-	if( mapEnt->origin[ 0 ] || mapEnt->origin[ 1 ] || mapEnt->origin[ 2 ] )
+	if ( mapEnt->originbrush_origin[ 0 ] || mapEnt->originbrush_origin[ 1 ] || mapEnt->originbrush_origin[ 2 ] )
 		AdjustBrushesForOrigin( mapEnt );
 
 	/* group_info entities are just for editor grouping (fixme: leak!) */
