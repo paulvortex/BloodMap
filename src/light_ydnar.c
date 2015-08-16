@@ -2787,14 +2787,16 @@ void IlluminateRawLightmap(int rawLightmapNum)
 			cluster = SUPER_CLUSTER( x, y );
 			luxel = SUPER_LUXEL( 0, x, y );
 			normal = SUPER_NORMAL( x, y );
-			deluxel = SUPER_DELUXEL( x, y );
+			if( deluxemap )
+				deluxel = SUPER_DELUXEL( x, y );
 
 			/* clear color */
 			if( *cluster < 0 )
 			{
 				/* blacken unmapped clusters */
 				VectorClear( luxel );
-				VectorClear( deluxel );
+				if( deluxemap )
+					VectorClear( deluxel );
 			}
 			else
 			{
@@ -2856,7 +2858,8 @@ void IlluminateRawLightmap(int rawLightmapNum)
 				
 				/* get particulars */
 				lightLuxel = LIGHT_LUXEL( x, y );
-				deluxel = SUPER_DELUXEL( x, y );
+				if( deluxemap )
+					deluxel = SUPER_DELUXEL( x, y );
 				origin = SUPER_ORIGIN( x, y );
 				normal = SUPER_NORMAL( x, y );
 
@@ -2887,7 +2890,8 @@ void IlluminateRawLightmap(int rawLightmapNum)
 					brightness = trace.colorNoShadow[ 0 ] * 0.3f + trace.colorNoShadow[ 1 ] * 0.59f + trace.colorNoShadow[ 2 ] * 0.11f;
 					brightness *= (1.0 / 255.0);
 					VectorScale( trace.direction, brightness, trace.direction );
-					VectorAdd( deluxel, trace.direction, deluxel );
+					if( deluxemap )
+						VectorAdd( deluxel, trace.direction, deluxel );
 				}
 			}
 		}
@@ -4922,6 +4926,12 @@ void SetupFloodLight( void )
 		VectorSet(floodlightRGB,240,240,255);
 		//floodlighty = qtrue;
 		//Sys_Printf( "FloodLighting enabled via worldspawn _floodlight key.\n" );
+	}
+	if( colorsRGB )
+	{
+		floodlightRGB[0] = srgb_to_linear( floodlightRGB[0] );
+		floodlightRGB[1] = srgb_to_linear( floodlightRGB[1] );
+		floodlightRGB[2] = srgb_to_linear( floodlightRGB[2] );
 	}
 	VectorNormalize(floodlightRGB,floodlightRGB);
 }

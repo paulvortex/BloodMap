@@ -54,8 +54,12 @@ game_t struct
 	qfalse,				/* wolf lighting model? */
 	128,				/* lightmap width/height */
 	1.0f,				/* lightmap gamma */
+	qfalse,             /* lightmap sRGB */
+	qfalse,             /* texture sRGB */
+	qfalse,             /* color sRGB */
 	0.0f,				/* lightmap exposure */
 	1.0f,				/* lightmap compensate */
+	qfalse,             /* light angle attenuation uses half-lambert curve */
 	qtrue,				/* disable shader lightstyles hack */
 	qtrue,				/* keep light entities on bsp */
 	qfalse,				/* do light color normalization */
@@ -63,6 +67,12 @@ game_t struct
 	qtrue,				/* patch casting enabled */
 	qtrue,				/* compile deluxemaps */
 	0,					/* deluxemaps default mode */
+	512,                /* minimap size */
+	1.0f,               /* minimap sharpener */
+	0.0f,               /* minimap border */
+	qtrue,              /* minimap keep aspect */
+	MINIMAP_MODE_GRAY,  /* minimap mode */
+	"%s.tga",           /* minimap name format */
 	"IBSP",				/* bsp file prefix */
 	46,					/* bsp file version */
 	qfalse,				/* cod-style lump len/ofs order */

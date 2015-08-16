@@ -1063,4 +1063,39 @@ void GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t mi
 			}
 		}
 	}
+
+	/* convert from sRGB to linear colorspace */
+	if ( colorsRGB ) 
+	{
+		if( color != NULL )
+		{
+			color[0] = srgb_to_linear( color[0] );
+			color[1] = srgb_to_linear( color[1] );
+			color[2] = srgb_to_linear( color[2] );
+		}
+		if( minlight != NULL )
+		{
+			minlight[0] = srgb_to_linear( minlight[0] );
+			minlight[1] = srgb_to_linear( minlight[1] );
+			minlight[2] = srgb_to_linear( minlight[2] );
+		}
+		if( minvertexlight != NULL )
+		{
+			minvertexlight[0] = srgb_to_linear( minvertexlight[0] );
+			minvertexlight[1] = srgb_to_linear( minvertexlight[1] );
+			minvertexlight[2] = srgb_to_linear( minvertexlight[2] );
+		}
+		if( ambient != NULL )
+		{
+			ambient[0] = srgb_to_linear( ambient[0] );
+			ambient[1] = srgb_to_linear( ambient[1] );
+			ambient[2] = srgb_to_linear( ambient[2] );
+		}
+		if( colormod != NULL )
+		{
+			colormod[0] = srgb_to_linear( colormod[0] );
+			colormod[1] = srgb_to_linear( colormod[1] );
+			colormod[2] = srgb_to_linear( colormod[2] );
+		}
+	}
 }

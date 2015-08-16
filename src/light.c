@@ -421,10 +421,14 @@ void CreateEntityLights( void )
 		if( _color && _color[ 0 ] )
 		{
 			sscanf( _color, "%f %f %f", &light->color[ 0 ], &light->color[ 1 ], &light->color[ 2 ] );
-			if (!(light->flags & LIGHT_UNNORMALIZED))
+			if( colorsRGB ) 
 			{
-				ColorNormalize( light->color, light->color );
+				light->color[0] = srgb_to_linear( light->color[0] );
+				light->color[1] = srgb_to_linear( light->color[1] );
+				light->color[2] = srgb_to_linear( light->color[2] );
 			}
+			if (!(light->flags & LIGHT_UNNORMALIZED))
+				ColorNormalize( light->color, light->color );
 		}
 		else
 			light->color[ 0 ] = light->color[ 1 ] = light->color[ 2 ] = 1.0f;
@@ -930,16 +934,35 @@ int LightContribution( trace_t *trace, int lightflags, qboolean point3d )
 				angle = 0.7f; // vortex: 0.6 is average angle atten when tracing against sphere, 0.7 fits most lightmapped surfaces
 			else
 			{
+				/* standard Lambert attenuation */ 
 				angle = DotProduct( trace->normal, trace->direction );
+
+				/* twosided lighting */
+				if( trace->twoSided )
+					angle = fabs( angle );
+
+				/* jal: optional half Lambert attenuation (http://developer.valvesoftware.com/wiki/Half_Lambert) */
+				if( lightAngleHL )
+				{
+					if( angle > 0.001f ) 
+					{
+						// skip coplanar
+						if( angle > 1.0f )
+							angle = 1.0f;
+						angle = ( angle * 0.5f ) + 0.5f;
+						angle *= angle;
+					}
+					else
+						angle = 0;
+				}
+
+				/* angle attenuation scale */
 				if( light->angleScale != 0.0f)
 				{
 					angle /= light->angleScale;
 					if( angle > 1.0f )
 						angle = 1.0f;
 				}
-				/* twosided lighting */
-				if( trace->twoSided )
-					angle = fabs( angle );
 			}
 		}
 
@@ -990,19 +1013,38 @@ int LightContribution( trace_t *trace, int lightflags, qboolean point3d )
 		if (light->flags & LIGHT_ATTEN_ANGLE)
 		{
 			if( point3d )
-				angle = 0.7f; // vortex: 0.6 is average angle atten when tracing against sphere, 0.75 fits most lightmapped surfaces
+				angle = 0.7f; // vortex: 0.6 is average angle atten when tracing against sphere, 0.7 fits most lightmapped surfaces
 			else
 			{
+				/* standard Lambert attenuation */ 
 				angle = DotProduct( trace->normal, trace->direction );
+
+				/* twosided lighting */
+				if( trace->twoSided )
+					angle = fabs( angle );
+
+				/* jal: optional half Lambert attenuation (http://developer.valvesoftware.com/wiki/Half_Lambert) */
+				if( lightAngleHL )
+				{
+					if( angle > 0.001f ) 
+					{
+						// skip coplanar
+						if( angle > 1.0f )
+							angle = 1.0f;
+						angle = ( angle * 0.5f ) + 0.5f;
+						angle *= angle;
+					}
+					else
+						angle = 0;
+				}
+
+				/* angle attenuation scale */
 				if( light->angleScale != 0.0f)
 				{
 					angle /= light->angleScale;
 					if( angle > 1.0f )
 						angle = 1.0f;
 				}
-				/* twosided lighting */
-				if( trace->twoSided )
-					angle = fabs( angle );
 			}
 		}
 	
@@ -2536,58 +2578,34 @@ int LightMain( int argc, char **argv )
 
 	/* set standard game flags */
 	wolfLight = game->wolfLight;
-	if (wolfLight == qtrue)
-		Sys_Printf( " lightning model: wolf\n" );
-	else
-		Sys_Printf( " lightning model: quake3\n" );
-
 	lmCustomSize = game->lightmapSize;
-	Sys_Printf( " lightmap size: %d x %d pixels\n", lmCustomSize, lmCustomSize );
-
 	lightmapGamma = game->lightmapGamma;
-	Sys_Printf( " lightning gamma: %f\n", lightmapGamma );
-
 	lightmapCompensate = game->lightmapCompensate;
-	Sys_Printf( " lightning compensation: %f\n", lightmapCompensate );
-
 	lightmapExposure = game->lightmapExposure;
-	Sys_Printf( " lightning exposure: %f\n", lightmapExposure );
-
 	noStyles = game->noStyles;
-	if (noStyles == qtrue)
-		Sys_Printf( " shader lightstyles hack: disabled\n" );
-	else
-		Sys_Printf( " shader lightstyles hack: enabled\n" );
-
 	keepLights = game->keepLights;
-	if (keepLights == qtrue)
-		Sys_Printf( " keep lights: enabled\n" );
-	else
-		Sys_Printf( " keep lights: disabled\n" );
-
 	colorNormalize = game->colorNormalize;
-	if (colorNormalize == qtrue)
-		Sys_Printf( " light color normalization: enabled\n" );
-	else
-		Sys_Printf( " light color normalization: disabled\n" );
-
-	patchShadows = game->patchShadows;
-	if (patchShadows == qtrue)
-		Sys_Printf( " patch shadows: enabled\n" );
-	else
-		Sys_Printf( " patch shadows: disabled\n" );
-
+	lightmapsRGB = game->lightmapsRGB;
+	colorsRGB = game->colorsRGB;
+	texturesRGB = game->texturesRGB;
 	deluxemap = game->deluxeMap;
 	deluxemode = game->deluxeMode;
- 	if (deluxemap == qtrue)
-	{
-		if (deluxemode)
-			Sys_Printf( " deluxemapping: enabled with tangentspace deluxemaps\n" );
-		else
-			Sys_Printf( " deluxemapping: enabled with modelspace deluxemaps\n" );
-	}
-	else
-		Sys_Printf( " deluxemapping: disabled\n" );
+	lightAngleHL = game->lightAngleHL;
+	Sys_Printf( " lightning model: %s\n", wolfLight == qtrue ? "wolf" : "quake3" );
+	Sys_Printf( " lightmap size: %d x %d pixels\n", lmCustomSize, lmCustomSize );
+	Sys_Printf( " lightning gamma: %f\n", lightmapGamma );
+	Sys_Printf( " lightning compensation: %f\n", lightmapCompensate );
+	Sys_Printf( " lightning exposure: %f\n", lightmapExposure );
+	Sys_Printf( " shader lightstyles hack: %s\n", noStyles == qtrue ? "disabled" : "enabled");
+	Sys_Printf( " keep lights: %s\n", keepLights == qtrue ? "enabled" : "disabled" );
+	Sys_Printf( " light color normalization: %s\n", colorNormalize == qtrue ? "enabled" : "disabled" );
+	Sys_Printf( " lightmap colorspace: %s\n", lightmapsRGB == qtrue ? "enabled" : "disabled" );
+	Sys_Printf( " entity _color keys colorspace: %s\n", colorsRGB == qtrue ? "sRGB" : "linear"  );
+	Sys_Printf( " texture default colorspace: %s\n", texturesRGB == qtrue ? "sRGB" : "linear" );
+	Sys_Printf( " patch shadows: enabled\n", patchShadows == qtrue ? "enabled" : "disabled" );
+	Sys_Printf( " deluxemapping: %s\n", deluxemap == qtrue ? (deluxemode > 0 ? "tangentspace deluxemaps" : "modelspace deluxemaps") : "disabled" );
+	if( lightAngleHL )
+		Sys_Printf( " half lambert light angle attenuation enabled \n" );
 
 	Sys_Printf( "--- CommandLine ---\n" );
 	
@@ -2904,18 +2922,51 @@ int LightMain( int argc, char **argv )
 			Sys_Printf( " Max surface lightmap size set to %d x %d pixels\n", lmMaxSurfaceSize, lmMaxSurfaceSize );
 		}
 
+		/* sRGB flags */
+
 		/* generate lightmap in sRGB colorspace */
 		else if( !strcmp( argv[ i ], "-lightmapsrgb" ) )
 		{
 			lightmapsRGB = qtrue;
 			Sys_Printf( " Generating lightmaps in sRGB colorspace\n" );
 		}
-
-		/* disable sRGB (force all textues linear) */
-		else if( !strcmp( argv[ i ], "-nosrgb" ) )
+		/* disable sRGB (force lightmaps to linear color) */
+		else if( !strcmp( argv[ i ], "-lightmaprgb" ) )
 		{
 			lightmapsRGB = qfalse;
 			Sys_Printf( " Generating lightmaps in linear RGB colorspace\n" );
+		}
+		/* set default texture colorspace to sRGB */
+		else if( !strcmp( argv[ i ], "-sRGBtex" ) ) 
+		{
+			texturesRGB = qtrue;
+			Sys_Printf( "Default texture colorspace: sRGB\n" );
+		}
+		/* set default texture colorspace to linear */
+		else if( !strcmp( argv[ i ], "-nosRGBtex" ) ) 
+		{
+			texturesRGB = qfalse;
+			Sys_Printf( "Default texture colorspace: linear\n" );
+		}
+		/* set entity _color keys colorspace to sRGB */
+		else if( !strcmp( argv[ i ], "-sRGBcolor" ) ) 
+		{
+			colorsRGB = qtrue;
+			Sys_Printf( "Entity _color keys colorspace: sRGB\n" );
+		}
+		/* set entity _color keys colorspace to linear */
+		else if( !strcmp( argv[ i ], "-nosRGBcolor" ) ) 
+		{
+			colorsRGB = qfalse;
+			Sys_Printf( "Entity _color keys colorspace: linear\n" );
+		}
+		/* disable sRGB for textures and _color */
+		else if ( !strcmp( argv[ i ], "-nosRGB" ) ) 
+		{
+			texturesRGB = qfalse;
+			Sys_Printf( "Default texture colorspace: linear\n" );
+			colorsRGB = qfalse;
+			Sys_Printf( "Entity _color keys colorspace: linear\n" );
 		}
 		
 		/* ydnar: add this to suppress warnings */
@@ -3182,6 +3233,19 @@ int LightMain( int argc, char **argv )
 		{
 			loMemSky = qtrue;
 			Sys_Printf( " Enabling low-memory (slower) lighting mode for sky light\n" );
+		}
+		else if ( !strcmp( argv[ i ], "-lightanglehl" ) )
+		{
+			qboolean newLightAngleHL = atoi( argv[ i + 1 ] ) != 0 ? qtrue : qfalse;
+			if ( newLightAngleHL != lightAngleHL ) 
+			{
+				lightAngleHL = newLightAngleHL;
+				if( lightAngleHL )
+					Sys_Printf( " Enabling half lambert light angle attenuation\n" );
+				else
+					Sys_Printf( " Disabling half lambert light angle attenuation\n" );
+			}
+			i++;
 		}
 		else if( !strcmp( argv[ i ], "-nostyle" ) || !strcmp( argv[ i ], "-nostyles" ) )
 		{

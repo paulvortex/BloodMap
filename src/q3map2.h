@@ -535,6 +535,13 @@ typedef struct surfaceParm_s
 }
 surfaceParm_t;
 
+typedef enum
+{
+	MINIMAP_MODE_GRAY,
+	MINIMAP_MODE_BLACK,
+	MINIMAP_MODE_WHITE
+}
+miniMapMode_t;
 
 typedef struct game_s
 {
@@ -551,8 +558,12 @@ typedef struct game_s
 	qboolean			wolfLight;						/* when true, lights work like wolf q3map  */
 	int					lightmapSize;					/* bsp lightmap width/height */
 	float				lightmapGamma;					/* default lightmap gamma */
+	qboolean            lightmapsRGB;                   /* default lightmap sRGB mode */
+	qboolean            texturesRGB;                    /* default texture sRGB mode */
+	qboolean            colorsRGB;                      /* default color sRGB mode */
 	float				lightmapExposure;				/* default lightmap exposure */
 	float				lightmapCompensate;				/* default lightmap compensate value */
+	qboolean            lightAngleHL;                   /* jal: use half-lambert curve for light angle attenuation */
 	qboolean			noStyles;						/* use lightstyles hack or not */
 	qboolean			keepLights;						/* keep light entities on bsp */
 	qboolean			colorNormalize;					/* vortex: do light color normalization */
@@ -560,6 +571,12 @@ typedef struct game_s
 	qboolean			patchShadows;					/* patch casting enabled */
 	qboolean			deluxeMap;						/* compile deluxemaps */
 	int					deluxeMode;						/* deluxemap mode (0 - modelspace, 1 - tangentspace with renormalization, 2 - tangentspace without renormalization) */
+	int                 miniMapSize;                    /* minimap size */
+	float               miniMapSharpen;                 /* minimap sharpening coefficient */
+	float               miniMapBorder;                  /* minimap border amount */
+	qboolean            miniMapKeepAspect;              /* minimap keep aspect ratio by letterboxing */
+	miniMapMode_t       miniMapMode;                    /* minimap mode */
+	char                *miniMapNameFormat;             /* minimap name format */
 	char				*bspIdent;						/* 4-letter bsp file prefix */
 	int					bspVersion;						/* bsp version to use */
 	qboolean			lumpSwap;						/* cod-style len/ofs order */
@@ -567,7 +584,6 @@ typedef struct game_s
 	surfaceParm_t		surfaceParms[ 128 ];			/* surfaceparm array */
 }
 game_t;
-
 
 typedef struct image_s
 {
@@ -577,7 +593,6 @@ typedef struct image_s
 	byte				*pixels;
 }
 image_t;
-
 
 typedef struct sun_s
 {
@@ -1990,35 +2005,43 @@ Q_EXTERN game_t				games[]
 							=
 							{
 								#include "quake3.h"
-								,
+	,
+								#include "quakelive.h" /* most be after game_quake3.h as they share defines! */
+	,
+								#include "nexuiz.h" /* most be after game_quake3.h as they share defines! */
+	,
+								#include "xonotic.h" /* most be after game_quake3.h as they share defines! */
+	,
 								#include "tremulous.h" /*LinuxManMikeC: must be after game_quake3.h, depends on #define's set in it */
-								,
+	,
 								#include "tenebrae.h"
-								,
+	,
 								#include "wolf.h"
-								,
-								#include "wolfet.h"/* most be after game_wolf.h as they share defines! */
-								,
+	,
+								#include "wolfet.h" /* most be after game_wolf.h as they share defines! */
+	,
 								#include "etut.h"
-								,
+	,
 								#include "ef.h"
-								,
+	,
 								#include "sof2.h"
-								,
-								#include "jk2.h"	/* most be after game_sof2.h as they share defines! */
-								,
-								#include "ja.h"	/* most be after game_jk2.h as they share defines! */
-								,
-								#include "qfusion.h"	/* qfusion game */
-								,
-								#include "darkplaces.h"	/* vortex: darkplaces q1 engine */
-								,
-								#include "dq.h"	/* vortex: deluxe quake game ( darkplaces q1 engine) */
-								,
-								#include "prophecy.h"	/* vortex: prophecy game ( darkplaces q1 engine) */
-								,
-								{ NULL }	/* null game */
-							};
+	,
+								#include "jk2.h"   /* most be after game_sof2.h as they share defines! */
+	,
+								#include "ja.h"    /* most be after game_jk2.h as they share defines! */
+	,
+								#include "qfusion.h"   /* qfusion game */
+	,
+								#include "reaction.h" /* must be after game_quake3.h */
+	,
+								#include "darkplaces.h"    /* vortex: darkplaces q1 engine */
+	,
+								#include "dq.h"    /* vortex: deluxe quake game ( darkplaces q1 engine) */
+	,
+								#include "prophecy.h"  /* vortex: prophecy game ( darkplaces q1 engine) */
+	,
+								#include "_null.h" /* null game (must be last item) */
+	};
 #endif
 Q_EXTERN game_t				*game Q_ASSIGN( &games[ 0 ] );
 
@@ -2282,6 +2305,8 @@ Q_EXTERN qboolean			externalLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN int				lmCustomSize Q_ASSIGN( LIGHTMAP_WIDTH );
 Q_EXTERN int				lmMaxSurfaceSize Q_ASSIGN( 0 );
 Q_EXTERN qboolean			lightmapsRGB Q_ASSIGN( qfalse );
+Q_EXTERN qboolean           colorsRGB Q_ASSIGN( qfalse );
+Q_EXTERN qboolean           texturesRGB Q_ASSIGN( qfalse );
 
 /* vortex: dirtmapping/ambient occlusion */
 typedef enum
@@ -2366,6 +2391,9 @@ Q_EXTERN float				areaScale Q_ASSIGN( 0.25f );
 Q_EXTERN float				skyScale Q_ASSIGN( 1.0f );
 Q_EXTERN float				bounceScale Q_ASSIGN( 0.25f );
 Q_EXTERN float				vertexScale Q_ASSIGN( 1.0f );
+
+/* jal: alternative angle attenuation curve */
+Q_EXTERN qboolean lightAngleHL Q_ASSIGN( qfalse );
 
 /* ydnar: lightmap gamma/compensation */
 Q_EXTERN float				lightmapGamma Q_ASSIGN( 1.0f );

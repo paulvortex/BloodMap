@@ -612,6 +612,13 @@ void ProcessWorldModel( void )
 					//%	VectorClear( normal );
 					VectorSet( normal, 0, 0, -1 );
 				
+				/* convert to sRGB colorspace */
+				if ( colorsRGB ) {
+					color[0] = srgb_to_linear( color[0] );
+					color[1] = srgb_to_linear( color[1] );
+					color[2] = srgb_to_linear( color[2] );
+				}
+
 				/* create the flare surface (note shader defaults automatically) */
 				DrawSurfaceForFlare( mapEntityNum, origin, normal, color, (char*) flareShader, lightStyle );
 			}
@@ -1119,15 +1126,15 @@ int BSPMain( int argc, char **argv )
 	maxLMSurfaceVerts = game->maxLMSurfaceVerts;
 	maxSurfaceIndexes = game->maxSurfaceIndexes;
 	emitFlares = game->emitFlares;
+	colorsRGB = game->colorsRGB;
+	texturesRGB = game->texturesRGB;
 	Sys_Printf( "--- GameSpecific ---\n" );
-	Sys_Printf( " Max surface verts: %i\n" , game->maxSurfaceVerts);
-	Sys_Printf( " Max lightmapped surface verts: %i\n" , game->maxLMSurfaceVerts);
-	Sys_Printf( " Max surface indexes: %i\n" , game->maxSurfaceIndexes);
-	if (emitFlares)
-		Sys_Printf( " Emit flares: enabled\n");
-	else
-		Sys_Printf( " Emit flares: disabled\n");
-
+	Sys_Printf( " max surface verts: %i\n" , game->maxSurfaceVerts);
+	Sys_Printf( " max lightmapped surface verts: %i\n" , game->maxLMSurfaceVerts);
+	Sys_Printf( " max surface indexes: %i\n" , game->maxSurfaceIndexes);
+	Sys_Printf( " emit flares: %s\n", emitFlares == qtrue ? "enabled" : "disabled");
+	Sys_Printf( " entity _color keys colorspace: %s\n", colorsRGB == qtrue ? "sRGB" : "linear"  );
+	Sys_Printf( " texture default colorspace: %s\n", texturesRGB == qtrue ? "sRGB" : "linear" );
 #if 0
 	{
 		unsigned int n, numCycles, f, fOld, start;
@@ -1409,6 +1416,33 @@ int BSPMain( int argc, char **argv )
 		{
 			Sys_Printf( " Debug portal surfaces enabled\n" );
 			debugPortals = qtrue;
+		}
+		else if( !strcmp( argv[ i ], "-sRGBtex" ) ) 
+		{
+			texturesRGB = qtrue;
+			Sys_Printf( "Default texture colorspace: sRGB\n" );
+		}
+		else if( !strcmp( argv[ i ], "-nosRGBtex" ) ) 
+		{
+			texturesRGB = qfalse;
+			Sys_Printf( "Default texture colorspace: linear\n" );
+		}
+		else if( !strcmp( argv[ i ], "-sRGBcolor" ) ) 
+		{
+			colorsRGB = qtrue;
+			Sys_Printf( "Entity _color keys colorspace: sRGB\n" );
+		}
+		else if( !strcmp( argv[ i ], "-nosRGBcolor" ) ) 
+		{
+			colorsRGB = qfalse;
+			Sys_Printf( "Entity _color keys colorspace: linear\n" );
+		}
+		else if ( !strcmp( argv[ i ], "-nosRGB" ) ) 
+		{
+			texturesRGB = qfalse;
+			Sys_Printf( "Default texture colorspace: linear\n" );
+			colorsRGB = qfalse;
+			Sys_Printf( "Entity _color keys colorspace: linear\n" );
 		}
 		else if( !strcmp( argv[ i ], "-bsp" ) )
 			Sys_Printf( " -bsp argument unnecessary\n" );

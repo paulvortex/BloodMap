@@ -465,59 +465,79 @@
 			Name="games"
 			>
 			<File
-				RelativePath=".\..\src\games\darkplaces.h"
+				RelativePath="..\src\games\_null.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\dq.h"
+				RelativePath="..\src\games\darkplaces.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\ef.h"
+				RelativePath="..\src\games\dq.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\etut.h"
+				RelativePath="..\src\games\ef.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\ja.h"
+				RelativePath="..\src\games\etut.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\jk2.h"
+				RelativePath="..\src\games\ja.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\prophecy.h"
+				RelativePath="..\src\games\jk2.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\qfusion.h"
+				RelativePath="..\src\games\nexuiz.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\quake3.h"
+				RelativePath="..\src\games\prophecy.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\sof2.h"
+				RelativePath="..\src\games\qfusion.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\tenebrae.h"
+				RelativePath="..\src\games\quake3.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\tremulous.h"
+				RelativePath="..\src\games\quakelive.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\wolf.h"
+				RelativePath="..\src\games\reaction.h"
 				>
 			</File>
 			<File
-				RelativePath=".\..\src\games\wolfet.h"
+				RelativePath="..\src\games\sof2.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\games\tenebrae.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\games\tremulous.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\games\wolf.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\games\wolfet.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\games\xonotic.h"
 				>
 			</File>
 		</Filter>

@@ -1534,6 +1534,12 @@ static void ParseShaderFile( const char *filename )
 				sun->color[ 1 ] = atof( token );
 				GetTokenAppend( shaderText, qfalse );
 				sun->color[ 2 ] = atof( token );
+				if( colorsRGB ) 
+				{
+					sun->color[0] = srgb_to_linear( sun->color[0] );
+					sun->color[1] = srgb_to_linear( sun->color[1] );
+					sun->color[2] = srgb_to_linear( sun->color[2] );
+				}
 				
 				/* normalize it */
 				VectorNormalize( sun->color, sun->color );
@@ -1726,6 +1732,12 @@ static void ParseShaderFile( const char *filename )
 					si->color[ 1 ] = atof( token );
 					GetTokenAppend( shaderText, qfalse );
 					si->color[ 2 ] = atof( token );
+					if( colorsRGB ) 
+					{
+						si->color[0] = srgb_to_linear( si->color[0] );
+						si->color[1] = srgb_to_linear( si->color[1] );
+						si->color[2] = srgb_to_linear( si->color[2] );
+					}
 					ColorNormalize( si->color, si->color );
 				}
 				
@@ -1761,6 +1773,12 @@ static void ParseShaderFile( const char *filename )
 					si->floodlightIntensity = atof( token ); 
 					GetTokenAppend( shaderText, qfalse );
 					si->floodlightDirectionScale = atof( token ); 
+					if( colorsRGB )
+					{
+						si->floodlightRGB[0] = srgb_to_linear( si->floodlightRGB[0] );
+						si->floodlightRGB[1] = srgb_to_linear( si->floodlightRGB[1] );
+						si->floodlightRGB[2] = srgb_to_linear( si->floodlightRGB[2] );
+					}
 				}
 				
 				/* q3map_lightmapSampleSize <value> */
@@ -2098,6 +2116,12 @@ static void ParseShaderFile( const char *filename )
 						cm = AllocateColorMod( si, CM_ALPHA_SET );
 						GetTokenAppend( shaderText, qfalse );
 						cm->data[ 0 ] = atof( token );
+						if ( colorsRGB ) 
+						{
+							cm->data[0] = srgb_to_linear( cm->data[0] );
+							cm->data[1] = srgb_to_linear( cm->data[1] );
+							cm->data[2] = srgb_to_linear( cm->data[2] );
+						}
 					}
 					
 					/* color|rgb set|const ( X Y Z ) */
@@ -2238,7 +2262,7 @@ static void ParseShaderFile( const char *filename )
 						si->colormod[ 2 ] = atof( token );
 					}
 
-					/* vortex: pack vegetation shader parms into vertex alpha (experimental feature) */
+					/* vortex: pack vegetation shader parms into vertex alpha */
 					else if( alpha && !Q_stricmp( token, "vegetation" ) )
 					{
 						cm = AllocateColorMod( si, CM_ALPHA_VEGETATION );
