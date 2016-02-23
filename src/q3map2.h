@@ -1576,7 +1576,7 @@ int							ConvertMain( int argc, char **argv );
 game_t						*GetGame( char *arg );
 void						InitPaths( int *argc, char **argv );
 qboolean                    GetGamePath(char *fileFullPath, char *outGamePath);
-
+void                        SanitizePath(char *path, char *out);
 
 /* bsp.c */
 int							BSPMain( int argc, char **argv );
@@ -1901,6 +1901,8 @@ void						SetupSurfaceLightmaps( void );
 void						AllocateSurfaceLightmaps( void );
 void						StitchRawLightmaps( void );
 void						StoreSurfaceLightmaps( void );
+
+void                        GetExternalLightmapPath(char *source, char *prefixPath, int lightmapNum, char *ext, char *outLightmapName);
 
 /* optimize.c */
 int                         OptimizeBSPMain( int argc, char **argv );
@@ -2302,6 +2304,8 @@ Q_EXTERN int				approximateTolerance Q_ASSIGN( 0 );
 Q_EXTERN qboolean			noCollapse Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			exportLightmaps Q_ASSIGN( qfalse );
 Q_EXTERN qboolean			externalLightmaps Q_ASSIGN( qfalse );
+Q_EXTERN char				externalLightmapsPath[ MAX_OS_PATH ];
+
 Q_EXTERN int				lmCustomSize Q_ASSIGN( LIGHTMAP_WIDTH );
 Q_EXTERN int				lmMaxSurfaceSize Q_ASSIGN( 0 );
 Q_EXTERN qboolean			lightmapsRGB Q_ASSIGN( qfalse );

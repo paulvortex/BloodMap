@@ -282,6 +282,45 @@ this section deals with projecting a lightmap onto a raw drawsurface
 
 ------------------------------------------------------------------------------- */
 
+/* 
+GetExternalLightmapPath
+get a path for external lightmap
+*/
+
+void GetExternalLightmapPath(char *source, char *prefixPath, int lightmapNum, char *ext, char *outLightmapName)
+{
+	char dirname[MAX_OS_PATH], gamepath[MAX_OS_PATH];
+	qboolean gp;
+
+	if (prefixPath == NULL)
+		prefixPath = "";
+
+	/* get map name without extension */
+	strcpy( dirname, source );
+	StripExtension( dirname );
+
+	/* get game path */
+	gp = GetGamePath( dirname, gamepath );
+
+	/* simple way */
+	if ( externalLightmapsPath[0] == 0 || !gp )
+	{
+		if (ext == NULL)
+			sprintf( outLightmapName, "%s/", dirname );
+		else
+			sprintf( outLightmapName, "%s/" EXTERNAL_LIGHTMAP "%s", dirname, lightmapNum, ext );
+		//Sys_Printf("GetExternalLightmapPath: %s\n", outLightmapName);
+		return;
+	}
+
+	/* with external path and game path */
+	if (ext == NULL)
+		sprintf( outLightmapName, "%s%s%s%s/", gamepath, prefixPath, externalLightmapsPath, dirname + strlen(gamepath) );
+	else
+		sprintf( outLightmapName, "%s%s%s%s/" EXTERNAL_LIGHTMAP "%s", gamepath, prefixPath, externalLightmapsPath, dirname + strlen(gamepath), lightmapNum, ext );
+	//Sys_Printf("GetExternalLightmapPath: %s\n", outLightmapName);
+}
+
 /*
 CompareLightSurface()
 compare function for qsort()
@@ -2986,7 +3025,7 @@ void StoreSurfaceLightmaps( void )
 	rawLightmap_t		*lm, *lm2;
 	outLightmap_t		*olm;
 	bspDrawVert_t		*dv, *ydv, *dvParent;
-	char				dirname[ MAX_OS_PATH ], filename[ MAX_OS_PATH ], gamepath[ MAX_OS_PATH ], lmfile[ MAX_OS_PATH ];
+	char				dirname[ MAX_OS_PATH ], filename[ MAX_OS_PATH ], lmfile[ MAX_OS_PATH ];
 	shaderInfo_t		*csi;
 	char				lightmapName[ 128 ];
 	char				*rgbGenValues[ 256 ];
@@ -3705,32 +3744,31 @@ void StoreSurfaceLightmaps( void )
 		any_deleted = qfalse;
 
 		/* delete .tga */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
-		if( FileExists( filename ) == qtrue )
+		GetExternalLightmapPath( source, NULL, i, ".tga", lmfile );
+		if( FileExists( lmfile ) == qtrue )
 		{
 			f++;
-			remove( filename );
+			remove( lmfile );
 			any_deleted = qtrue;
 		}
 
 		/* delete .png */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, i );
-		if( FileExists( filename ) == qtrue )
+		GetExternalLightmapPath( source, NULL, i, ".png", lmfile );
+		if( FileExists( lmfile ) == qtrue )
 		{
 			f++;
-			remove( filename );
+			remove( lmfile );
 			any_deleted = qtrue;
 		}
 
 		/* delete .jpg */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".jpg", dirname, i );
-		if( FileExists( filename ) == qtrue )
+		GetExternalLightmapPath( source, NULL, i, ".jpg", lmfile );
+		if( FileExists( lmfile ) == qtrue )
 		{
 			f++;
-			remove( filename );
+			remove( lmfile );
 			any_deleted = qtrue;
 		}
-
 		if (!any_deleted)
 			break;
 	}
@@ -3744,15 +3782,9 @@ void StoreSurfaceLightmaps( void )
 	f = 0;
 	for( i = 0; 1; i++ )
 	{
-		/* get game path */
-		sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".dds", dirname, i );
-		if ( !GetGamePath( filename, gamepath ) )
-			continue;
-
 		/* determine if file exists */
-		strcpy(lmfile, filename + strlen(gamepath));
-		sprintf( filename, "%sdds/%s", gamepath, lmfile );
-		if( !FileExists( filename ) )
+		GetExternalLightmapPath( source, "dds/", i, ".tga", lmfile );
+		if( !FileExists( lmfile ) )
 			break;
 
 		/* delete it */
@@ -3828,7 +3860,8 @@ void StoreSurfaceLightmaps( void )
 			if (olm->bspLightBytes)
 			{
 				/* make a directory for the lightmaps */
-				Q_mkdir( dirname );
+				GetExternalLightmapPath( source, NULL, -1, NULL, lmfile );
+				Q_mkdir( lmfile );
 				
 				/* set external lightmap number */
 				olm->extLightmapNum = numExtLightmaps;
@@ -3839,24 +3872,23 @@ void StoreSurfaceLightmaps( void )
 				/* write lightmap */
 				if (lightmapsRGB)
 				{
-					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, numExtLightmaps );
-					WritePNG( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qfalse, qtrue );
+					GetExternalLightmapPath( source, NULL, numExtLightmaps, ".png", lmfile );
+					WritePNG( lmfile, olm->bspLightBytes, olm->customWidth, olm->customHeight, qfalse, qtrue );
 					numExtLightmaps++;
 				}
 				else
 				{
-					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, numExtLightmaps );
-					WriteTGA24( filename, olm->bspLightBytes, olm->customWidth, olm->customHeight, qtrue );
+					GetExternalLightmapPath( source, NULL, numExtLightmaps, ".tga", lmfile );
+					WriteTGA24( lmfile, olm->bspLightBytes, olm->customWidth, olm->customHeight, qtrue );
 					numExtLightmaps++;
 				}
 				
 				/* write deluxemap */
 				if( deluxemap )
 				{
-					sprintf( filename, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, numExtLightmaps );
-					WriteTGA24( filename, olm->bspDirBytes, olm->customWidth, olm->customHeight, qtrue );
+					GetExternalLightmapPath( source, NULL, numExtLightmaps, ".tga", lmfile );
+					WriteTGA24( lmfile, olm->bspDirBytes, olm->customWidth, olm->customHeight, qtrue );
 					numExtLightmaps++;
-					
 					if( debugDeluxemap )
 						olm->extLightmapNum++;
 				}
@@ -4062,7 +4094,7 @@ void StoreSurfaceLightmaps( void )
 				if( lm->outLightmapNums[ lightmapNum ] == lm->outLightmapNums[ 0 ] )
 					strcpy( lightmapName, "$lightmap" );
 				else
-					sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP ".tga", mapName, olm->extLightmapNum );
+					sprintf( lightmapName, "%smaps/%s/" EXTERNAL_LIGHTMAP ".tga", externalLightmapsPath, mapName, olm->extLightmapNum );
 				
 				/* get rgbgen string */
 				if( rgbGenValues[ style ] == NULL )
@@ -4155,7 +4187,7 @@ void StoreSurfaceLightmaps( void )
 			olm = &outLightmaps[ lm->outLightmapNums[ 0 ] ];
 			
 			/* do some name mangling */
-			sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP ".tga", mapName, olm->extLightmapNum );
+			sprintf( lightmapName, "%smaps/%s/" EXTERNAL_LIGHTMAP ".tga", externalLightmapsPath, mapName, olm->extLightmapNum );
 			
 			/* create custom shader */
 			csi = CustomShader( info->si, "$lightmap", lightmapName );

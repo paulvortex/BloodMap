@@ -1523,7 +1523,7 @@ static int CompareRefEntry( const void *a, const void *b ) { return strcmp(((Ref
 
 #define MAX_REFERENCED 512
 
-void WriteResourceOBJFile( const char *filename )
+void WriteResourceOBJFile( const char *objfilename )
 {
 	FILE *f;
 	entity_t *entity;
@@ -1541,7 +1541,7 @@ void WriteResourceOBJFile( const char *filename )
 	StripExtension( dirname );
 	ExtractFileBase( dirname, mapname );
 
-	f = SafeOpenWrite( filename );
+	f = SafeOpenWrite( objfilename );
 	ParseEntities();
 	fprintf(f, "# Wavefront Objectfile containing all resourced map is using\n");
 	fprintf(f, "# Resource listing:\n");
@@ -1552,9 +1552,6 @@ void WriteResourceOBJFile( const char *filename )
 	{
 		/* register material */
 		shadername = bspShaders[ i ].shader;
-		
-
-
 		for (j = 0; j < numShaders; j++)
 			if (!strncmp(RefShaders[ j ].shadername, shadername, 128) )
 				break;
@@ -1660,15 +1657,16 @@ void WriteResourceOBJFile( const char *filename )
 		fprintf(f, "usemtl %s\n", RefShaders[ i ].shadername  );
 		fprintf(f, "f 3/3 2/2 1/1\n" );
 	}
-	for( i = 0; i; i++ )
+#if 0
+	for( i = 0; 1; i++ )
 	{
 		any_found = qfalse;
 
 		/* check .tga */
-		sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".tga", dirname, i );
+		GetExternalLightmapPath( source, NULL, i, ".tga", lightmapfile );
 		if( FileExists( lightmapfile ) )
 		{
-			fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+			fprintf(f, "usemtl %smaps/%s/" EXTERNAL_LIGHTMAP "\n", externalLightmapsPath, mapname, i );
 			fprintf(f, "f 3/3 2/2 1/1\n" );
 			any_found = qtrue;
 		}
@@ -1676,10 +1674,10 @@ void WriteResourceOBJFile( const char *filename )
 		/* check .png */
 		if (!any_found)
 		{
-			sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".png", dirname, i );
+			GetExternalLightmapPath( source, NULL, i, ".png", lightmapfile );
 			if( FileExists( lightmapfile ) )
 			{
-				fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+				fprintf(f, "usemtl %smaps/%s/" EXTERNAL_LIGHTMAP "\n", externalLightmapsPath, mapname, i );
 				fprintf(f, "f 3/3 2/2 1/1\n" );
 				any_found = qtrue;
 			}
@@ -1688,10 +1686,22 @@ void WriteResourceOBJFile( const char *filename )
 		/* check .jpg */
 		if (!any_found)
 		{
-			sprintf( lightmapfile, "%s/" EXTERNAL_LIGHTMAP ".jpg", dirname, i );
+			GetExternalLightmapPath( source, NULL, i, ".jpg", lightmapfile );
 			if( FileExists( lightmapfile ) )
 			{
-				fprintf(f, "usemtl maps/%s/" EXTERNAL_LIGHTMAP "\n", mapname, i );
+				fprintf(f, "usemtl %smaps/%s/" EXTERNAL_LIGHTMAP "\n", externalLightmapsPath, mapname, i );
+				fprintf(f, "f 3/3 2/2 1/1\n" );
+				any_found = qtrue;
+			}
+		}
+
+		/* check .dds */
+		if (!any_found)
+		{
+			GetExternalLightmapPath( source, "dds/", i, ".dds", lightmapfile );
+			if( FileExists( lightmapfile ) )
+			{
+				fprintf(f, "usemtl %smaps/%s/" EXTERNAL_LIGHTMAP "\n", externalLightmapsPath, mapname, i );
 				fprintf(f, "f 3/3 2/2 1/1\n" );
 				any_found = qtrue;
 			}
@@ -1700,6 +1710,7 @@ void WriteResourceOBJFile( const char *filename )
 		if (!any_found)
 			break;
 	}
+#endif
 	fclose(f);
 	numBSPEntities = numEntities;
 	UnparseEntities(qfalse);
@@ -1727,6 +1738,7 @@ int OptimizeBSPMain( int argc, char **argv )
 
 	/* process arguments */
 	Sys_Printf( "--- CommandLine ---\n" );
+	strcpy(externalLightmapsPath, "");
 	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
 		/* -mergeblock */
@@ -1818,7 +1830,16 @@ int OptimizeBSPMain( int argc, char **argv )
 			Sys_Printf( " Entity unique savegame identifiers enabled\n" );
 			useEntitySaveId = qtrue;
 		}
-
+		/* -externalpath */
+		else if( !strcmp( argv[ i ], "-externalpath" ) )
+		{
+			i++;
+			if (i < argc)
+			{
+				SanitizePath(argv[ i ], externalLightmapsPath);
+				Sys_Printf( " External are stored under %s\n" , externalLightmapsPath );
+			}
+		}
 		else
 			Sys_Warning( "Unknown option \"%s\"", argv[ i ] );
 	}

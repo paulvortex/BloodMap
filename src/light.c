@@ -2610,6 +2610,7 @@ int LightMain( int argc, char **argv )
 	Sys_Printf( "--- CommandLine ---\n" );
 	
 	/* process commandline arguments */
+	strcpy(externalLightmapsPath, "");
 	for( i = 1; i < (argc - 1) && argv[ i ]; i++ )
 	{
 		/* point lightsource scaling */
@@ -2894,6 +2895,15 @@ int LightMain( int argc, char **argv )
 		{
 			externalLightmaps = qtrue;
 			Sys_Printf( " Storing all lightmaps externally\n" );
+		}
+		else if( !strcmp( argv[ i ], "-externalpath" ) )
+		{
+			i++;
+			if (i < argc)
+			{
+				SanitizePath(argv[ i ], externalLightmapsPath);
+				Sys_Printf( " Storing all external lightmaps under %s\n" , externalLightmapsPath );
+			}
 		}
 		else if( !strcmp( argv[ i ], "-lightmapsize" ) )
 		{
