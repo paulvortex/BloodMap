@@ -182,7 +182,7 @@ int PicoModuleLoadModel( const picoModule_t* pm, char* fileName, picoByte_t* buf
 
 static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 {
-	int				i, j;
+	int				i, j, version;
 	picoByte_t		*bb;
 	md3_t			*md3;
 	md3Surface_t	*surface;
@@ -192,6 +192,7 @@ static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 	md3Triangle_t	*triangle;
 	md3Vertex_t		*vertex;
 	double			lat, lng;
+	char            *magic;
 
 	picoModel_t		*picoModel;
 	picoSurface_t	*picoSurface;
@@ -215,7 +216,7 @@ static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 		
 		/* get <modelname>.md3.ase filename */
 		strncpy( aseFilename, fileName, 2048 );
-		strncpy( aseFilename + strlen( fileName ), ".ase", 2048 );
+		strncpy( aseFilename + strlen( fileName ), ".ase", 2048 - strlen( fileName ) );
 		
 		/* try load file */
 		_pico_load_file( aseFilename, &aseBuffer, &aseBufSize );
@@ -252,9 +253,12 @@ static picoModel_t *_md3_load( PM_PARAMS_LOAD )
 	md3	= (md3_t*) buffer;
 	
 	/* check ident and version */
-	if( *((int*) md3->magic) != *((int*) MD3_MAGIC) || _pico_little_long( md3->version ) != MD3_VERSION )
+	magic = MD3_MAGIC;
+	version = _pico_little_long( md3->version );
+	if( md3->magic[0] != magic[0] || md3->magic[1] != magic[1] || md3->magic[2] != magic[2] || md3->magic[3] != magic[3] || version != MD3_VERSION )
 	{
 		/* not an md3 file (todo: set error) */
+		_pico_printf( PICO_ERROR, "Not an MD3 file (magic %c%c%c%c, version %i)", md3->magic[0], md3->magic[1], md3->magic[2], md3->magic[3], version );
 		return NULL;
 	}
 	
