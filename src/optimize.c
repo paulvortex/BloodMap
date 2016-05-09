@@ -1528,14 +1528,14 @@ void WriteResourceOBJFile( const char *objfilename )
 	FILE *f;
 	entity_t *entity;
 	const char *classname, *model, *noise, *shadername;
-	char dirname[MAX_OS_PATH], lightmapfile[MAX_OS_PATH], mapname[MAX_OS_PATH];
+	char dirname[MAX_OS_PATH], /*lightmapfile[MAX_OS_PATH], */mapname[MAX_OS_PATH];
 	static RefEntry_t RefShaders[MAX_REFERENCED] = { 0 };
 	static RefEntry_t RefModels[MAX_REFERENCED] = { 0 };
 	static RefEntry_t RefSounds[MAX_REFERENCED] = { 0 };
 	static RefEntry_t RefClasses[MAX_REFERENCED] = { 0 };
 	int numShaders, numModels, numSounds, numClasses;
 	int i, j, k, spawnflags;
-	qboolean any_found;
+	/*qboolean any_found;*/
 
 	strcpy( dirname, source );
 	StripExtension( dirname );

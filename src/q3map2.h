@@ -567,7 +567,7 @@ typedef struct game_s
 	qboolean			noStyles;						/* use lightstyles hack or not */
 	qboolean			keepLights;						/* keep light entities on bsp */
 	qboolean			colorNormalize;					/* vortex: do light color normalization */
-	int					patchSubdivisions;				/* default patch subdivisions tolerance */
+	float				patchSubdivisions;				/* default patch subdivisions tolerance */
 	qboolean			patchShadows;					/* patch casting enabled */
 	qboolean			deluxeMap;						/* compile deluxemaps */
 	int					deluxeMode;						/* deluxemap mode (0 - modelspace, 1 - tangentspace with renormalization, 2 - tangentspace without renormalization) */
@@ -928,7 +928,6 @@ typedef struct brush_s
 	qboolean            noclip;       /* vortex: don't clip faces by BSP tree */
 	qboolean            noTJunc;      /* vortex: disable T-junction fixing */
 	qboolean			opaque;
-
 	int					portalareas[ 2 ];
 
 	vec3_t				mins, maxs;
@@ -981,6 +980,9 @@ typedef struct parseMesh_s
 	vec3_t              minlight;       /* vortex: minlight (lightmapping/vertexlight) */
 	vec3_t              minvertexlight; /* vortex: minvertexlight (vertexlight) */
 	vec3_t              colormod;       /* vortex: colormod (lightmapping/vertexlight) */
+	qboolean            patchMeta;         /* vortex: patch meta on func_group */
+	float               patchQuality;      /* vortex: patch meta on func_group */
+	float               patchSubdivisions; /* vortex: patch meta on func_group */
 
 	/* grouping */
 	qboolean			grouped;
@@ -1102,6 +1104,9 @@ typedef struct mapDrawSurface_s
 	int					maxIterations;
 	int					patchWidth, patchHeight;
 	vec3_t				bounds[ 2 ];
+	qboolean            patchMeta;
+	float               patchQuality;
+	float               patchSubdivisions;
 
 	/* ydnar/sd: for foliage */
 	int					numFoliageInstances;
@@ -1626,7 +1631,7 @@ void						PrintMesh( mesh_t *m );
 mesh_t						*TransposeMesh( mesh_t *in );
 void						InvertMesh( mesh_t *m );
 mesh_t						*SubdivideMesh( mesh_t in, float maxError, float minLength );
-int							IterationsForCurve( float len, int subdivisions );
+int							IterationsForCurve( float len, float subdivisions );
 mesh_t						*SubdivideMesh2( mesh_t in, int iterations );
 mesh_t						*SubdivideMeshQuads( mesh_t *in, float minLength, int maxsize, int *widthtable, int *heighttable );
 mesh_t						*RemoveLinearMeshColumnsRows( mesh_t *in );
@@ -1971,6 +1976,7 @@ void						GetEntityLightmapScale( const entity_t *ent, float *lightmapScale, flo
 void                        GetEntityLightmapAxis( const entity_t *ent, vec3_t lightmapAxis, vec3_t baseAxis );
 void						GetEntityNormalSmoothing( const entity_t *ent, int *smoothNormals, int baseSmoothing );
 void                        GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t minlight, vec3_t minvertexlight, vec3_t ambient, vec3_t colormod, qboolean setDefaults );
+void                        GetEntityPatchMeta( const entity_t *ent, qboolean *patchMeta, float *patchQuality, float *patchSubdivisions, float baseQuality, float baseSubdivisions );
 
 /* bspfile_ibsp.c */
 void						LoadIBSPFile( const char *filename );
@@ -2098,7 +2104,7 @@ Q_EXTERN qboolean			noHint Q_ASSIGN( qfalse );				/* ydnar */
 Q_EXTERN qboolean			renameModelShaders Q_ASSIGN( qfalse );	/* ydnar */
 Q_EXTERN qboolean			skyFixHack Q_ASSIGN( qfalse );			/* ydnar */
 
-Q_EXTERN int				patchSubdivisions Q_ASSIGN( 8 );		/* ydnar: -patchmeta subdivisions */
+Q_EXTERN float				patchSubdivisions Q_ASSIGN( 8.0f );		/* ydnar: -patchmeta subdivisions */
 
 Q_EXTERN int				maxLMSurfaceVerts Q_ASSIGN( 64 );		/* ydnar */
 Q_EXTERN int				maxSurfaceVerts Q_ASSIGN( 999 );		/* ydnar */

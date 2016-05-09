@@ -299,31 +299,15 @@ void TriangulatePatchSurface( entity_t *e , mapDrawSurface_t *ds )
 	int					iterations, x, y, pw[ 5 ], r;
 	mapDrawSurface_t	*dsNew;
 	mesh_t				src, *subdivided, *mesh;
-	int					forcePatchMeta;
-	int					patchQuality;
-	int					patchSubdivision;
+	qboolean			forceMeta;
+	float				patchQuality;
+	float				patchSubdivision;
 
 	/* vortex: _patchMeta, _patchQuality, _patchSubdivide support */
-	forcePatchMeta = IntForKey(e, "_patchMeta" );
-	if (!forcePatchMeta)
-		forcePatchMeta = IntForKey(e, "patchMeta" );
-	if (!forcePatchMeta)
-		forcePatchMeta = IntForKey(e, "_pm" );
-	patchQuality = IntForKey(e, "_patchQuality" );
-	if (!patchQuality)
-		patchQuality = IntForKey(e, "patchQuality" );
-	if (!patchQuality)
-		patchQuality = IntForKey(e, "_pq" );
-	if (!patchQuality)
-		patchQuality = 1.0;
-	patchSubdivision = IntForKey(e, "_patchSubdivide" );
-	if (!patchSubdivision)
-		patchSubdivision = IntForKey(e, "patchSubdivide" );
-	if (!patchSubdivision)
-		patchSubdivision = IntForKey(e, "_ps" );
+	GetEntityPatchMeta( e, &forceMeta, &patchQuality, &patchSubdivision, ds->patchQuality, ds->patchSubdivisions);
 
 	/* try to early out */
-	if(ds->numVerts == 0 || ds->type != SURFACE_PATCH || ( patchMeta == qfalse && !forcePatchMeta) )
+	if(ds->numVerts == 0 || ds->type != SURFACE_PATCH || ( patchMeta == qfalse && forceMeta == qfalse && ds->patchMeta == qfalse) )
 		return;
 
 	/* make a mesh from the drawsurf */ 
@@ -331,7 +315,7 @@ void TriangulatePatchSurface( entity_t *e , mapDrawSurface_t *ds )
 	src.height = ds->patchHeight;
 	src.verts = ds->verts;
 	//%	subdivided = SubdivideMesh( src, 8, 999 );
-	if (patchSubdivision)
+	if (patchSubdivision != 0)
 		iterations = IterationsForCurve( ds->longestCurve, patchSubdivision );
 	else
 		iterations = IterationsForCurve( ds->longestCurve, max(1, patchSubdivisions / patchQuality) );

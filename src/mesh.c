@@ -520,7 +520,7 @@ given a curve of a certain length, return the number of subdivision iterations
 note: this is affected by subdivision amount
 */
 
-int IterationsForCurve( float len, int subdivisions )
+int IterationsForCurve( float len, float subdivisions )
 {
 	int		iterations, facets;
 	

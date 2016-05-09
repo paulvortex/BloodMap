@@ -671,10 +671,10 @@ int main( int argc, char **argv )
 		{
 			argv[ i ] = NULL;
 			i++;
-			patchSubdivisions = atoi( argv[ i ] );
+			patchSubdivisions = atof( argv[ i ] );
 			argv[ i ] = NULL;
-			if( patchSubdivisions <= 0 )
-				patchSubdivisions = 1;
+			if( patchSubdivisions <= 0.0 )
+				patchSubdivisions = 1.0;
 		}
 		
 		/* threads */
@@ -744,7 +744,7 @@ int main( int argc, char **argv )
 	InitPaths( &argc, argv );
 
 	/* set game options */
-	if (!patchSubdivisions)
+	if (patchSubdivisions <= 0.0)
 		patchSubdivisions = game->patchSubdivisions;
 	
 	/* check if we have enough options left to attempt something */

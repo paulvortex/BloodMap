@@ -1405,8 +1405,9 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightgridBrush
 	parseMesh_t		*patch;
 	qboolean		funcGroup;
 	char			castShadows, recvShadows;
-	qboolean		forceNonSolid, forceNoClip, forceNoTJunc;
+	qboolean		forceNonSolid, forceNoClip, forceNoTJunc, forceMeta;
 	vec3_t          minlight, minvertexlight, ambient, colormod;
+	float           patchQuality, patchSubdivision;
 	
 	/* eof check */
 	if( !GetToken( qtrue ) )
@@ -1559,6 +1560,9 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightgridBrush
 		VectorSet( colormod, 1, 1, 1 );
 	}
 
+	/* vortex: _patchMeta, _patchQuality, _patchSubdivide support */
+	GetEntityPatchMeta( mapEnt, &forceMeta, &patchQuality, &patchSubdivision, 1.0, patchSubdivisions);
+
 	/* vortex: vertical texture projection */
 	if( strcmp( "", ValueForKey( mapEnt, "_vtcproj" ) ) || strcmp( "", ValueForKey( mapEnt, "_vp" ) ) )
 	{
@@ -1628,6 +1632,9 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightgridBrush
 		patch->smoothNormals = smoothNormals; /* vortex */
 		patch->vertTexProj = vertTexProj; /* vortex */
 		patch->celShader = celShader;
+		patch->patchMeta = forceMeta; /* vortex */
+		patch->patchQuality = patchQuality; /* vortex */
+		patch->patchSubdivisions = patchSubdivision; /* vortex */
 		VectorCopy( minlight, patch->minlight ); /* vortex */
 		VectorCopy( minvertexlight, patch->minvertexlight ); /* vortex */
 		VectorCopy( ambient, patch->ambient ); /* vortex */

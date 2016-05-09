@@ -1142,6 +1142,9 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	VectorCopy( p->colormod, ds->colormod );
 	ds->smoothNormals = (si->compileFlags & C_NODRAW) ? 0 : p->smoothNormals; /* vortex: patch really need this? */
 	ds->vertTexProj = p->vertTexProj; /* vortex */
+	ds->patchMeta = p->patchMeta; /* vortex */
+	ds->patchQuality = p->patchQuality; /* vortex */
+	ds->patchSubdivisions = p->patchSubdivisions; /* vortex */
 	ds->patchWidth = mesh->width;
 	ds->patchHeight = mesh->height;
 	ds->numVerts = ds->patchWidth * ds->patchHeight;
@@ -2505,14 +2508,10 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 	int					i, j;
 	bspDrawSurface_t	*out;
 	int					surfaceFlags, contentFlags;
-	int					forcePatchMeta;
+	qboolean			forceMeta;
 
 	/* vortex: _patchMeta support */
-	forcePatchMeta = IntForKey(e, "_patchMeta" );
-	if (!forcePatchMeta)
-		forcePatchMeta = IntForKey(e, "patchMeta" );
-	if (!forcePatchMeta)
-		forcePatchMeta = IntForKey(e, "_pm" );
+	GetEntityPatchMeta( mapEnt, &forceMeta, NULL, NULL, ds->patchQuality, ds->patchSubdivisions);
 	
 	/* invert the surface if necessary */
 	if( ds->backSide || ds->shaderInfo->invert )
@@ -2569,7 +2568,7 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 	out->surfaceType = MST_PATCH;
 	if( debugSurfaces )
 		out->shaderNum = EmitShader( "debugsurfaces", NULL, NULL );
-	else if( patchMeta || forcePatchMeta )
+	else if( patchMeta || forceMeta || ds->patchMeta )
 	{
 		/* patch meta requires that we have nodraw patches for collision */
 		surfaceFlags = ds->shaderInfo->surfaceFlags;

@@ -1099,3 +1099,44 @@ void GetEntityMinlightAmbientColor( const entity_t *ent, vec3_t color, vec3_t mi
 		}
 	}
 }
+
+/*
+GetEntityPatchMeta() - vortex
+gets an entity's patch meta settings
+*/
+
+void GetEntityPatchMeta( const entity_t *ent, qboolean *forceMeta, float *patchQuality, float *patchSubdivision, float baseQuality, float baseSubdivisions )
+{
+	/* vortex: _patchMeta */
+	*forceMeta = IntForKey(ent, "_patchMeta" ) > 0 ? qtrue : qfalse;
+	if (!*forceMeta)
+		*forceMeta = IntForKey(ent, "patchMeta" ) > 0 ? qtrue : qfalse;
+	if (!*forceMeta)
+		*forceMeta = IntForKey(ent, "_pm" ) > 0 ? qtrue : qfalse;
+	/* vortex: _patchQuality */
+	if( patchQuality )
+	{
+		*patchQuality = FloatForKey(ent, "_patchQuality" );
+		if (*patchQuality == 0)
+			*patchQuality = FloatForKey(ent, "patchQuality" );
+		if (*patchQuality == 0)
+			*patchQuality = FloatForKey(ent, "_pq" );
+		if (*patchQuality == 0)
+			*patchQuality = baseQuality;
+		if (*patchQuality == 0)
+			*patchQuality = 1.0;
+	}
+	/* vortex: _patchSubdivide */
+	if( patchSubdivision )
+	{
+		*patchSubdivision = FloatForKey(ent, "_patchSubdivide" );
+		if (*patchSubdivision == 0)
+			*patchSubdivision = FloatForKey(ent, "patchSubdivide" );
+		if (*patchSubdivision == 0)
+			*patchSubdivision = FloatForKey(ent, "_ps" );
+		if (*patchSubdivision == 0)
+			*patchSubdivision = baseSubdivisions;
+		if (*patchSubdivision == 0)
+			*patchSubdivision = patchSubdivisions;
+	}
+}
