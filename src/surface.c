@@ -1066,7 +1066,6 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	float				offsets[ MAX_EXPANDED_AXIS * MAX_EXPANDED_AXIS ];
 	vec3_t				forceVecs[ 2 ];
 	
-	
 	/* get mesh and shader shader */
 	if( mesh == NULL )
 		mesh = &p->mesh;
@@ -1124,7 +1123,6 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	else
 		indexed = qfalse;
 	
-	
 	/* ydnar: gs mods */
 	ds = AllocDrawSurface( SURFACE_PATCH );
 	ds->entityNum = p->entityNum;
@@ -1145,6 +1143,7 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	ds->patchMeta = p->patchMeta; /* vortex */
 	ds->patchQuality = p->patchQuality; /* vortex */
 	ds->patchSubdivisions = p->patchSubdivisions; /* vortex */
+	ds->noClip = p->nonsolid; /* vortex */
 	ds->patchWidth = mesh->width;
 	ds->patchHeight = mesh->height;
 	ds->numVerts = ds->patchWidth * ds->patchHeight;
@@ -1174,8 +1173,8 @@ mapDrawSurface_t *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh 
 	}
 	
 	/* spew forth errors */
-	if( VectorLength( plane ) < 0.001f )
-		Sys_Printf( "BOGUS " );
+	if( VectorLength( plane ) < 0.00001f )
+		Sys_Warning( p->mapEntityNum, p->brushNum, "DrawSurfaceForMesh: bogus plane constructed" );
 	
 	/* test each vert */
 	for( i = 1; i < ds->numVerts && planar; i++ )
@@ -2570,6 +2569,7 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 		out->shaderNum = EmitShader( "debugsurfaces", NULL, NULL );
 	else if( patchMeta || forceMeta || ds->patchMeta )
 	{
+		/* vortex: with _nonsolid of q3map_noBSP flag, this code is never executed as whole surface get stripped (see FilterDrawsurfsIntoTree)
 		/* patch meta requires that we have nodraw patches for collision */
 		surfaceFlags = ds->shaderInfo->surfaceFlags;
 		contentFlags = ds->shaderInfo->contentFlags;
@@ -2585,7 +2585,14 @@ void EmitPatchSurface( entity_t *e, mapDrawSurface_t *ds )
 		out->shaderNum = EmitShader( ds->shaderInfo->shader, &contentFlags, &surfaceFlags );
 	}
 	else
-		out->shaderNum = EmitShader( ds->shaderInfo->shader, &ds->shaderInfo->contentFlags, &ds->shaderInfo->surfaceFlags );
+	{
+		surfaceFlags = ds->shaderInfo->surfaceFlags;
+		contentFlags = ds->shaderInfo->contentFlags;
+		/* vortex: _nonsolid patches */
+		if ( ds->noClip || ds->shaderInfo->noBSP )
+			ApplySurfaceParm( "nonsolid", &contentFlags, &surfaceFlags, NULL );
+		out->shaderNum = EmitShader( ds->shaderInfo->shader, &contentFlags, &surfaceFlags );
+	}
 	out->patchWidth = ds->patchWidth;
 	out->patchHeight = ds->patchHeight;
 	out->fogNum = ds->fogNum;
@@ -3773,6 +3780,7 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier )
 	vec3_t origin, mins, maxs;
 	int refs;
 	int	numSurfs, numRefs, numSkyboxSurfaces;
+	qboolean forceMeta;
 	
 	/* apply mods */
 	ApplyVertexMods( e, showpacifier );
@@ -3809,6 +3817,12 @@ void FilterDrawsurfsIntoTree( entity_t *e, tree_t *tree, qboolean showpacifier )
 		ds = &mapDrawSurfs[ i ];
 		if( ds->numVerts == 0 && ds->type != SURFACE_FLARE && ds->type != SURFACE_SHADER )
 			continue;
+
+		/* vortex: patchMeta with noBSP flag doesn't require patch surface to be emitted */
+		GetEntityPatchMeta( e, &forceMeta, NULL, NULL, ds->patchQuality, ds->patchSubdivisions);
+		if( patchMeta || forceMeta || ds->patchMeta )
+			if ( ds->noClip || ds->shaderInfo->noBSP )
+				continue;
 		
 		/* get shader */
 		si = ds->shaderInfo;

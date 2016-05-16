@@ -983,6 +983,7 @@ typedef struct parseMesh_s
 	qboolean            patchMeta;         /* vortex: patch meta on func_group */
 	float               patchQuality;      /* vortex: patch meta on func_group */
 	float               patchSubdivisions; /* vortex: patch meta on func_group */
+	qboolean            nonsolid;
 
 	/* grouping */
 	qboolean			grouped;

@@ -1639,6 +1639,7 @@ static qboolean ParseMapEntity( qboolean onlyLights, qboolean onlyLightgridBrush
 		VectorCopy( minvertexlight, patch->minvertexlight ); /* vortex */
 		VectorCopy( ambient, patch->ambient ); /* vortex */
 		VectorCopy( colormod, patch->colormod ); /* vortex */
+		patch->nonsolid = forceNonSolid;
 	}
 
 	/* vortex: store map entity num */
